@@ -5,35 +5,5 @@
     "date": "2025-05-22",
     "numbers": [3, 10, 32, 34, 44, 48],
     "additionalNumber": 29
-  },
-  {
-    "drawNumber": 3920,
-    "date": "2024-07-15",
-    "numbers": [5, 12, 23, 31, 40, 49],
-    "additionalNumber": 18
-  },
-  {
-    "drawNumber": 3919,
-    "date": "2024-07-12",
-    "numbers": [2, 11, 19, 28, 35, 44],
-    "additionalNumber": 7
-  },
-  {
-    "drawNumber": 3918,
-    "date": "2024-07-08",
-    "numbers": [8, 15, 22, 30, 38, 47],
-    "additionalNumber": 25
-  },
-  {
-    "drawNumber": 3917,
-    "date": "2024-07-05",
-    "numbers": [1, 10, 20, 29, 39, 42],
-    "additionalNumber": 33
-  },
-  {
-    "drawNumber": 3916,
-    "date": "2024-07-01",
-    "numbers": [6, 14, 21, 34, 41, 46],
-    "additionalNumber": 3
   }
 ]
