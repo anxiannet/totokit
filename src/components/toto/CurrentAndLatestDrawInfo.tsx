@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, DollarSign, Trophy, ArrowRight } from "lucide-react";
+import { CalendarDays, Trophy, ArrowRight } from "lucide-react"; // Removed DollarSign from imports
 import { MOCK_LATEST_RESULT, type HistoricalResult } from "@/lib/types";
 import { formatDateToLocale, getBallColor } from "@/lib/totoUtils";
 import { Separator } from "@/components/ui/separator";
@@ -33,7 +33,7 @@ export function CurrentAndLatestDrawInfo() {
             <p className="text-sm text-muted-foreground">当前头奖预估</p>
             <p className="text-2xl font-bold text-primary">{currentJackpot}</p>
           </div>
-          <DollarSign className="h-10 w-10 text-green-600" />
+          {/* Removed DollarSign icon from here */}
         </div>
       </CardContent>
 
@@ -85,3 +85,4 @@ export function CurrentAndLatestDrawInfo() {
     </Card>
   );
 }
+
