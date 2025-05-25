@@ -64,7 +64,7 @@ export function AllHistoricalResults() {
                     </div>
                     <Badge variant="secondary">期号: {result.drawNumber}</Badge>
                   </div>
-                  <div className="flex flex-col items-center space-y-3 sm:flex-row sm:space-y-0 sm:space-x-2 justify-center">
+                  <div className="flex flex-row items-center justify-center flex-nowrap">
                     <div className="flex space-x-1.5">
                       {result.numbers.map((num) => (
                         <span
@@ -75,7 +75,7 @@ export function AllHistoricalResults() {
                         </span>
                       ))}
                     </div>
-                    <span className="text-xl font-light text-muted-foreground mx-1 sm:mx-2">+</span>
+                    <span className="text-xl font-light text-muted-foreground mx-2">+</span>
                     <span
                       key={`additional-${result.drawNumber}-${result.additionalNumber}`}
                       className={`flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full text-xs sm:text-sm font-bold shadow-md ${getBallColor(result.additionalNumber, true)}`}
