@@ -2,21 +2,25 @@
 "use client";
 
 import type { HistoricalResult } from "@/lib/types";
-import { MOCK_HISTORICAL_DATA } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CalendarDays, ListOrdered } from "lucide-react";
+import { CalendarDays, ListOrdered, ArrowLeft, Loader2, AlertTriangle } from "lucide-react";
 import { getBallColor, formatDateToLocale } from "@/lib/totoUtils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { zhCN } from "date-fns/locale";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { useQuery } from "@tanstack/react-query";
+import { getHistoricalResultsFromFirestore } from "@/services/totoResultsService";
+import { MOCK_HISTORICAL_DATA } from "@/lib/types"; // Import MOCK_HISTORICAL_DATA as fallback
 
-// Removed onBack prop
-// interface AllHistoricalResultsProps {
-//   onBack: () => void;
-// }
-
-export function AllHistoricalResults(/* { onBack }: AllHistoricalResultsProps */) {
-  const results = MOCK_HISTORICAL_DATA; // In a real app, this might be fetched
+export function AllHistoricalResults() {
+  const { data: results, isLoading, isError, error } = useQuery<HistoricalResult[], Error>({
+    queryKey: ["historicalTotoResults"],
+    queryFn: getHistoricalResultsFromFirestore,
+    // Fallback to mock data is handled within getHistoricalResultsFromFirestore
+    // initialData: MOCK_HISTORICAL_DATA, // Or provide mock data as initial
+  });
 
   return (
     <Card className="w-full">
@@ -26,20 +30,29 @@ export function AllHistoricalResults(/* { onBack }: AllHistoricalResultsProps */
             <ListOrdered className="h-6 w-6 text-primary" />
             全部开奖结果
           </CardTitle>
-          {/* Button removed as navigation is handled by the parent page now */}
-          {/* 
-          <Button variant="outline" size="sm" onClick={onBack} aria-label="返回主页">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            返回
-          </Button> 
-          */}
+          {/* Back button already handled by historical-results/page.tsx */}
         </div>
         <CardDescription>
-          过往TOTO开奖结果列表。(目前使用模拟数据)
+          过往TOTO开奖结果列表。
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {results.length > 0 ? (
+        {isLoading && (
+          <div className="flex flex-col items-center justify-center h-60">
+            <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+            <p className="text-muted-foreground">正在加载历史结果...</p>
+          </div>
+        )}
+        {isError && (
+          <div className="flex flex-col items-center justify-center h-60 text-destructive">
+            <AlertTriangle className="h-12 w-12 mb-4" />
+            <p className="font-semibold">加载历史结果失败</p>
+            <p className="text-sm">{error?.message || "未知错误"}</p>
+            <p className="text-xs mt-2">将显示模拟数据作为备用。</p>
+          </div>
+        )}
+        {/* Always render the results area, it will use fetched data or fallback mock data */}
+        {results && results.length > 0 ? (
           <ScrollArea className="h-[calc(100vh-280px)] sm:h-[calc(100vh-250px)] rounded-md border">
             <div className="p-4 space-y-6">
               {results.map((result) => (
@@ -75,12 +88,13 @@ export function AllHistoricalResults(/* { onBack }: AllHistoricalResultsProps */
             </div>
           </ScrollArea>
         ) : (
-          <p className="text-muted-foreground text-center">没有历史数据可显示。</p>
+          !isLoading && <p className="text-muted-foreground text-center">没有历史数据可显示。</p>
         )}
       </CardContent>
       <CardFooter>
         <p className="text-xs text-muted-foreground text-center w-full">
-          共显示 {results.length} 期历史结果。
+          {results ? `共显示 ${results.length} 期历史结果。` : "正在统计结果数量..."}
+          {(isLoading || (results && results === MOCK_HISTORICAL_DATA)) && !isError && <span className="text-xs"> (部分数据可能来自模拟)</span>}
         </p>
       </CardFooter>
     </Card>

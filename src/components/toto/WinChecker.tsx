@@ -1,35 +1,35 @@
+
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { PlusCircle, Trash2, ListChecks, Search, CheckCircle2, XCircle } from "lucide-react";
+import { PlusCircle, Trash2, ListChecks, Search, CheckCircle2, XCircle, Loader2, AlertTriangle } from "lucide-react";
 import type { UserTicket, TotoCombination, HistoricalResult } from "@/lib/types";
 import { MOCK_LATEST_RESULT, TOTO_COMBINATION_LENGTH, TOTO_NUMBER_RANGE } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
-
-const latestResult: HistoricalResult = MOCK_LATEST_RESULT; // Use mock data for now
+import { useQuery } from "@tanstack/react-query";
+import { getLatestHistoricalResultFromFirestore } from "@/services/totoResultsService";
 
 interface WinningGroup {
   group: number;
-  prize: string; // Keep prize in English for now as it's complex to translate dynamically here
+  prize: string;
   matchedNumbers: number;
   matchedAdditional: boolean;
 }
 
-// Simplified prize groups for demonstration
 const PRIZE_GROUPS = [
-  { group: 1, prize: "Group 1 Prize (Jackpot)", match: 6, additional: false },
-  { group: 2, prize: "Group 2 Prize", match: 5, additional: true },
-  { group: 3, prize: "Group 3 Prize", match: 5, additional: false },
-  { group: 4, prize: "Group 4 Prize", match: 4, additional: true },
-  { group: 5, prize: "Group 5 Prize", match: 4, additional: false },
-  { group: 6, prize: "Group 6 Prize", match: 3, additional: true },
-  { group: 7, prize: "Group 7 Prize", match: 3, additional: false },
+  { group: 1, prize: "组合1奖 (头奖)", match: 6, additional: false },
+  { group: 2, prize: "组合2奖", match: 5, additional: true },
+  { group: 3, prize: "组合3奖", match: 5, additional: false },
+  { group: 4, prize: "组合4奖", match: 4, additional: true },
+  { group: 5, prize: "组合5奖", match: 4, additional: false },
+  { group: 6, prize: "组合6奖", match: 3, additional: true },
+  { group: 7, prize: "组合7奖", match: 3, additional: false },
 ];
 
 const checkWin = (ticketNumbers: TotoCombination, officialResult: HistoricalResult): WinningGroup | null => {
@@ -42,15 +42,28 @@ const checkWin = (ticketNumbers: TotoCombination, officialResult: HistoricalResu
         return { group: prize.group, prize: prize.prize, matchedNumbers: matchedMainNumbers, matchedAdditional: true };
       }
     } else {
-      if (matchedMainNumbers === prize.match && (!prize.additional || matchedAdditionalNumber || !officialResult.numbers.some(n => ticketNumbers.includes(n)))) {
-        if (prize.group === 3 && matchedMainNumbers === 5) return { group: prize.group, prize: prize.prize, matchedNumbers: matchedMainNumbers, matchedAdditional: matchedAdditionalNumber };
-        if (prize.group === 5 && matchedMainNumbers === 4) return { group: prize.group, prize: prize.prize, matchedNumbers: matchedMainNumbers, matchedAdditional: matchedAdditionalNumber };
-        if (prize.group === 7 && matchedMainNumbers === 3) return { group: prize.group, prize: prize.prize, matchedNumbers: matchedMainNumbers, matchedAdditional: matchedAdditionalNumber };
+       // For non-additional prizes, matchedAdditional should not be a factor for prize qualification itself,
+       // but it can be part of the returned info if it happens to match.
+      if (matchedMainNumbers === prize.match) {
+        // Jackpot (Group 1)
+        if (prize.group === 1 && matchedMainNumbers === 6) {
+            return { group: prize.group, prize: prize.prize, matchedNumbers: matchedMainNumbers, matchedAdditional: matchedAdditionalNumber };
+        }
+        // Group 3 (5 numbers)
+        if (prize.group === 3 && matchedMainNumbers === 5) {
+             return { group: prize.group, prize: prize.prize, matchedNumbers: matchedMainNumbers, matchedAdditional: matchedAdditionalNumber };
+        }
+        // Group 5 (4 numbers)
+        if (prize.group === 5 && matchedMainNumbers === 4) {
+            return { group: prize.group, prize: prize.prize, matchedNumbers: matchedMainNumbers, matchedAdditional: matchedAdditionalNumber };
+        }
+        // Group 7 (3 numbers)
+        if (prize.group === 7 && matchedMainNumbers === 3) {
+            return { group: prize.group, prize: prize.prize, matchedNumbers: matchedMainNumbers, matchedAdditional: matchedAdditionalNumber };
+        }
       }
     }
   }
-  if (matchedMainNumbers === 6) return { group: 1, prize: "Group 1 Prize (Jackpot)", matchedNumbers: 6, matchedAdditional: false};
-
   return null;
 };
 
@@ -61,10 +74,20 @@ export function WinChecker() {
   const [currentTicketInput, setCurrentTicketInput] = useState<string>("");
   const [checkedTickets, setCheckedTickets] = useState<Array<UserTicket & { win?: WinningGroup | null }>>([]);
 
+  const { data: latestResult, isLoading: isLoadingResult, isError: isErrorResult, error: errorResult } = useQuery<HistoricalResult, Error>({
+    queryKey: ["latestTotoResultForWinChecker"], // Different key if needed
+    queryFn: getLatestHistoricalResultFromFirestore,
+    // Fallback to mock data is handled within getLatestHistoricalResultFromFirestore
+    // initialData: MOCK_LATEST_RESULT, 
+  });
+
+  const effectiveLatestResult = latestResult || MOCK_LATEST_RESULT;
+
+
   const handleAddTicket = (event?: FormEvent) => {
     event?.preventDefault();
     const numbers = currentTicketInput
-      .split(/[,.\s，．\s]+/) // Added Chinese commas
+      .split(/[,.\s，．\s]+/)
       .map(n => parseInt(n.trim(), 10))
       .filter(n => !isNaN(n) && n >= TOTO_NUMBER_RANGE.min && n <= TOTO_NUMBER_RANGE.max);
 
@@ -95,6 +118,14 @@ export function WinChecker() {
   };
 
   const handleCheckAllTickets = () => {
+    if (!effectiveLatestResult) {
+      toast({
+        title: "无法检查",
+        description: "无法加载最新的官方结果。请稍后再试。",
+        variant: "destructive",
+      });
+      return;
+    }
     if(userTickets.length === 0) {
       toast({
         title: "没有彩票",
@@ -105,25 +136,28 @@ export function WinChecker() {
     }
     const results = userTickets.map(ticket => ({
       ...ticket,
-      win: checkWin(ticket.numbers, latestResult),
+      win: checkWin(ticket.numbers, effectiveLatestResult),
     }));
     setCheckedTickets(results);
     toast({
       title: "已检查彩票",
-      description: `已根据第 ${latestResult.drawNumber} 期开奖结果检查了 ${results.length} 张彩票。`,
+      description: `已根据第 ${effectiveLatestResult.drawNumber} 期开奖结果检查了 ${results.length} 张彩票。`,
     });
   };
   
-  const getBallColor = (number: number, isWinning: boolean, isAdditional: boolean = false): string => {
+  const getBallColor = (number: number, isWinning: boolean, isAdditionalMatch: boolean = false): string => {
     if (!isWinning) return "bg-muted text-muted-foreground"; 
-    if (isAdditional) return "bg-destructive text-white"; 
-    
-    if (number >= 1 && number <= 9) return "bg-red-500 text-white";
-    if (number >= 10 && number <= 19) return "bg-blue-500 text-white";
-    if (number >= 20 && number <= 29) return "bg-green-500 text-white";
-    if (number >= 30 && number <= 39) return "bg-yellow-500 text-black";
-    if (number >= 40 && number <= 49) return "bg-purple-500 text-white";
-    return "bg-gray-500 text-white";
+    // If it's the additional number AND it was matched by the user's ticket
+    if (isAdditionalMatch && number === effectiveLatestResult?.additionalNumber) return "bg-destructive text-destructive-foreground"; 
+    // If it's just a winning main number
+    if (effectiveLatestResult?.numbers.includes(number)) {
+        if (number >= 1 && number <= 9) return "bg-red-500 text-white";
+        if (number >= 10 && number <= 19) return "bg-blue-500 text-white";
+        if (number >= 20 && number <= 29) return "bg-green-500 text-white";
+        if (number >= 30 && number <= 39) return "bg-yellow-500 text-black";
+        if (number >= 40 && number <= 49) return "bg-purple-500 text-white";
+    }
+    return "bg-gray-500 text-white"; // Fallback for numbers not in main winning set (e.g. user's non-winning numbers)
   };
 
 
@@ -134,11 +168,26 @@ export function WinChecker() {
           <ListChecks className="h-6 w-6 text-primary" />
           检查您的彩票
         </CardTitle>
-        <CardDescription>
-          输入您的TOTO彩票号码，并根据第 {latestResult.drawNumber} 期官方结果进行检查。
-        </CardDescription>
+        {isLoadingResult && <CardDescription>正在加载最新官方结果...</CardDescription>}
+        {isErrorResult && (
+            <CardDescription className="text-destructive">
+                加载官方结果失败: {errorResult?.message || "未知错误"}。将使用模拟数据。
+            </CardDescription>
+        )}
+        {!isLoadingResult && !isErrorResult && effectiveLatestResult && (
+            <CardDescription>
+            输入您的TOTO彩票号码，并根据第 {effectiveLatestResult.drawNumber} 期官方结果进行检查。
+            {(effectiveLatestResult === MOCK_LATEST_RESULT) && <span className="text-xs"> (部分数据可能来自模拟)</span>}
+            </CardDescription>
+        )}
       </CardHeader>
       <CardContent className="space-y-6">
+        {isLoadingResult && (
+          <div className="flex justify-center items-center p-4">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <span className="ml-2">加载最新结果...</span>
+          </div>
+        )}
         <form onSubmit={handleAddTicket} className="flex items-end gap-2">
           <div className="flex-grow">
             <Label htmlFor="ticketInput">输入彩票号码（逗号分隔）</Label>
@@ -147,9 +196,10 @@ export function WinChecker() {
               value={currentTicketInput}
               onChange={(e) => setCurrentTicketInput(e.target.value)}
               placeholder="例如：1, 2, 3, 4, 5, 6"
+              disabled={isLoadingResult}
             />
           </div>
-          <Button type="submit" variant="outline" size="icon" aria-label="添加彩票">
+          <Button type="submit" variant="outline" size="icon" aria-label="添加彩票" disabled={isLoadingResult}>
             <PlusCircle className="h-5 w-5" />
           </Button>
         </form>
@@ -177,7 +227,7 @@ export function WinChecker() {
           </div>
         )}
 
-        {checkedTickets.length > 0 && (
+        {checkedTickets.length > 0 && effectiveLatestResult && (
           <div>
             <h3 className="text-lg font-semibold mb-2">已检查结果：</h3>
             <ScrollArea className="h-[200px] rounded-md border">
@@ -186,15 +236,20 @@ export function WinChecker() {
                   <li key={`checked-${ticket.id}`} className={`p-3 rounded-lg shadow-sm border ${ticket.win ? 'border-green-500 bg-green-500/10' : 'border-red-500 bg-red-500/10'}`}>
                     <div className="flex items-center justify-between mb-1.5">
                       <div className="flex space-x-1">
-                        {ticket.numbers.map(num => (
+                        {ticket.numbers.map(num => {
+                            const isWinningMain = effectiveLatestResult.numbers.includes(num);
+                            const isWinningAdditional = num === effectiveLatestResult.additionalNumber;
+                            const isMatchedAdditionalOnTicket = ticket.numbers.includes(effectiveLatestResult.additionalNumber);
+                           return (
                            <span
                             key={num}
                             className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold
-                              ${getBallColor(num, latestResult.numbers.includes(num) || num === latestResult.additionalNumber, num === latestResult.additionalNumber && ticket.numbers.includes(latestResult.additionalNumber))}`}
+                              ${getBallColor(num, isWinningMain || (isWinningAdditional && isMatchedAdditionalOnTicket) , isWinningAdditional && isMatchedAdditionalOnTicket)}`}
                           >
                             {num}
                           </span>
-                        ))}
+                           );
+                        })}
                       </div>
                       {ticket.win ? (
                         <Badge variant="default" className="bg-green-600 hover:bg-green-700">
@@ -220,7 +275,7 @@ export function WinChecker() {
         )}
       </CardContent>
       <CardFooter>
-        <Button onClick={handleCheckAllTickets} className="w-full" disabled={userTickets.length === 0}>
+        <Button onClick={handleCheckAllTickets} className="w-full" disabled={userTickets.length === 0 || isLoadingResult || !effectiveLatestResult}>
           <Search className="mr-2 h-4 w-4" /> 检查所有彩票
         </Button>
       </CardFooter>
