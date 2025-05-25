@@ -2,7 +2,7 @@
 "use client";
 
 import Link from 'next/link'; // Import Link for navigation
-import { Ticket, Menu as MenuIcon, Gift, Sparkles, Layers, Briefcase, LogIn } from 'lucide-react';
+import { Ticket, Menu as MenuIcon, Gift, Sparkles, Layers, Briefcase, LogIn, Home } from 'lucide-react'; // Added Home icon
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -14,19 +14,8 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 
-// HeaderProps removed as onShowAllResults is no longer needed
-// interface HeaderProps {
-//   onShowAllResults?: () => void; 
-// }
-
-export function Header(/*{ onShowAllResults }: HeaderProps*/) {
+export function Header() {
   const menuItems = [
-    // "开奖查询" now uses Link for navigation
-    // { 
-    //   label: "开奖查询", 
-    //   icon: Gift, 
-    //   action: onShowAllResults || (() => console.warn("开奖查询: onShowAllResults prop not provided from layout. View switching might not work as expected.")) 
-    // },
     { label: "热门工具", icon: Sparkles, action: () => console.log("热门工具 clicked") },
     { label: "覆盖选号", icon: Layers, action: () => console.log("覆盖选号 clicked") },
     { label: "我的工具箱", icon: Briefcase, action: () => console.log("我的工具箱 clicked") },
@@ -57,6 +46,20 @@ export function Header(/*{ onShowAllResults }: HeaderProps*/) {
               </SheetDescription>
             </SheetHeader>
             <nav className="flex flex-col space-y-2">
+              {/* 首页 item - using Link */}
+              <SheetClose asChild>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start text-base py-3 px-4 text-foreground hover:bg-accent hover:text-accent-foreground"
+                  asChild // Important for Link to work correctly with Button
+                >
+                  <Link href="/">
+                    <Home className="mr-3 h-5 w-5 text-primary" />
+                    <span>首页</span>
+                  </Link>
+                </Button>
+              </SheetClose>
+
               {/* 开奖查询 item - using Link */}
               <SheetClose asChild>
                 <Button
