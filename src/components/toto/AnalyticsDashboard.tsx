@@ -73,16 +73,15 @@ export function AnalyticsDashboard() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Loading Analytics...</CardTitle>
+          <CardTitle>正在加载分析...</CardTitle>
         </CardHeader>
         <CardContent>
-          <p>Processing data...</p>
+          <p>处理数据中...</p>
         </CardContent>
       </Card>
     );
   }
   
-  // Prepare data for NumberFrequencyChart
   const numberFrequencyData = Object.entries(processHistoricalData(historicalDataUsed).hotNumbers.concat(processHistoricalData(historicalDataUsed).coldNumbers).reduce((acc, curr) => {
       acc[curr.number] = curr.frequency;
       return acc;
@@ -91,7 +90,7 @@ export function AnalyticsDashboard() {
       number: parseInt(number),
       frequency: frequency,
     }))
-    .sort((a,b) => a.number - b.number); // Sort by number for consistent chart display
+    .sort((a,b) => a.number - b.number); 
 
 
   return (
@@ -99,23 +98,23 @@ export function AnalyticsDashboard() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <BarChartBig className="h-6 w-6 text-primary" />
-          TOTO Analytics Dashboard
+          TOTO 数据分析看板
         </CardTitle>
         <CardDescription>
-          Visual insights into TOTO number patterns based on historical data.
+          基于历史数据的TOTO号码模式可视化分析。
         </CardDescription>
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="hotcold" className="w-full">
           <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3">
             <TabsTrigger value="hotcold">
-              <TrendingUp className="mr-2 h-4 w-4" /> Hot & Cold
+              <TrendingUp className="mr-2 h-4 w-4" /> 热门和冷门号码
             </TabsTrigger>
             <TabsTrigger value="oddeven">
-              <PieChart className="mr-2 h-4 w-4" /> Odd/Even
+              <PieChart className="mr-2 h-4 w-4" /> 奇偶分布
             </TabsTrigger>
              <TabsTrigger value="frequency">
-              <BarChartBig className="mr-2 h-4 w-4" /> Frequency
+              <BarChartBig className="mr-2 h-4 w-4" /> 号码频率
             </TabsTrigger>
           </TabsList>
           <TabsContent value="hotcold" className="mt-4">
@@ -125,7 +124,7 @@ export function AnalyticsDashboard() {
              {analysisData.oddEvenRatio.length > 0 ? (
                 <OddEvenDistributionChart overallDistribution={analysisData.oddEvenRatio[0]} />
               ) : (
-                <p>No data for Odd/Even distribution.</p>
+                <p>没有奇偶分布数据。</p>
               )}
           </TabsContent>
           <TabsContent value="frequency" className="mt-4">
@@ -133,7 +132,7 @@ export function AnalyticsDashboard() {
           </TabsContent>
         </Tabs>
         <p className="mt-4 text-xs text-muted-foreground text-center">
-          Analytics based on {historicalDataUsed.length} past draws. (Currently using mock data)
+          基于 {historicalDataUsed.length} 期历史开奖结果的分析。(目前使用模拟数据)
         </p>
       </CardContent>
     </Card>

@@ -4,7 +4,8 @@ import { MOCK_LATEST_RESULT, type HistoricalResult } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CalendarDays, Award } from "lucide-react";
-import { format } from "date-fns";
+import { format, Locale } from "date-fns";
+import { zhCN } from "date-fns/locale"; // Import Chinese locale for date-fns
 
 // This would ideally fetch real data or allow user input
 const latestResult: HistoricalResult = MOCK_LATEST_RESULT;
@@ -19,25 +20,34 @@ const getBallColor = (number: number, isAdditional: boolean = false): string => 
   return "bg-gray-500";
 };
 
+// Simplified date formatting for Chinese. For full i18n, use a more robust solution.
+const formatDate = (dateString: string, locale: Locale = zhCN) => {
+  try {
+    return format(new Date(dateString), "PPP", { locale });
+  } catch (e) {
+    return dateString; // Fallback
+  }
+};
+
 export function LatestOfficialResults() {
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Award className="h-6 w-6 text-primary" />
-          Latest Official Results
+          最新官方结果
         </CardTitle>
         <CardDescription>
-          The most recent TOTO draw results. (Currently using mock data)
+          最新的TOTO开奖结果。(目前使用模拟数据)
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <div className="flex items-center gap-1">
             <CalendarDays className="h-4 w-4" />
-            <span>Draw Date: {format(new Date(latestResult.date), "PPP")}</span>
+            <span>开奖日期: {formatDate(latestResult.date)}</span>
           </div>
-          <Badge variant="outline">Draw No: {latestResult.drawNumber}</Badge>
+          <Badge variant="outline">期号: {latestResult.drawNumber}</Badge>
         </div>
         <div className="flex flex-col items-center space-y-3 sm:flex-row sm:space-y-0 sm:space-x-2 justify-center">
           <div className="flex space-x-1.5">
@@ -59,7 +69,7 @@ export function LatestOfficialResults() {
           </span>
         </div>
         <p className="text-xs text-muted-foreground text-center pt-2">
-          Note: This component displays mock data. In a real application, it would fetch live results.
+          注意：此组件显示模拟数据。在实际应用中，它将获取实时结果。
         </p>
       </CardContent>
     </Card>

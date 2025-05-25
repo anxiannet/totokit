@@ -4,22 +4,22 @@ import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recha
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface OddEvenDistributionProps {
-  overallDistribution: { odd: number; even: number; percentage: number }; // Percentage refers to odd numbers
+  overallDistribution: { odd: number; even: number; percentage: number }; 
 }
 
-const COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))"]; // Blue for Odd, Red for Even
+const COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))"]; 
 
 export function OddEvenDistributionChart({ overallDistribution }: OddEvenDistributionProps) {
   const data = [
-    { name: "Odd Numbers", value: overallDistribution.odd },
-    { name: "Even Numbers", value: overallDistribution.even },
+    { name: "奇数", value: overallDistribution.odd },
+    { name: "偶数", value: overallDistribution.even },
   ];
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Odd/Even Number Distribution</CardTitle>
-        <CardDescription>Overall distribution of odd vs. even numbers in historical results.</CardDescription>
+        <CardTitle>奇偶数分布</CardTitle>
+        <CardDescription>历史结果中奇数与偶数的总体分布。</CardDescription>
       </CardHeader>
       <CardContent>
         <ResponsiveContainer width="100%" height={300}>
@@ -45,7 +45,10 @@ export function OddEvenDistributionChart({ overallDistribution }: OddEvenDistrib
                 color: 'hsl(var(--foreground))'
               }}
             />
-            <Legend wrapperStyle={{ color: 'hsl(var(--foreground))' }} />
+            <Legend 
+              wrapperStyle={{ color: 'hsl(var(--foreground))' }} 
+              formatter={(value) => value === 'Odd Numbers' ? '奇数' : (value === 'Even Numbers' ? '偶数' : value)}
+            />
           </PieChart>
         </ResponsiveContainer>
       </CardContent>

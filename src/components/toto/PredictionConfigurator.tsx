@@ -61,7 +61,7 @@ export function PredictionConfigurator({ onPredictionsGenerated, onLoadingChange
 
     if ("error" in result) {
       toast({
-        title: "Prediction Error",
+        title: "预测错误",
         description: result.error,
         variant: "destructive",
       });
@@ -69,14 +69,14 @@ export function PredictionConfigurator({ onPredictionsGenerated, onLoadingChange
     } else if (result.combinations) {
         if (result.combinations.length === 0) {
              toast({
-                title: "No Combinations Generated",
-                description: "The AI could not generate combinations with the current parameters. Try adjusting them.",
+                title: "未生成组合",
+                description: "AI无法根据当前参数生成组合。请尝试调整参数。",
                 variant: "default",
             });
         } else {
             toast({
-                title: "Predictions Generated!",
-                description: `Successfully generated ${result.combinations.length} combinations.`,
+                title: "已生成预测！",
+                description: `成功生成 ${result.combinations.length} 个组合。`,
             });
         }
       onPredictionsGenerated(result.combinations as TotoCombination[]);
@@ -88,38 +88,38 @@ export function PredictionConfigurator({ onPredictionsGenerated, onLoadingChange
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Wand2 className="h-6 w-6 text-primary" />
-          Configure AI Prediction
+          配置 AI 预测
         </CardTitle>
         <CardDescription>
-          Set parameters for the AI to generate TOTO number combinations.
+          设置参数，让人工智能生成TOTO号码组合。
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit}>
         <CardContent className="space-y-6">
           <Accordion type="single" collapsible defaultValue="item-1">
             <AccordionItem value="item-1">
-              <AccordionTrigger>Basic Parameters</AccordionTrigger>
+              <AccordionTrigger>基本参数</AccordionTrigger>
               <AccordionContent className="space-y-4 pt-4">
                 <div>
-                  <Label htmlFor="luckyNumbers">Lucky Numbers (comma-separated)</Label>
+                  <Label htmlFor="luckyNumbers">幸运号码（逗号分隔）</Label>
                   <Input
                     id="luckyNumbers"
                     value={luckyNumbers}
                     onChange={(e) => setLuckyNumbers(e.target.value)}
-                    placeholder="e.g., 7, 18, 23"
+                    placeholder="例如：7, 18, 23"
                   />
                 </div>
                 <div>
-                  <Label htmlFor="excludeNumbers">Exclude Numbers (comma-separated)</Label>
+                  <Label htmlFor="excludeNumbers">排除号码（逗号分隔）</Label>
                   <Input
                     id="excludeNumbers"
                     value={excludeNumbers}
                     onChange={(e) => setExcludeNumbers(e.target.value)}
-                    placeholder="e.g., 4, 13, 44"
+                    placeholder="例如：4, 13, 44"
                   />
                 </div>
                 <div>
-                  <Label htmlFor="numberOfCombinations">Number of Combinations to Generate</Label>
+                  <Label htmlFor="numberOfCombinations">生成组合数量</Label>
                   <Input
                     id="numberOfCombinations"
                     type="number"
@@ -132,31 +132,31 @@ export function PredictionConfigurator({ onPredictionsGenerated, onLoadingChange
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="item-2">
-              <AccordionTrigger>Weighted Criteria</AccordionTrigger>
+              <AccordionTrigger>加权标准</AccordionTrigger>
               <AccordionContent className="space-y-4 pt-4">
                 <p className="text-sm text-muted-foreground">
-                  Define criteria and their weights for the AI. Weights are relative (e.g., 0.7 is stronger than 0.3).
+                  为AI定义标准及其权重。权重是相对的（例如，0.7强于0.3）。
                 </p>
                 {weightedCriteria.map((criterion, index) => (
                   <div key={criterion.id} className="flex items-end gap-2 p-2 border rounded-md">
                     <div className="flex-grow">
-                      <Label htmlFor={`criterionName-${index}`}>Criterion Name</Label>
+                      <Label htmlFor={`criterionName-${index}`}>标准名称</Label>
                       <Input
                         id={`criterionName-${index}`}
                         value={criterion.name}
                         onChange={(e) => handleCriterionChange(criterion.id, "name", e.target.value)}
-                        placeholder="e.g., HotNumbersBoost"
+                        placeholder="例如：热门号码加成"
                       />
                     </div>
                     <div className="w-1/3">
-                      <Label htmlFor={`criterionWeight-${index}`}>Weight</Label>
+                      <Label htmlFor={`criterionWeight-${index}`}>权重</Label>
                       <Input
                         id={`criterionWeight-${index}`}
                         type="number"
                         step="0.1"
                         value={criterion.weight}
                         onChange={(e) => handleCriterionChange(criterion.id, "weight", e.target.value)}
-                        placeholder="e.g., 0.5"
+                        placeholder="例如：0.5"
                       />
                     </div>
                     <Button
@@ -164,31 +164,31 @@ export function PredictionConfigurator({ onPredictionsGenerated, onLoadingChange
                       variant="ghost"
                       size="icon"
                       onClick={() => handleRemoveCriterion(criterion.id)}
-                      aria-label="Remove criterion"
+                      aria-label="移除标准"
                     >
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
                   </div>
                 ))}
                 <Button type="button" variant="outline" onClick={handleAddCriterion} className="w-full">
-                  <PlusCircle className="mr-2 h-4 w-4" /> Add Criterion
+                  <PlusCircle className="mr-2 h-4 w-4" /> 添加标准
                 </Button>
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="item-3">
-              <AccordionTrigger>Historical Data (Optional)</AccordionTrigger>
+              <AccordionTrigger>历史数据（可选）</AccordionTrigger>
               <AccordionContent className="pt-4">
-                <Label htmlFor="historicalData">Paste Historical TOTO Results (CSV or JSON format)</Label>
+                <Label htmlFor="historicalData">粘贴历史TOTO结果（CSV或JSON格式）</Label>
                 <Textarea
                   id="historicalData"
                   value={historicalData}
                   onChange={(e) => setHistoricalData(e.target.value)}
-                  placeholder="DrawNo,Date,Num1,Num2,Num3,Num4,Num5,Num6,AdditionalNo&#10;3920,2024-07-15,5,12,23,31,40,49,18"
+                  placeholder="期号,日期,号码1,号码2,号码3,号码4,号码5,号码6,附加号码&#10;3920,2024-07-15,5,12,23,31,40,49,18"
                   rows={5}
                   className="mt-1"
                 />
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Providing historical data can improve AI prediction accuracy. If empty, AI will use general patterns.
+                  提供历史数据可以提高AI预测的准确性。如果为空，AI将使用通用模式。
                 </p>
               </AccordionContent>
             </AccordionItem>
@@ -201,7 +201,7 @@ export function PredictionConfigurator({ onPredictionsGenerated, onLoadingChange
             ) : (
               <Wand2 className="mr-2 h-4 w-4" />
             )}
-            Generate Predictions
+            生成预测号码
           </Button>
         </CardFooter>
       </form>

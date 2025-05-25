@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from 'react';
-import { Header } from "@/components/layout/Header";
 import { PredictionConfigurator } from "@/components/toto/PredictionConfigurator";
 import { PredictionResultsDisplay } from "@/components/toto/PredictionResultsDisplay";
 import { LatestOfficialResults } from "@/components/toto/LatestOfficialResults";
@@ -25,21 +24,21 @@ export default function TotoForecasterPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <Header />
+      {/* Header is now rendered in RootLayout */}
       <main className="flex-grow container mx-auto px-4 py-8 md:px-6 md:py-12">
         <Tabs defaultValue="predict" className="w-full">
           <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 mb-6">
             <TabsTrigger value="predict">
-              <Wand2 className="mr-2 h-4 w-4" /> AI Predictor
+              <Wand2 className="mr-2 h-4 w-4" /> AI 预测器
             </TabsTrigger>
             <TabsTrigger value="results">
-              <Trophy className="mr-2 h-4 w-4" /> Latest Results
+              <Trophy className="mr-2 h-4 w-4" /> 最新结果
             </TabsTrigger>
             <TabsTrigger value="checkWin">
-              <CheckSquare className="mr-2 h-4 w-4" /> Win Checker
+              <CheckSquare className="mr-2 h-4 w-4" /> 中奖检查器
             </TabsTrigger>
             <TabsTrigger value="analytics">
-              <BarChart3 className="mr-2 h-4 w-4" /> Analytics
+              <BarChart3 className="mr-2 h-4 w-4" /> 数据分析
             </TabsTrigger>
           </TabsList>
 
@@ -65,7 +64,7 @@ export default function TotoForecasterPage() {
         </Tabs>
       </main>
       <footer className="py-6 text-center text-sm text-muted-foreground border-t">
-        TOTO Forecaster &copy; {new Date().getFullYear()}. For entertainment purposes only. Play responsibly.
+        TOTOKIT &copy; {new Date().getFullYear()}. 仅供娱乐。请理性游戏。
       </footer>
     </div>
   );
