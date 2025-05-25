@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/sheet";
 
 interface HeaderProps {
-  onShowAllResults?: () => void; // This prop is now optional and will be undefined when Header is used in layout.tsx
+  onShowAllResults?: () => void; 
 }
 
 export function Header({ onShowAllResults }: HeaderProps) {
@@ -22,7 +22,7 @@ export function Header({ onShowAllResults }: HeaderProps) {
     { 
       label: "开奖查询", 
       icon: Gift, 
-      action: onShowAllResults || (() => console.warn("开奖查询: onShowAllResults prop not provided. View switching from header might not work as expected.")) 
+      action: onShowAllResults || (() => console.warn("开奖查询: onShowAllResults prop not provided. View switching from header might not work as expected from layout-rendered Header.")) 
     },
     { label: "热门工具", icon: Sparkles, action: () => console.log("热门工具 clicked") },
     { label: "覆盖选号", icon: Layers, action: () => console.log("覆盖选号 clicked") },
@@ -48,7 +48,7 @@ export function Header({ onShowAllResults }: HeaderProps) {
           </SheetTrigger>
           <SheetContent side="right" className="w-[250px] sm:w-[300px] bg-card text-card-foreground">
             <SheetHeader className="mb-6">
-              {/* <SheetTitle className="sr-only">主菜单</SheetTitle> */}
+              <SheetTitle className="sr-only">主菜单</SheetTitle>
               <SheetDescription className="sr-only">
                 选择一个选项以继续。
               </SheetDescription>
