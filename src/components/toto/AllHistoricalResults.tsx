@@ -4,18 +4,18 @@
 import type { HistoricalResult } from "@/lib/types";
 import { MOCK_HISTORICAL_DATA } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CalendarDays, ListOrdered, ArrowLeft } from "lucide-react";
+import { CalendarDays, ListOrdered } from "lucide-react";
 import { getBallColor, formatDateToLocale } from "@/lib/totoUtils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { zhCN } from "date-fns/locale";
 
-interface AllHistoricalResultsProps {
-  onBack: () => void;
-}
+// Removed onBack prop
+// interface AllHistoricalResultsProps {
+//   onBack: () => void;
+// }
 
-export function AllHistoricalResults({ onBack }: AllHistoricalResultsProps) {
+export function AllHistoricalResults(/* { onBack }: AllHistoricalResultsProps */) {
   const results = MOCK_HISTORICAL_DATA; // In a real app, this might be fetched
 
   return (
@@ -26,10 +26,13 @@ export function AllHistoricalResults({ onBack }: AllHistoricalResultsProps) {
             <ListOrdered className="h-6 w-6 text-primary" />
             全部开奖结果
           </CardTitle>
+          {/* Button removed as navigation is handled by the parent page now */}
+          {/* 
           <Button variant="outline" size="sm" onClick={onBack} aria-label="返回主页">
             <ArrowLeft className="mr-2 h-4 w-4" />
             返回
-          </Button>
+          </Button> 
+          */}
         </div>
         <CardDescription>
           过往TOTO开奖结果列表。(目前使用模拟数据)
@@ -37,7 +40,7 @@ export function AllHistoricalResults({ onBack }: AllHistoricalResultsProps) {
       </CardHeader>
       <CardContent>
         {results.length > 0 ? (
-          <ScrollArea className="h-[60vh] rounded-md border">
+          <ScrollArea className="h-[calc(100vh-280px)] sm:h-[calc(100vh-250px)] rounded-md border">
             <div className="p-4 space-y-6">
               {results.map((result) => (
                 <div key={result.drawNumber} className="p-4 rounded-lg shadow-sm border bg-card">
