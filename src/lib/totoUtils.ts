@@ -3,13 +3,9 @@ import { format, type Locale } from "date-fns";
 import { zhCN } from "date-fns/locale"; // Import Chinese locale for date-fns
 
 export const getBallColor = (number: number, isAdditional: boolean = false): string => {
-  if (isAdditional) return "bg-destructive text-destructive-foreground"; // Use themed destructive for additional
-  if (number >= 1 && number <= 9) return "bg-red-500 text-white";
-  if (number >= 10 && number <= 19) return "bg-blue-500 text-white";
-  if (number >= 20 && number <= 29) return "bg-green-500 text-white";
-  if (number >= 30 && number <= 39) return "bg-yellow-500 text-black";
-  if (number >= 40 && number <= 49) return "bg-purple-500 text-white";
-  return "bg-gray-500 text-white";
+  if (isAdditional) return "bg-destructive text-destructive-foreground"; // Additional number keeps its distinct color (usually red)
+  // All main winning numbers will use this single color
+  return "bg-blue-600 text-white"; // Consistent blue for main winning numbers
 };
 
 // Simplified date formatting for Chinese. For full i18n, use a more robust solution.
