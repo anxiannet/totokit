@@ -1,8 +1,9 @@
+
 export type TotoCombination = number[];
 
 export interface HistoricalResult {
   drawNumber: number;
-  date: string;
+  date: string; // YYYY-MM-DD
   numbers: TotoCombination;
   additionalNumber: number;
 }
@@ -25,8 +26,17 @@ export interface AnalysisData {
   // Add more analysis data structures as needed
 }
 
+// New result provided by the user
+const newDrawResult: HistoricalResult = {
+  drawNumber: 4080,
+  date: "2025-05-22",
+  numbers: [3, 10, 32, 34, 44, 48],
+  additionalNumber: 29
+};
+
 // Mock historical data for development
 export const MOCK_HISTORICAL_DATA: HistoricalResult[] = [
+  newDrawResult, // Add the new result to the beginning
   { drawNumber: 3920, date: "2024-07-15", numbers: [5, 12, 23, 31, 40, 49], additionalNumber: 18 },
   { drawNumber: 3919, date: "2024-07-12", numbers: [2, 11, 19, 28, 35, 44], additionalNumber: 7 },
   { drawNumber: 3918, date: "2024-07-08", numbers: [8, 15, 22, 30, 38, 47], additionalNumber: 25 },
@@ -34,7 +44,7 @@ export const MOCK_HISTORICAL_DATA: HistoricalResult[] = [
   { drawNumber: 3916, date: "2024-07-01", numbers: [6, 14, 21, 34, 41, 46], additionalNumber: 3 },
 ];
 
-export const MOCK_LATEST_RESULT: HistoricalResult = MOCK_HISTORICAL_DATA[0];
+export const MOCK_LATEST_RESULT: HistoricalResult = newDrawResult; // Update to the new latest result
 
 export const TOTO_NUMBER_RANGE = { min: 1, max: 49 };
 export const TOTO_COMBINATION_LENGTH = 6;
