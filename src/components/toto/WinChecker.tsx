@@ -173,13 +173,12 @@ export function WinChecker() {
         {isLoadingResult && <CardDescription>正在加载最新官方结果...</CardDescription>}
         {isErrorResult && (
             <CardDescription className="text-destructive">
-                加载官方结果失败: {errorResult?.message || "未知错误"}。将使用模拟数据。
+                加载官方结果失败: {errorResult?.message || "未知错误"}。
             </CardDescription>
         )}
         {!isLoadingResult && !isErrorResult && effectiveLatestResult && (
             <CardDescription>
             输入您的TOTO彩票号码，并根据第 {effectiveLatestResult.drawNumber} 期官方结果进行检查。
-            {(effectiveLatestResult === MOCK_LATEST_RESULT) && <span className="text-xs"> (部分数据可能来自模拟)</span>}
             </CardDescription>
         )}
       </CardHeader>

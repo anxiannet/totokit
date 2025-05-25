@@ -92,7 +92,6 @@ export function AllHistoricalResults() {
       <CardFooter>
         <p className="text-xs text-muted-foreground text-center w-full">
           {results ? `共显示 ${results.length} 期历史结果。` : "正在统计结果数量..."}
-          {(isLoading || (results && results === MOCK_HISTORICAL_DATA)) && !isError && <span className="text-xs"> (部分数据可能来自模拟)</span>}
         </p>
       </CardFooter>
     </Card>

@@ -72,7 +72,6 @@ export function LatestOfficialResults() {
               </span>
             </div>
             <p className="text-xs text-muted-foreground text-center pt-2">
-             { (isLoading || latestResult === MOCK_LATEST_RESULT) && !isError && " (部分数据可能来自模拟)"}
              { !isLoading && latestResult !== MOCK_LATEST_RESULT && "数据来源：Firestore"}
             </p>
           </>

@@ -181,7 +181,6 @@ export function AnalyticsDashboard() {
         </Tabs>
         <p className="mt-4 text-xs text-muted-foreground text-center">
           基于 {historicalData?.length || MOCK_HISTORICAL_DATA.length} 期历史开奖结果的分析。
-          {(isLoading || (historicalData && historicalData === MOCK_HISTORICAL_DATA)) && !isError && <span className="text-xs"> (部分数据可能来自模拟)</span>}
         </p>
       </CardContent>
     </Card>
