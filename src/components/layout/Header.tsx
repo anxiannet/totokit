@@ -1,3 +1,4 @@
+
 import { Ticket, Menu as MenuIcon, Gift, Sparkles, Layers, Briefcase, LogIn } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import {
@@ -7,9 +8,9 @@ import {
   SheetHeader,
   SheetTitle,
   SheetTrigger,
-  SheetClose, // Added for explicit close button if needed
+  SheetClose,
 } from "@/components/ui/sheet";
-import Link from 'next/link'; // For potential navigation
+import Link from 'next/link';
 
 export function Header() {
   const menuItems = [
@@ -36,9 +37,9 @@ export function Header() {
               <MenuIcon className="h-6 w-6" />
             </Button>
           </SheetTrigger>
-          <SheetContent side="right" className="w-[250px] sm:w-[300px]">
+          <SheetContent side="right" className="w-[250px] sm:w-[300px] bg-card text-card-foreground">
             <SheetHeader className="mb-6">
-              <SheetTitle className="text-primary">菜单</SheetTitle>
+              {/* <SheetTitle className="text-primary">菜单</SheetTitle> */}
               {/* <SheetDescription>
                 选择一个选项以继续。
               </SheetDescription> */}
@@ -51,7 +52,6 @@ export function Header() {
                   className="w-full justify-start text-base py-3 px-4 text-foreground hover:bg-accent hover:text-accent-foreground"
                   asChild
                 >
-                  {/* In a real app, Link would navigate. For now, it's a placeholder. */}
                   <Link href={item.href}>
                     <item.icon className="mr-3 h-5 w-5 text-primary" />
                     <span>{item.label}</span>
@@ -70,12 +70,6 @@ export function Header() {
                 </Link>
               </Button>
             </nav>
-            {/* SheetClose is automatically added by SheetContent but can be customized */}
-            {/* <SheetFooter className="mt-auto">
-              <SheetClose asChild>
-                <Button type="submit">关闭</Button>
-              </SheetClose>
-            </SheetFooter> */}
           </SheetContent>
         </Sheet>
       </div>
