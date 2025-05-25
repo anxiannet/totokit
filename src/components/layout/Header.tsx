@@ -1,4 +1,6 @@
 
+"use client";
+
 import { Ticket, Menu as MenuIcon, Gift, Sparkles, Layers, Briefcase, LogIn } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import {
@@ -7,20 +9,23 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
   SheetClose,
+  SheetTrigger, // Ensured SheetTrigger is imported
 } from "@/components/ui/sheet";
-import Link from 'next/link';
 
-export function Header() {
+interface HeaderProps {
+  onShowAllResults?: () => void;
+}
+
+export function Header({ onShowAllResults }: HeaderProps) {
   const menuItems = [
-    { label: "开奖查询", icon: Gift, href: "#" },
-    { label: "热门工具", icon: Sparkles, href: "#" },
-    { label: "覆盖选号", icon: Layers, href: "#" },
-    { label: "我的工具箱", icon: Briefcase, href: "#" },
+    { label: "开奖查询", icon: Gift, action: onShowAllResults },
+    { label: "热门工具", icon: Sparkles, action: () => console.log("热门工具 clicked") },
+    { label: "覆盖选号", icon: Layers, action: () => console.log("覆盖选号 clicked") },
+    { label: "我的工具箱", icon: Briefcase, action: () => console.log("我的工具箱 clicked") },
   ];
 
-  const authItem = { label: "登录 / 注册", icon: LogIn, href: "#" };
+  const authItem = { label: "登录 / 注册", icon: LogIn, action: () => console.log("登录/注册 clicked") };
 
   return (
     <header className="bg-primary text-primary-foreground shadow-md">
@@ -40,35 +45,34 @@ export function Header() {
           <SheetContent side="right" className="w-[250px] sm:w-[300px] bg-card text-card-foreground">
             <SheetHeader className="mb-6">
               <SheetTitle className="sr-only">主菜单</SheetTitle>
-              {/* <SheetDescription className="sr-only">
+              <SheetDescription className="sr-only">
                 选择一个选项以继续。
-              </SheetDescription> */}
+              </SheetDescription>
             </SheetHeader>
             <nav className="flex flex-col space-y-2">
               {menuItems.map((item, index) => (
-                <Button
-                  key={index}
-                  variant="ghost"
-                  className="w-full justify-start text-base py-3 px-4 text-foreground hover:bg-accent hover:text-accent-foreground"
-                  asChild
-                >
-                  <Link href={item.href}>
+                <SheetClose asChild key={index}>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start text-base py-3 px-4 text-foreground hover:bg-accent hover:text-accent-foreground"
+                    onClick={item.action}
+                  >
                     <item.icon className="mr-3 h-5 w-5 text-primary" />
                     <span>{item.label}</span>
-                  </Link>
-                </Button>
+                  </Button>
+                </SheetClose>
               ))}
               <div className="my-2 border-t border-border" /> {/* Separator */}
-              <Button
-                variant="ghost"
-                className="w-full justify-start text-base py-3 px-4 text-foreground hover:bg-accent hover:text-accent-foreground"
-                asChild
-              >
-                <Link href={authItem.href}>
+              <SheetClose asChild>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start text-base py-3 px-4 text-foreground hover:bg-accent hover:text-accent-foreground"
+                  onClick={authItem.action}
+                >
                   <authItem.icon className="mr-3 h-5 w-5 text-primary" />
                   <span>{authItem.label}</span>
-                </Link>
-              </Button>
+                </Button>
+              </SheetClose>
             </nav>
           </SheetContent>
         </Sheet>
