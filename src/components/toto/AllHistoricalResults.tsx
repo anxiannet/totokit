@@ -4,23 +4,14 @@
 import type { HistoricalResult } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CalendarDays, ListOrdered, ArrowLeft, Loader2, AlertTriangle } from "lucide-react";
+import { CalendarDays, ListOrdered } from "lucide-react";
 import { getBallColor, formatDateToLocale } from "@/lib/totoUtils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { zhCN } from "date-fns/locale";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { useQuery } from "@tanstack/react-query";
-import { getHistoricalResultsFromFirestore } from "@/services/totoResultsService";
-import { MOCK_HISTORICAL_DATA } from "@/lib/types"; // Import MOCK_HISTORICAL_DATA as fallback
+import { MOCK_HISTORICAL_DATA } from "@/lib/types";
 
 export function AllHistoricalResults() {
-  const { data: results, isLoading, isError, error } = useQuery<HistoricalResult[], Error>({
-    queryKey: ["historicalTotoResults"],
-    queryFn: getHistoricalResultsFromFirestore,
-    // Fallback to mock data is handled within getHistoricalResultsFromFirestore
-    // initialData: MOCK_HISTORICAL_DATA, // Or provide mock data as initial
-  });
+  const results: HistoricalResult[] = MOCK_HISTORICAL_DATA;
 
   return (
     <Card className="w-full">
@@ -30,28 +21,12 @@ export function AllHistoricalResults() {
             <ListOrdered className="h-6 w-6 text-primary" />
             全部开奖结果
           </CardTitle>
-          {/* Back button already handled by historical-results/page.tsx */}
         </div>
         <CardDescription>
-          过往TOTO开奖结果列表。
+          过往TOTO开奖结果列表（使用模拟数据）。
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {isLoading && (
-          <div className="flex flex-col items-center justify-center h-60">
-            <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-            <p className="text-muted-foreground">正在加载历史结果...</p>
-          </div>
-        )}
-        {isError && (
-          <div className="flex flex-col items-center justify-center h-60 text-destructive">
-            <AlertTriangle className="h-12 w-12 mb-4" />
-            <p className="font-semibold">加载历史结果失败</p>
-            <p className="text-sm">{error?.message || "未知错误"}</p>
-            <p className="text-xs mt-2">将显示模拟数据作为备用。</p>
-          </div>
-        )}
-        {/* Always render the results area, it will use fetched data or fallback mock data */}
         {results && results.length > 0 ? (
           <ScrollArea className="h-[calc(100vh-280px)] sm:h-[calc(100vh-250px)] rounded-md border">
             <div className="p-4 space-y-6">
@@ -86,12 +61,12 @@ export function AllHistoricalResults() {
             </div>
           </ScrollArea>
         ) : (
-          !isLoading && <p className="text-muted-foreground text-center">沒有历史数据可显示。</p>
+          <p className="text-muted-foreground text-center">没有历史数据可显示。</p>
         )}
       </CardContent>
       <CardFooter>
         <p className="text-xs text-muted-foreground text-center w-full">
-          {results ? `共显示 ${results.length} 期历史结果。` : "正在统计结果数量..."}
+          {results ? `共显示 ${results.length} 期历史结果 (模拟数据)。` : "正在统计结果数量..."}
         </p>
       </CardFooter>
     </Card>

@@ -4,20 +4,13 @@
 import type { HistoricalResult } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CalendarDays, Award, Loader2, AlertTriangle } from "lucide-react";
+import { CalendarDays, Award } from "lucide-react";
 import { getBallColor, formatDateToLocale } from "@/lib/totoUtils";
 import { zhCN } from "date-fns/locale";
-import { useQuery } from "@tanstack/react-query";
-import { getLatestHistoricalResultFromFirestore } from "@/services/totoResultsService";
-import { MOCK_LATEST_RESULT } from "@/lib/types"; // Import fallback
+import { MOCK_LATEST_RESULT } from "@/lib/types";
 
 export function LatestOfficialResults() {
-  const { data: latestResult, isLoading, isError, error } = useQuery<HistoricalResult, Error>({
-    queryKey: ["latestTotoResult"],
-    queryFn: getLatestHistoricalResultFromFirestore,
-    // Fallback to mock data is handled within getLatestHistoricalResultFromFirestore
-    // initialData: MOCK_LATEST_RESULT,
-  });
+  const latestResult: HistoricalResult | null = MOCK_LATEST_RESULT;
 
   return (
     <Card>
@@ -27,25 +20,11 @@ export function LatestOfficialResults() {
           最新官方结果
         </CardTitle>
         <CardDescription>
-          最新的TOTO开奖结果。
+          最新的TOTO开奖结果（使用模拟数据）。
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {isLoading && (
-          <div className="flex flex-col items-center justify-center h-40">
-            <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-            <p className="text-muted-foreground">正在加载最新结果...</p>
-          </div>
-        )}
-        {isError && latestResult === MOCK_LATEST_RESULT && ( // Show error only if fallback is also active
-          <div className="flex flex-col items-center justify-center h-40 text-destructive">
-            <AlertTriangle className="h-12 w-12 mb-4" />
-            <p className="font-semibold">加载最新结果失败</p>
-            <p className="text-sm">{error?.message || "未知错误"}</p>
-            <p className="text-xs mt-2">将显示模拟数据作为备用。</p>
-          </div>
-        )}
-        {latestResult && (
+        {latestResult ? (
           <>
             <div className="flex items-center justify-between text-sm text-muted-foreground">
               <div className="flex items-center gap-1">
@@ -72,11 +51,10 @@ export function LatestOfficialResults() {
               </span>
             </div>
             <p className="text-xs text-muted-foreground text-center pt-2">
-             { !isLoading && latestResult !== MOCK_LATEST_RESULT && "数据来源：Firestore"}
+             数据来源：模拟数据
             </p>
           </>
-        )}
-        {!latestResult && !isLoading && !isError && (
+        ) : (
             <p className="text-muted-foreground text-center h-40 flex items-center justify-center">
                 未能加载最新结果。
             </p>

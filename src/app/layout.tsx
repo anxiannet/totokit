@@ -4,7 +4,6 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { Header } from "@/components/layout/Header";
-import { QueryProvider } from '@/providers/QueryProvider'; // Import QueryProvider
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -29,11 +28,9 @@ export default function RootLayout({
   return (
     <html lang="zh">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <QueryProvider> {/* Wrap with QueryProvider */}
-          <Header />
-          {children}
-          <Toaster />
-        </QueryProvider>
+        <Header />
+        {children}
+        <Toaster />
       </body>
     </html>
   );
