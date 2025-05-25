@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { TotoCombination } from "@/lib/types";
@@ -31,13 +32,12 @@ const Loader2 = (props: React.SVGProps<SVGSVGElement>) => (
 
 
 export function PredictionResultsDisplay({ predictions, isLoading }: PredictionResultsDisplayProps) {
-  const getBallColor = (number: number): string => {
-    if (number >= 1 && number <= 9) return "bg-red-500";
-    if (number >= 10 && number <= 19) return "bg-blue-500";
-    if (number >= 20 && number <= 29) return "bg-green-500";
-    if (number >= 30 && number <= 39) return "bg-yellow-500 text-black";
-    if (number >= 40 && number <= 49) return "bg-purple-500";
-    return "bg-gray-500";
+  // getBallColor is defined in lib/totoUtils.ts and used for official results.
+  // For predictions, we might want a consistent color, or one based on the prediction's "hotness" if available.
+  // For now, using a simple color scheme similar to official results but could be adapted.
+  const getPredictionBallColor = (number: number): string => {
+    // Using a generic primary color for predicted numbers for now.
+    return "bg-primary text-primary-foreground"; 
   };
 
   return (
@@ -75,11 +75,11 @@ export function PredictionResultsDisplay({ predictions, isLoading }: PredictionR
                     <Badge variant="secondary" className="w-8 h-8 flex items-center justify-center text-sm font-semibold">
                       {index + 1}
                     </Badge>
-                    <div className="flex space-x-1.5">
+                    <div className="flex space-x-1 sm:space-x-1.5">
                       {combination.map((num) => (
                         <span
                           key={num}
-                          className={`flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold text-white ${getBallColor(num)}`}
+                          className={`flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-full text-xs sm:text-sm font-bold ${getPredictionBallColor(num)}`}
                         >
                           {num}
                         </span>

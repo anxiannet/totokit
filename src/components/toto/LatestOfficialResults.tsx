@@ -55,20 +55,18 @@ export function LatestOfficialResults() {
               <Badge variant="outline">期号: {latestResult.drawNumber}</Badge>
             </div>
             <div className="flex flex-row items-center justify-center flex-nowrap">
-              <div className="flex space-x-1.5">
-                {latestResult.numbers.map((num) => (
-                  <span
-                    key={`main-${num}`}
-                    className={`flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full text-sm sm:text-base font-bold shadow-md ${getBallColor(num)}`}
-                  >
-                    {num}
-                  </span>
-                ))}
-              </div>
-              <span className="text-2xl font-light text-muted-foreground mx-2">+</span>
+              {latestResult.numbers.map((num) => (
+                <span
+                  key={`main-${num}`}
+                  className={`flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full text-base sm:text-lg font-bold shadow-md ${getBallColor(num)} mx-0.5 sm:mx-1`}
+                >
+                  {num}
+                </span>
+              ))}
+              <span className="text-2xl font-light text-muted-foreground mx-1 sm:mx-2">+</span>
               <span
                 key={`additional-${latestResult.additionalNumber}`}
-                className={`flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full text-sm sm:text-base font-bold shadow-md ${getBallColor(latestResult.additionalNumber, true)}`}
+                className={`flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full text-base sm:text-lg font-bold shadow-md ${getBallColor(latestResult.additionalNumber, true)} mx-0.5 sm:mx-1`}
               >
                 {latestResult.additionalNumber}
               </span>

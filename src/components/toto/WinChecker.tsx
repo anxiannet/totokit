@@ -145,19 +145,21 @@ export function WinChecker() {
     });
   };
   
-  const getBallColor = (number: number, isWinning: boolean, isAdditionalMatch: boolean = false): string => {
+  const getBallDisplayColor = (number: number, isWinning: boolean, isAdditionalMatch: boolean = false): string => {
     if (!isWinning) return "bg-muted text-muted-foreground"; 
-    // If it's the additional number AND it was matched by the user's ticket
-    if (isAdditionalMatch && number === effectiveLatestResult?.additionalNumber) return "bg-destructive text-destructive-foreground"; 
-    // If it's just a winning main number
-    if (effectiveLatestResult?.numbers.includes(number)) {
-        if (number >= 1 && number <= 9) return "bg-red-500 text-white";
-        if (number >= 10 && number <= 19) return "bg-blue-500 text-white";
-        if (number >= 20 && number <= 29) return "bg-green-500 text-white";
-        if (number >= 30 && number <= 39) return "bg-yellow-500 text-black";
-        if (number >= 40 && number <= 49) return "bg-purple-500 text-white";
+    
+    if (isAdditionalMatch && number === effectiveLatestResult?.additionalNumber) {
+        // This is the additional number from the official draw, AND it's on the user's ticket AND it matched.
+        return "bg-destructive text-destructive-foreground"; // Red ball for matched additional
     }
-    return "bg-gray-500 text-white"; // Fallback for numbers not in main winning set (e.g. user's non-winning numbers)
+    
+    if (effectiveLatestResult?.numbers.includes(number)) {
+        // This is a main winning number from the official draw.
+        return "bg-blue-600 text-white"; // Blue ball for main winning numbers
+    }
+    
+    // For numbers on the user's ticket that didn't win or aren't the additional number.
+    return "bg-muted text-muted-foreground"; 
   };
 
 
@@ -235,16 +237,16 @@ export function WinChecker() {
                 {checkedTickets.map((ticket) => (
                   <li key={`checked-${ticket.id}`} className={`p-3 rounded-lg shadow-sm border ${ticket.win ? 'border-green-500 bg-green-500/10' : 'border-red-500 bg-red-500/10'}`}>
                     <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex space-x-1">
+                      <div className="flex space-x-1 sm:space-x-1.5">
                         {ticket.numbers.map(num => {
                             const isWinningMain = effectiveLatestResult.numbers.includes(num);
-                            const isWinningAdditional = num === effectiveLatestResult.additionalNumber;
-                            const isMatchedAdditionalOnTicket = ticket.numbers.includes(effectiveLatestResult.additionalNumber);
+                            const isAdditionalNumberInTicket = ticket.numbers.includes(effectiveLatestResult.additionalNumber);
+                            const isCurrentNumTheAdditional = num === effectiveLatestResult.additionalNumber;
                            return (
                            <span
                             key={num}
-                            className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold
-                              ${getBallColor(num, isWinningMain || (isWinningAdditional && isMatchedAdditionalOnTicket) , isWinningAdditional && isMatchedAdditionalOnTicket)}`}
+                            className={`flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-full text-xs sm:text-sm font-bold
+                              ${getBallDisplayColor(num, isWinningMain || (isCurrentNumTheAdditional && isAdditionalNumberInTicket) , isCurrentNumTheAdditional && isAdditionalNumberInTicket)}`}
                           >
                             {num}
                           </span>

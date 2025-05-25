@@ -65,20 +65,18 @@ export function AllHistoricalResults() {
                     <Badge variant="secondary">期号: {result.drawNumber}</Badge>
                   </div>
                   <div className="flex flex-row items-center justify-center flex-nowrap">
-                    <div className="flex space-x-1.5">
-                      {result.numbers.map((num) => (
-                        <span
-                          key={`main-${result.drawNumber}-${num}`}
-                          className={`flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full text-xs sm:text-sm font-bold shadow-md ${getBallColor(num)}`}
-                        >
-                          {num}
-                        </span>
-                      ))}
-                    </div>
-                    <span className="text-xl font-light text-muted-foreground mx-2">+</span>
+                    {result.numbers.map((num) => (
+                      <span
+                        key={`main-${result.drawNumber}-${num}`}
+                        className={`flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full text-sm sm:text-base font-bold shadow-md ${getBallColor(num)} mx-0.5`}
+                      >
+                        {num}
+                      </span>
+                    ))}
+                    <span className="text-xl font-light text-muted-foreground mx-1 sm:mx-2">+</span>
                     <span
                       key={`additional-${result.drawNumber}-${result.additionalNumber}`}
-                      className={`flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full text-xs sm:text-sm font-bold shadow-md ${getBallColor(result.additionalNumber, true)}`}
+                      className={`flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full text-sm sm:text-base font-bold shadow-md ${getBallColor(result.additionalNumber, true)} mx-0.5`}
                     >
                       {result.additionalNumber}
                     </span>
@@ -88,7 +86,7 @@ export function AllHistoricalResults() {
             </div>
           </ScrollArea>
         ) : (
-          !isLoading && <p className="text-muted-foreground text-center">没有历史数据可显示。</p>
+          !isLoading && <p className="text-muted-foreground text-center">沒有历史数据可显示。</p>
         )}
       </CardContent>
       <CardFooter>
