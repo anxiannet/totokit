@@ -10,8 +10,8 @@ import { AnalyticsDashboard } from "@/components/toto/AnalyticsDashboard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Wand2, CheckSquare, BarChart3, Trophy } from "lucide-react";
 import type { TotoCombination } from "@/lib/types";
-import { AllHistoricalResults } from '@/components/toto/AllHistoricalResults'; // Import the new component
-import { Header } from "@/components/layout/Header";
+import { AllHistoricalResults } from '@/components/toto/AllHistoricalResults';
+// Removed Header import: import { Header } from "@/components/layout/Header";
 
 
 type TotoView = 'tabs' | 'allResults';
@@ -32,9 +32,14 @@ export default function TotoForecasterPage() {
   const showAllResultsView = () => setCurrentView('allResults');
   const showTabsView = () => setCurrentView('tabs');
 
+  // The Header component in layout.tsx will now need a way to trigger this.
+  // For now, we remove the direct passing of this function.
+  // We will need to refactor how onShowAllResults is triggered.
+  // One option is to use React Context or a routing solution.
+
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <Header onShowAllResults={showAllResultsView} /> {/* Pass the handler to Header */}
+      {/* Header removed from here as it's in layout.tsx */}
       <main className="flex-grow container mx-auto px-4 py-8 md:px-6 md:py-12">
         {currentView === 'tabs' && (
           <Tabs defaultValue="predict" className="w-full">
