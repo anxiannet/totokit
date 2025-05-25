@@ -39,8 +39,8 @@ export function Header() {
           </SheetTrigger>
           <SheetContent side="right" className="w-[250px] sm:w-[300px] bg-card text-card-foreground">
             <SheetHeader className="mb-6">
-              {/* <SheetTitle className="text-primary">菜单</SheetTitle> */}
-              {/* <SheetDescription>
+              <SheetTitle className="sr-only">主菜单</SheetTitle>
+              {/* <SheetDescription className="sr-only">
                 选择一个选项以继续。
               </SheetDescription> */}
             </SheetHeader>
