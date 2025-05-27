@@ -21,7 +21,7 @@ export default function TotoForecasterPage() {
   const handlePredictionsGenerated = (newPredictions: TotoCombination[]) => {
     setPredictions(newPredictions);
     if (newPredictions.length > 0) {
-      setDisplayResultsArea(true);
+      // setDisplayResultsArea(true); // Already handled by onUsageStatusChange or isLoading
     }
   };
   
@@ -109,6 +109,7 @@ export default function TotoForecasterPage() {
         <CurrentAndLatestDrawInfo />
         
         <div className="w-full space-y-6 mt-6">
+          <TopPerformingTools tools={topPerformingTools} />
           <PredictionConfigurator 
             onPredictionsGenerated={handlePredictionsGenerated}
             onLoadingChange={handleLoadingChange}
@@ -117,7 +118,6 @@ export default function TotoForecasterPage() {
           {(displayResultsArea || isGeneratingPredictions) && (
             <PredictionResultsDisplay predictions={predictions} isLoading={isGeneratingPredictions} />
           )}
-          <TopPerformingTools tools={topPerformingTools} />
         </div>
         
       </main>
@@ -127,4 +127,3 @@ export default function TotoForecasterPage() {
     </div>
   );
 }
-
