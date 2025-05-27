@@ -43,10 +43,11 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
           <TrendingUp className="h-6 w-6 text-primary" />
           近期热门工具
         </CardTitle>
-        {/* CardDescription removed as per request */}
       </CardHeader>
-      <CardContent className="p-0"> {/* Adjusted padding for scroll container */}
-        <div className="flex overflow-x-auto space-x-4 p-4 no-scrollbar snap-x snap-mandatory">
+      <CardContent className="p-0"> {/* Outer CardContent has no padding */}
+        {/* Scroll container: remove horizontal padding (p-4 becomes py-4 or just remove all padding) */}
+        {/* space-x-4 provides gap between full-width cards */}
+        <div className="flex overflow-x-auto space-x-4 no-scrollbar snap-x snap-mandatory py-4 md:py-6"> {/* Adjusted padding */}
           {tools.map((tool) => (
             <Card key={tool.id} className="min-w-full flex-shrink-0 snap-start flex flex-col">
               <CardHeader className="pb-3">
@@ -57,7 +58,6 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
                     {tool.averageHitRate.toFixed(1)}% 命中率
                   </Badge>
                 </div>
-                {/* Removed CardDescription for each tool here */}
               </CardHeader>
               <CardContent className="flex-grow space-y-3">
                 <div>
@@ -72,7 +72,7 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
                   )}
                 </div>
               </CardContent>
-              <div className="p-4 pt-0">
+              <div className="p-4 pt-0"> {/* Padding for the button container inside the card */}
                    <Button asChild variant="outline" size="sm" className="w-full">
                       <Link href={`/number-picking-tools#${tool.id}`}>
                           查看详细分析
