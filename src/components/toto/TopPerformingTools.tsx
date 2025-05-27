@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TrendingUp, Percent, ListChecks, ExternalLink } from "lucide-react";
 import type { NumberPickingTool as DynamicNumberPickingTool } from "@/lib/numberPickingAlgos";
 import { NumberPickingToolDisplay } from "./NumberPickingToolDisplay";
@@ -44,45 +45,51 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
           近期热门工具
         </CardTitle>
       </CardHeader>
-      <CardContent className="p-0"> {/* Outer CardContent has no padding */}
-        {/* Scroll container: remove horizontal padding (p-4 becomes py-4 or just remove all padding) */}
-        {/* space-x-4 provides gap between full-width cards */}
-        <div className="flex overflow-x-auto space-x-4 no-scrollbar snap-x snap-mandatory py-4 md:py-6"> {/* Adjusted padding */}
-          {tools.map((tool) => (
-            <Card key={tool.id} className="min-w-full flex-shrink-0 snap-start flex flex-col">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">{tool.name}</CardTitle>
-                  <Badge variant="secondary" className="flex items-center gap-1">
-                    <Percent className="h-3 w-3" />
-                    {tool.averageHitRate.toFixed(1)}% 命中率
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="flex-grow space-y-3">
-                <div>
-                  <h4 className="text-sm font-medium mb-1 text-muted-foreground flex items-center gap-1">
-                    <ListChecks className="h-4 w-4"/>
-                    当前预测 ({tool.currentPrediction.length} 个):
-                  </h4>
-                  {tool.currentPrediction.length > 0 ? (
-                    <NumberPickingToolDisplay numbers={tool.currentPrediction} />
-                  ) : (
-                    <p className="text-xs text-muted-foreground italic">此工具当前未生成号码</p>
-                  )}
-                </div>
-              </CardContent>
-              <div className="p-4 pt-0"> {/* Padding for the button container inside the card */}
-                   <Button asChild variant="outline" size="sm" className="w-full">
+      <CardContent>
+        {tools.length > 0 ? (
+          <Tabs defaultValue={tools[0].id} className="w-full">
+            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 mb-4 h-auto">
+              {tools.map((tool) => (
+                <TabsTrigger key={tool.id} value={tool.id} className="text-xs sm:text-sm px-2 py-1.5 h-auto whitespace-normal break-words">
+                  {tool.name}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            {tools.map((tool) => (
+              <TabsContent key={tool.id} value={tool.id} className="mt-2">
+                <div className="border p-4 rounded-lg bg-muted/30">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="text-md font-semibold">{tool.name}</h4>
+                    <Badge variant="secondary" className="flex items-center gap-1 text-xs sm:text-sm">
+                      <Percent className="h-3 w-3" />
+                      {tool.averageHitRate.toFixed(1)}% 命中率
+                    </Badge>
+                  </div>
+                  
+                  <div>
+                    <h5 className="text-sm font-medium mb-1 text-muted-foreground flex items-center gap-1">
+                      <ListChecks className="h-4 w-4"/>
+                      当前预测 ({tool.currentPrediction.length} 个):
+                    </h5>
+                    {tool.currentPrediction.length > 0 ? (
+                      <NumberPickingToolDisplay numbers={tool.currentPrediction} />
+                    ) : (
+                      <p className="text-xs text-muted-foreground italic">此工具当前未生成号码</p>
+                    )}
+                  </div>
+                  <Button asChild variant="outline" size="sm" className="w-full mt-4 text-xs sm:text-sm">
                       <Link href={`/number-picking-tools#${tool.id}`}>
                           查看详细分析
-                          <ExternalLink className="ml-2 h-4 w-4" />
+                          <ExternalLink className="ml-1.5 h-3.5 w-3.5 sm:ml-2 sm:h-4 sm:w-4" />
                       </Link>
                    </Button>
-              </div>
-            </Card>
-          ))}
-        </div>
+                </div>
+              </TabsContent>
+            ))}
+          </Tabs>
+        ) : (
+          <p className="text-muted-foreground text-center py-4">正在加载工具信息...</p>
+        )}
       </CardContent>
     </Card>
   );
