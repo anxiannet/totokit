@@ -45,7 +45,7 @@ export function PredictionResultsDisplay({ predictions, isLoading }: PredictionR
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Target className="h-6 w-6 text-primary" />
-          AI 预测
+          {/* AI 预测 text removed */}
         </CardTitle>
         <CardDescription>
           由AI生成的TOTO号码组合排序。第一个组合被认为是潜力最高的。
