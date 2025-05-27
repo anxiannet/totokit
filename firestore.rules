@@ -44,6 +44,11 @@ service cloud.firestore {
     }
 
     // Default deny all other access to prevent unintended access
+    // This rule should be placed last within the match /databases/{database}/documents block.
+    // However, if the above rules cover all collections, this explicit default deny might not be
+    // strictly necessary as Firestore rules are default-deny.
+    // For clarity and safety, it's often included.
+    // The structure you provided has this as a general catch-all, which is fine.
     match /{document=**} {
       allow read, write: if false;
     }
