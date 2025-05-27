@@ -32,9 +32,15 @@ export default function AuthPage() {
       router.push("/");
     } catch (error: any) {
       console.error("Login error:", error);
+      let description = error.message || "请输入正确的邮箱和密码。";
+      if (error.code === 'auth/configuration-not-found') {
+        description = "登录失败：Firebase项目中未正确配置或启用登录方式。请检查Firebase控制台的身份验证设置。";
+      } else if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+        description = "邮箱或密码错误，请重试。";
+      }
       toast({
         title: "登录失败",
-        description: error.message || "请输入正确的邮箱和密码。",
+        description: description,
         variant: "destructive",
       });
     } finally {
@@ -55,9 +61,17 @@ export default function AuthPage() {
       router.push("/");
     } catch (error: any) {
       console.error("Registration error:", error);
+      let description = error.message || "无法创建账户，请稍后再试。";
+      if (error.code === 'auth/configuration-not-found') {
+        description = "注册失败：Firebase项目中未启用邮箱/密码登录方式。请检查Firebase控制台的身份验证设置。";
+      } else if (error.code === 'auth/email-already-in-use') {
+        description = "此邮箱已被注册，请尝试登录或使用其他邮箱。";
+      } else if (error.code === 'auth/weak-password') {
+        description = "密码强度不足，密码应至少包含6个字符。";
+      }
       toast({
         title: "注册失败",
-        description: error.message || "无法创建账户，请稍后再试。",
+        description: description,
         variant: "destructive",
       });
     } finally {
