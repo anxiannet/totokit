@@ -244,10 +244,17 @@ export async function saveSmartPickResult(
     return { success: false, message: "Firestore 'db' instance is not initialized." };
   }
   try {
-    const docRef = await addDoc(collection(db, "smartPickResults"), {
-      ...data,
+    // Transform combinations from number[][] to Array<{ numbers: number[] }>
+    const transformedCombinations = data.combinations.map(combo => ({ numbers: combo }));
+
+    const dataToSave = {
+      userId: data.userId,
+      drawId: data.drawId,
+      combinations: transformedCombinations, // Use the transformed array
       createdAt: serverTimestamp(),
-    });
+    };
+
+    const docRef = await addDoc(collection(db, "smartPickResults"), dataToSave);
     console.log(`[SAVE_SMART_PICK] Smart pick result saved successfully with ID: ${docRef.id} for draw ${data.drawId}, user: ${data.userId || 'anonymous'}`);
     return { success: true, message: "智能选号结果已保存。", docId: docRef.id };
   } catch (error) {
@@ -256,3 +263,4 @@ export async function saveSmartPickResult(
     return { success: false, message: `保存智能选号结果失败: ${errorMessage}` };
   }
 }
+
