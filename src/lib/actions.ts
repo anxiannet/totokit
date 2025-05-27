@@ -137,9 +137,8 @@ export async function syncHistoricalResultsToFirestore(
         console.warn("[SYNC_FIRESTORE] Skipping invalid result object:", result);
         continue;
       }
-      // Use drawNumber as string for document ID
       const resultDocRef = doc(db, "totoResults", String(result.drawNumber));
-      batch.set(resultDocRef, result, { merge: true }); // Using merge:true to overwrite if exists
+      batch.set(resultDocRef, result, { merge: true }); 
       count++;
     }
 
@@ -151,8 +150,8 @@ export async function syncHistoricalResultsToFirestore(
     let specificMessage = "同步到 Firestore 失败: ";
     if (error instanceof Error) {
       specificMessage += error.message;
-      if ((error as any).code === 'permission-denied' || (error as any).code === 'PERMISSION_DENIED') {
-        specificMessage += " (Firestore权限被拒绝。请确认管理员声明已在客户端和服务端生效，且Firestore规则配置正确。管理员用户可能需要重新登录以刷新其ID令牌。) ";
+      if ((error as any).code === 'permission-denied' || (error as any).code === 'PERMISSION_DENIED' || (error as any).code === 7) {
+        specificMessage += " (Firestore权限被拒绝。请确认管理员声明已在客户端和服务端生效（可能需要重新登录以刷新ID令牌），且Firestore规则配置正确并已部署。) ";
       }
     } else {
       specificMessage += "未知错误";
@@ -244,23 +243,30 @@ export async function saveSmartPickResult(
     return { success: false, message: "Firestore 'db' instance is not initialized." };
   }
   try {
-    // Transform combinations from number[][] to Array<{ numbers: number[] }>
     const transformedCombinations = data.combinations.map(combo => ({ numbers: combo }));
 
     const dataToSave = {
-      userId: data.userId,
+      userId: data.userId, // This is request.resource.data.userId
       drawId: data.drawId,
-      combinations: transformedCombinations, // Use the transformed array
+      combinations: transformedCombinations,
       createdAt: serverTimestamp(),
     };
+    console.log("[SAVE_SMART_PICK] Attempting to save smart pick result:", JSON.stringify(dataToSave, null, 2));
 
     const docRef = await addDoc(collection(db, "smartPickResults"), dataToSave);
     console.log(`[SAVE_SMART_PICK] Smart pick result saved successfully with ID: ${docRef.id} for draw ${data.drawId}, user: ${data.userId || 'anonymous'}`);
     return { success: true, message: "智能选号结果已保存。", docId: docRef.id };
   } catch (error) {
     console.error("[SAVE_SMART_PICK] Error saving smart pick result to Firestore:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    return { success: false, message: `保存智能选号结果失败: ${errorMessage}` };
+    let errorMessage = "保存智能选号结果失败: ";
+    if (error instanceof Error) {
+      errorMessage += error.message;
+       if ((error as any).code === 'permission-denied' || (error as any).code === 7 || (error as any).code === 'PERMISSION_DENIED') {
+        errorMessage += " (Firestore权限不足。如果您已登录，请尝试重新登录以刷新权限。如果您未登录，请检查匿名写入规则。确保Firestore安全规则已正确部署。)";
+      }
+    } else {
+      errorMessage += "未知错误";
+    }
+    return { success: false, message: errorMessage };
   }
 }
-
