@@ -4,17 +4,18 @@
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, Trophy, ArrowRight } from "lucide-react"; // Removed DollarSign from imports
+import { CalendarDays, Trophy, ArrowRight } from "lucide-react";
 import { MOCK_LATEST_RESULT, type HistoricalResult } from "@/lib/types";
 import { formatDateToLocale, getBallColor } from "@/lib/totoUtils";
 import { Separator } from "@/components/ui/separator";
+import { zhCN } from "date-fns/locale";
 
 export function CurrentAndLatestDrawInfo() {
   const latestResult: HistoricalResult | null = MOCK_LATEST_RESULT;
 
-  // Hardcoded current draw info as per request
-  const currentDrawDateTime = "周一, 2025年5月26日, 傍晚6点30分";
-  const currentJackpot = "$2,500,000 (估计)";
+  // Updated current draw info
+  const currentDrawDateTime = "周四, 2025年5月29日, 傍晚6点30分";
+  const currentJackpot = "$4,500,000 (估计)";
 
   return (
     <Card className="w-full mb-6 shadow-lg border-border">
@@ -33,7 +34,6 @@ export function CurrentAndLatestDrawInfo() {
             <p className="text-sm text-muted-foreground">当前头奖预估</p>
             <p className="text-2xl font-bold text-primary">{currentJackpot}</p>
           </div>
-          {/* Removed DollarSign icon from here */}
         </div>
       </CardContent>
 
@@ -53,7 +53,7 @@ export function CurrentAndLatestDrawInfo() {
         </div>
         {latestResult && (
           <CardDescription>
-            {formatDateToLocale(latestResult.date)} - 第 {latestResult.drawNumber} 期
+            {formatDateToLocale(latestResult.date, zhCN)} - 第 {latestResult.drawNumber} 期
           </CardDescription>
         )}
       </CardHeader>
@@ -85,4 +85,3 @@ export function CurrentAndLatestDrawInfo() {
     </Card>
   );
 }
-

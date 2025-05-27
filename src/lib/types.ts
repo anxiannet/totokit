@@ -29,6 +29,12 @@ export interface AnalysisData {
 // Mock historical data for development
 export const MOCK_HISTORICAL_DATA: HistoricalResult[] = [
   {
+    "drawNumber": 4081,
+    "date": "2025-05-26",
+    "numbers": [5, 9, 15, 28, 46, 48],
+    "additionalNumber": 8
+  },
+  {
     "drawNumber": 4080,
     "date": "2025-05-22",
     "numbers": [3, 10, 32, 34, 44, 48],
