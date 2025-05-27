@@ -1,6 +1,6 @@
 
 import type { HistoricalResult, TotoCombination } from './types';
-import { TOTO_NUMBER_RANGE } from './types'; // Removed TOTO_COMBINATION_LENGTH from here
+import { TOTO_NUMBER_RANGE } from './types';
 
 // --- Helper Functions ---
 
@@ -14,7 +14,7 @@ function getNumberFrequencies(results: HistoricalResult[], includeAdditional = f
     result.numbers.forEach(num => {
       frequencies[num]++;
     });
-    if (includeAdditional && result.additionalNumber) { // check if additionalNumber exists
+    if (includeAdditional && result.additionalNumber) {
       frequencies[result.additionalNumber]++;
     }
   });
@@ -27,90 +27,90 @@ function getSortedNumbersByFrequency(frequencies: Record<number, number>, order:
     .map(([numStr]) => parseInt(numStr, 10));
 }
 
-function getRandomNumbers(count: number, existingNumbers: number[] = [], minRange = TOTO_NUMBER_RANGE.min, maxRange = TOTO_NUMBER_RANGE.max): TotoCombination {
-  const picked: Set<number> = new Set(existingNumbers);
-  const randomPicks: number[] = [];
-  
-  if (count <= 0) return [];
+// Generates a deterministic sequence of unique numbers for LuckyDip based on input seed
+function getDeterministicSequence(count: number, seed1: number, seed2: number): TotoCombination {
+  const picked: Set<number> = new Set();
+  let currentNum = seed1;
+  const step = seed2 || 7; // Ensure step is not 0
 
-  let attempts = 0; // Safety break for tight ranges
-  const maxAttempts = (maxRange - minRange + 1) * 2;
-
-
-  while (randomPicks.length < count && attempts < maxAttempts) {
-    const num = Math.floor(Math.random() * (maxRange - minRange + 1)) + minRange;
-    if (!picked.has(num)) {
-      randomPicks.push(num);
-      picked.add(num);
+  while (picked.size < count) {
+    currentNum = (currentNum + step -1) % TOTO_NUMBER_RANGE.max + 1; // Cycle through 1-49
+    if (!picked.has(currentNum)) {
+      picked.add(currentNum);
     }
-    attempts++;
+    // Safety break if somehow stuck (e.g., count > 49)
+    if (picked.size >= TOTO_NUMBER_RANGE.max && picked.size < count) break; 
+    if (picked.size > TOTO_NUMBER_RANGE.max * 2 && picked.size < count) break; // Sanity check
   }
-  return randomPicks.sort((a, b) => a - b);
+  return Array.from(picked).slice(0, count).sort((a, b) => a - b);
 }
 
+
 function ensureUniqueNumbers(numbers: number[], minCount: number = 1, maxCount: number = 24): TotoCombination {
-  const uniqueNumbers = Array.from(new Set(numbers));
-  if (uniqueNumbers.length >= maxCount) {
-    return uniqueNumbers.slice(0, maxCount).sort((a,b) => a - b);
-  }
-  if (uniqueNumbers.length >= minCount && uniqueNumbers.length < maxCount) {
-    return uniqueNumbers.sort((a,b) => a - b);
-  }
+  let uniqueNumbers = Array.from(new Set(numbers.filter(n => n >= TOTO_NUMBER_RANGE.min && n <= TOTO_NUMBER_RANGE.max)));
   
-  const needed = Math.max(minCount - uniqueNumbers.length, 0); // Ensure we at least meet minCount
-  const randomFill = getRandomNumbers(needed, uniqueNumbers);
-  
-  let combined = [...uniqueNumbers, ...randomFill];
-  combined = Array.from(new Set(combined)); // Ensure uniqueness again after fill
+  // Sort before any slicing or returning
+  uniqueNumbers.sort((a, b) => a - b);
 
-  if (combined.length > maxCount) {
-    return combined.slice(0, maxCount).sort((a,b) => a - b);
-  }
-  // If still less than minCount (e.g. very small pool from filters), pad more
-  if (combined.length < minCount) {
-      const stillNeeded = minCount - combined.length;
-      const moreRandomFill = getRandomNumbers(stillNeeded, combined);
-      combined = [...combined, ...moreRandomFill];
-      combined = Array.from(new Set(combined));
+  // If we have fewer than minCount, return what we have (no random padding)
+  // unless minCount is 0, which implies no minimum.
+  // The primary role is now to ensure uniqueness and cap at maxCount.
+  if (uniqueNumbers.length < minCount && minCount > 0) {
+     // For algorithms that strictly need a certain count (like lastDrawRepeat for 6 numbers)
+     // they should handle this. For others, returning fewer is fine.
+     // For this general helper, we'll return what we have if it's below minCount.
   }
 
-  return combined.slice(0, Math.min(combined.length, maxCount)).sort((a,b) => a - b);
+  if (uniqueNumbers.length > maxCount) {
+    return uniqueNumbers.slice(0, maxCount);
+  }
+  
+  return uniqueNumbers;
 }
 
 // --- Algorithm Implementations ---
 
 export function algoHotNumbers(lastTenResults: HistoricalResult[]): TotoCombination {
-  if (lastTenResults.length === 0) return getRandomNumbers(Math.floor(Math.random() * 10) + 1); // 1 to 10 random numbers
-  const frequencies = getNumberFrequencies(lastTenResults, false);
+  if (lastTenResults.length === 0) return []; 
+  const frequencies = getNumberFrequencies(lastTenResults, false); // Only main numbers
   const sorted = getSortedNumbersByFrequency(frequencies, 'desc');
-  // Return top N, where N is min(length of sorted hot numbers, 10), but at least 1.
-  const count = Math.min(sorted.length, 10);
+  // Return top N, where N is min(length of sorted hot numbers, 10), but at least 1 if available.
+  const count = Math.min(sorted.filter(n => frequencies[n] > 0).length, 10);
   return ensureUniqueNumbers(sorted.slice(0, count), 1, 10);
 }
 
 export function algoColdNumbers(lastTenResults: HistoricalResult[]): TotoCombination {
-  if (lastTenResults.length === 0) return getRandomNumbers(Math.floor(Math.random() * 10) + 1);
+  if (lastTenResults.length === 0) return [];
   const frequencies = getNumberFrequencies(lastTenResults, false);
   const sorted = getSortedNumbersByFrequency(frequencies, 'asc');
-  const count = Math.min(sorted.length, 10);
-  return ensureUniqueNumbers(sorted.slice(0, count), 1, 10);
+  // Filter for numbers that actually appeared if we want to avoid 0-frequency numbers being "coldest"
+  // Or, if all numbers are 0-frequency, this will return empty.
+  const appearedNumbers = sorted.filter(n => frequencies[n] > 0);
+  const coldFromAppeared = appearedNumbers.slice(0,10);
+
+  if (coldFromAppeared.length > 0) {
+      return ensureUniqueNumbers(coldFromAppeared, 1, 10);
+  }
+  // If no numbers appeared or all appeared with same low freq, pick from all numbers with 0 frequency
+  const zeroFrequencyNumbers = sorted.filter(n => frequencies[n] === 0);
+  return ensureUniqueNumbers(zeroFrequencyNumbers.slice(0,10), 1, 10);
 }
 
 export function algoLastDrawRepeat(lastTenResults: HistoricalResult[]): TotoCombination {
-  if (lastTenResults.length === 0) return getRandomNumbers(6); // Default to 6 if no data
-  return ensureUniqueNumbers([...lastTenResults[0].numbers], 6, 6); // Keep this at 6
+  if (lastTenResults.length === 0 || !lastTenResults[0]?.numbers) return [];
+  return ensureUniqueNumbers([...lastTenResults[0].numbers], 6, 6); 
 }
 
 export function algoSecondLastDrawRepeat(lastTenResults: HistoricalResult[]): TotoCombination {
-  if (lastTenResults.length < 2) return getRandomNumbers(6); // Default to 6
-  return ensureUniqueNumbers([...lastTenResults[1].numbers], 6, 6); // Keep this at 6
+  if (lastTenResults.length < 2 || !lastTenResults[1]?.numbers) return [];
+  return ensureUniqueNumbers([...lastTenResults[1].numbers], 6, 6); 
 }
 
 export function algoFrequentEven(lastTenResults: HistoricalResult[]): TotoCombination {
-  if (lastTenResults.length === 0) return getRandomNumbers(Math.floor(Math.random() * 10) + 1).filter(n => n%2===0);
+  if (lastTenResults.length === 0) return [];
   const frequencies = getNumberFrequencies(lastTenResults, false);
   const evenNumbers = Object.entries(frequencies)
-    .filter(([numStr]) => parseInt(numStr, 10) % 2 === 0)
+    .filter(([numStr]) => parseInt(numStr, 10) % 2 === 0 && frequencies[parseInt(numStr, 10)] > 0)
     .sort(([, freqA], [, freqB]) => freqB - freqA)
     .map(([numStr]) => parseInt(numStr, 10));
   const count = Math.min(evenNumbers.length, 10);
@@ -118,10 +118,10 @@ export function algoFrequentEven(lastTenResults: HistoricalResult[]): TotoCombin
 }
 
 export function algoFrequentOdd(lastTenResults: HistoricalResult[]): TotoCombination {
-  if (lastTenResults.length === 0) return getRandomNumbers(Math.floor(Math.random() * 10) + 1).filter(n => n%2!==0);
+  if (lastTenResults.length === 0) return [];
   const frequencies = getNumberFrequencies(lastTenResults, false);
   const oddNumbers = Object.entries(frequencies)
-    .filter(([numStr]) => parseInt(numStr, 10) % 2 !== 0)
+    .filter(([numStr]) => parseInt(numStr, 10) % 2 !== 0 && frequencies[parseInt(numStr, 10)] > 0)
     .sort(([, freqA], [, freqB]) => freqB - freqA)
     .map(([numStr]) => parseInt(numStr, 10));
   const count = Math.min(oddNumbers.length, 10);
@@ -129,10 +129,13 @@ export function algoFrequentOdd(lastTenResults: HistoricalResult[]): TotoCombina
 }
 
 export function algoFrequentSmallZone(lastTenResults: HistoricalResult[]): TotoCombination {
-   if (lastTenResults.length === 0) return getRandomNumbers(Math.floor(Math.random() * 10) + 1, [], 1, 24);
+   if (lastTenResults.length === 0) return [];
   const frequencies = getNumberFrequencies(lastTenResults, false);
   const smallZoneNumbers = Object.entries(frequencies)
-    .filter(([numStr]) => parseInt(numStr, 10) >= 1 && parseInt(numStr, 10) <= 24)
+    .filter(([numStr]) => {
+        const num = parseInt(numStr, 10);
+        return num >= 1 && num <= 24 && frequencies[num] > 0;
+    })
     .sort(([, freqA], [, freqB]) => freqB - freqA)
     .map(([numStr]) => parseInt(numStr, 10));
   const count = Math.min(smallZoneNumbers.length, 10);
@@ -140,46 +143,51 @@ export function algoFrequentSmallZone(lastTenResults: HistoricalResult[]): TotoC
 }
 
 export function algoFrequentLargeZone(lastTenResults: HistoricalResult[]): TotoCombination {
-  if (lastTenResults.length === 0) return getRandomNumbers(Math.floor(Math.random() * 10) + 1, [], 25, 49);
+  if (lastTenResults.length === 0) return [];
   const frequencies = getNumberFrequencies(lastTenResults, false);
   const largeZoneNumbers = Object.entries(frequencies)
-    .filter(([numStr]) => parseInt(numStr, 10) >= 25 && parseInt(numStr, 10) <= TOTO_NUMBER_RANGE.max)
+    .filter(([numStr]) => {
+        const num = parseInt(numStr, 10);
+        return num >= 25 && num <= TOTO_NUMBER_RANGE.max && frequencies[num] > 0;
+    })
     .sort(([, freqA], [, freqB]) => freqB - freqA)
     .map(([numStr]) => parseInt(numStr, 10));
   const count = Math.min(largeZoneNumbers.length, 10);
   return ensureUniqueNumbers(largeZoneNumbers.slice(0, count), 1, 10);
 }
 
-export function algoUniquePoolRandom(lastTenResults: HistoricalResult[]): TotoCombination {
+export function algoUniquePoolDeterministic(lastTenResults: HistoricalResult[]): TotoCombination {
   const uniquePoolSet: Set<number> = new Set();
   lastTenResults.forEach(result => {
     result.numbers.forEach(num => uniquePoolSet.add(num));
     if (result.additionalNumber) uniquePoolSet.add(result.additionalNumber);
   });
-  const poolArray = Array.from(uniquePoolSet);
   
-  if (poolArray.length === 0) {
-    return getRandomNumbers(Math.floor(Math.random() * 19) + 6, [], 1, 24); // 6 to 24 random numbers
-  }
+  if (uniquePoolSet.size === 0) return [];
 
-  // Pick a random count between min(poolArray.length, 6) and min(poolArray.length, 20), clamped by 1 and 24.
-  const minPick = Math.max(1, Math.min(poolArray.length, 6));
-  const maxPick = Math.min(poolArray.length, 24, 20); // Cap at 20 for variety, but ensure no more than 24 or pool size
+  const poolArray = Array.from(uniquePoolSet).sort((a,b) => a - b);
   
-  let countToPick = Math.floor(Math.random() * (maxPick - minPick + 1)) + minPick;
-  countToPick = Math.max(1, Math.min(countToPick, 24)); // Final clamp
+  // Determine count: e.g., half the pool size, capped between 6 and 15, not exceeding 24
+  let countToPick = Math.floor(poolArray.length / 2);
+  countToPick = Math.max(1, Math.min(countToPick, 15)); // Ensure count is between 1-15 (example range)
+  countToPick = Math.min(countToPick, poolArray.length); // Cannot pick more than available
+  countToPick = Math.min(countToPick, 24); // Global max count
 
-  // Shuffle and pick
-  for (let i = poolArray.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [poolArray[i], poolArray[j]] = [poolArray[j], poolArray[i]];
-  }
-  return poolArray.slice(0, countToPick).sort((a,b) => a - b);
+  return poolArray.slice(0, countToPick);
 }
 
-export function algoLuckyDip(): TotoCombination {
-  const countToPick = Math.floor(Math.random() * 19) + 6; // Generate between 6 and 24 numbers
-  return getRandomNumbers(Math.min(countToPick, 24));
+export function algoLuckyDipDeterministic(lastTenResults: HistoricalResult[]): TotoCombination {
+  if (lastTenResults.length === 0) { // Fallback if no historical data to seed from
+      return getDeterministicSequence(10, new Date().getDate(), (new Date().getMonth()+1));
+  }
+  // Deterministic count based on the number of historical results provided
+  const countToPick = Math.max(1, Math.min(6 + (lastTenResults.length % 10), 24)); // e.g., 6-15 numbers
+
+  // Seeds for deterministic sequence generation
+  const seed1 = lastTenResults.reduce((sum, r) => sum + r.drawNumber, 0) % TOTO_NUMBER_RANGE.max || 1;
+  const seed2 = lastTenResults.reduce((sum, r) => sum + r.additionalNumber, 0) % 10 || 1;
+  
+  return getDeterministicSequence(countToPick, seed1, seed2);
 }
 
 export interface NumberPickingTool {

@@ -13,7 +13,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Wand2, TrendingUp, TrendingDown } from "lucide-react";
-import type { TotoCombination, HistoricalResult } from "@/lib/types";
+import type { HistoricalResult } from "@/lib/types";
 import { MOCK_HISTORICAL_DATA } from "@/lib/types";
 import { NumberPickingToolDisplay } from "@/components/toto/NumberPickingToolDisplay";
 import { calculateHitDetails, getBallColor as getOfficialBallColor, formatDateToLocale } from "@/lib/totoUtils";
@@ -27,8 +27,8 @@ import {
   algoFrequentOdd,
   algoFrequentSmallZone,
   algoFrequentLargeZone,
-  algoUniquePoolRandom,
-  algoLuckyDip,
+  algoUniquePoolDeterministic, // Renamed from algoUniquePoolRandom
+  algoLuckyDipDeterministic,   // Renamed from algoLuckyDip
   type NumberPickingTool as DynamicNumberPickingTool,
 } from "@/lib/numberPickingAlgos";
 
@@ -37,62 +37,62 @@ const dynamicTools: DynamicNumberPickingTool[] = [
   {
     id: "dynamicHotNumbers",
     name: "动态热门追踪",
-    description: "基于目标期前10期数据，统计最常出现的最多10个正码进行预测 (至少1个)。",
+    description: "基于目标期前10期数据，统计最常出现的最多10个正码进行预测 (至少1个，若无则不预测)。结果固定。",
     algorithmFn: algoHotNumbers,
   },
   {
     id: "dynamicColdNumbers",
     name: "动态冷码挖掘",
-    description: "基于目标期前10期数据，选择出现次数最少的最多10个正码进行预测 (至少1个)。",
+    description: "基于目标期前10期数据，选择出现次数最少的最多10个正码进行预测 (至少1个，若无则不预测)。结果固定。",
     algorithmFn: algoColdNumbers,
   },
   {
     id: "dynamicLastDrawRepeat",
     name: "动态上期延续 (6码)",
-    description: "预测号码直接采用目标期之前一期的6个中奖正码。",
+    description: "预测号码直接采用目标期之前一期的6个中奖正码。若数据不足则不预测。结果固定。",
     algorithmFn: algoLastDrawRepeat,
   },
   {
     id: "dynamicSecondLastDrawRepeat",
     name: "动态隔期重现 (6码)",
-    description: "预测号码直接采用目标期之前第二期的6个中奖正码。",
+    description: "预测号码直接采用目标期之前第二期的6个中奖正码。若数据不足则不预测。结果固定。",
     algorithmFn: algoSecondLastDrawRepeat, 
   },
   {
     id: "dynamicFrequentEven",
     name: "动态偶数偏好",
-    description: "基于目标期前10期数据，选择出现频率最高的最多10个偶数正码 (至少1个)。",
+    description: "基于目标期前10期数据，选择出现频率最高的最多10个偶数正码 (至少1个，若无则不预测)。结果固定。",
     algorithmFn: algoFrequentEven,
   },
   {
     id: "dynamicFrequentOdd",
     name: "动态奇数偏好",
-    description: "基于目标期前10期数据，选择出现频率最高的最多10个奇数正码 (至少1个)。",
+    description: "基于目标期前10期数据，选择出现频率最高的最多10个奇数正码 (至少1个，若无则不预测)。结果固定。",
     algorithmFn: algoFrequentOdd,
   },
   {
     id: "dynamicFrequentSmallZone",
     name: "动态小号区精选",
-    description: "基于目标期前10期数据，选择1-24号范围内出现频率最高的最多10个号码 (至少1个)。",
+    description: "基于目标期前10期数据，选择1-24号范围内出现频率最高的最多10个号码 (至少1个，若无则不预测)。结果固定。",
     algorithmFn: algoFrequentSmallZone,
   },
   {
     id: "dynamicFrequentLargeZone",
     name: "动态大号区精选",
-    description: "基于目标期前10期数据，选择25-49号范围内出现频率最高的最多10个号码 (至少1个)。",
+    description: "基于目标期前10期数据，选择25-49号范围内出现频率最高的最多10个号码 (至少1个，若无则不预测)。结果固定。",
     algorithmFn: algoFrequentLargeZone,
   },
   {
-    id: "dynamicUniquePoolRandom",
-    name: "动态综合随机池",
-    description: "汇总目标期前10期所有出现过的号码（含特别号码，去重），从中随机选出一组号码 (6-20个，不超过池大小)。",
-    algorithmFn: algoUniquePoolRandom,
+    id: "dynamicUniquePoolDeterministic",
+    name: "动态综合池精选",
+    description: "汇总目标期前10期所有出现过的号码（含特别号码，去重并排序），从中确定性地选出一组号码 (数量可变，最多15个)。结果固定。",
+    algorithmFn: algoUniquePoolDeterministic,
   },
   {
-    id: "dynamicLuckyDip",
-    name: "动态幸运一搏",
-    description: "完全随机生成一组号码 (6-24个)，不参考目标期前的历史数据。",
-    algorithmFn: algoLuckyDip,
+    id: "dynamicLuckyDipDeterministic",
+    name: "动态幸运序列",
+    description: "基于目标期前10期数据特征，以确定性算法生成一组号码 (数量可变，6-15个)。结果固定。",
+    algorithmFn: algoLuckyDipDeterministic,
   },
 ];
 
@@ -131,7 +131,7 @@ export default function NumberPickingToolsPage() {
             选号工具箱 (动态预测)
           </CardTitle>
           <CardDescription>
-            探索多种选号工具。展开工具查看其算法描述，并对照历史开奖结果分析其动态预测表现。每个工具预测的号码数量可能不同 (1-24个)。
+            探索多种选号工具。展开工具查看其算法描述，并对照历史开奖结果分析其动态预测表现。每个工具预测的号码数量可能不同 (1-24个)。预测结果基于历史数据确定性生成。
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -148,18 +148,40 @@ export default function NumberPickingToolsPage() {
                   {allHistoricalData.length > 0 ? (
                     <ScrollArea className="h-[400px] border rounded-md p-3 space-y-4 bg-background/50">
                       {allHistoricalData.map((targetDraw, index) => {
+                        // Ensure we have at least one preceding draw for most algorithms
+                        // For algorithms like LastDrawRepeat, index + 1 should be valid.
+                        // For algorithms needing 10 preceding draws, need to check length.
                         const precedingDrawsStartIndex = index + 1;
-                        const precedingDrawsEndIndex = index + 1 + 10;
+                        const precedingDrawsEndIndex = precedingDrawsStartIndex + 10; // Attempt to get 10
+                        
+                        // Slice preceding draws. If fewer than 10 (or 1 for some algos) are available, pass what we have.
+                        // Algorithms should handle cases with fewer than 10 preceding draws gracefully.
                         const precedingTenDraws = allHistoricalData.slice(precedingDrawsStartIndex, precedingDrawsEndIndex);
 
-                        const predictedNumbersForTargetDraw = tool.algorithmFn(precedingTenDraws);
+                        // Handle cases where there might not be enough preceding draws for certain algos
+                        // e.g., LastDrawRepeat needs at least 1 preceding, SecondLastDrawRepeat needs at least 2.
+                        // Most algos are designed to handle empty or short precedingTenDraws array.
+                        let predictedNumbersForTargetDraw: number[] = [];
+                        if (tool.id === "dynamicLastDrawRepeat" && index >= allHistoricalData.length -1) {
+                           // Not enough data for last draw repeat for the last item
+                        } else if (tool.id === "dynamicSecondLastDrawRepeat" && index >= allHistoricalData.length - 2) {
+                           // Not enough data for second last draw repeat for the last two items
+                        } else {
+                           predictedNumbersForTargetDraw = tool.algorithmFn(precedingTenDraws);
+                        }
                         
                         const hitDetails = calculateHitDetails(predictedNumbersForTargetDraw, targetDraw);
-                        // Hit rate calculation needs to be relative to the number of predicted numbers if we want to normalize
-                        // Or, keep it simple: how many of the 6 official main numbers were hit.
-                        // For now, let's keep it based on hitting the 6 official main numbers.
-                        const hitRate = targetDraw.numbers && targetDraw.numbers.length > 0 ? (hitDetails.mainHitCount / targetDraw.numbers.length) * 100 : 0;
+                        const hitRate = targetDraw.numbers && targetDraw.numbers.length > 0 && predictedNumbersForTargetDraw.length > 0
+                                      ? (hitDetails.mainHitCount / Math.min(targetDraw.numbers.length, predictedNumbersForTargetDraw.length)) * 100 
+                                      : 0; // Avoid division by zero, or if no prediction
                         const hasAnyHit = hitDetails.mainHitCount > 0 || hitDetails.matchedAdditionalNumberDetails.matched;
+
+                        if (predictedNumbersForTargetDraw.length === 0 && tool.id !== "dynamicLastDrawRepeat" && tool.id !== "dynamicSecondLastDrawRepeat") {
+                           // Optionally skip rendering if an algo (not repeaters) returns no numbers, 
+                           // or display a "No prediction based on available data" message.
+                           // For now, it will show empty predictions.
+                        }
+
 
                         return (
                           <div key={`${tool.id}-${targetDraw.drawNumber}`} className={`p-3 border rounded-lg ${hasAnyHit ? 'border-green-500/60 bg-green-500/10' : 'border-border bg-card'}`}>
@@ -167,7 +189,7 @@ export default function NumberPickingToolsPage() {
                               <p className="text-xs font-medium">
                                 目标期号: <span className="font-semibold text-primary">{targetDraw.drawNumber}</span> ({formatDateToLocale(targetDraw.date, zhCN)})
                               </p>
-                              {hasAnyHit ? <TrendingUp className="h-4 w-4 text-green-600" /> : <TrendingDown className="h-4 w-4 text-red-500/80" />}
+                              {predictedNumbersForTargetDraw.length > 0 && (hasAnyHit ? <TrendingUp className="h-4 w-4 text-green-600" /> : <TrendingDown className="h-4 w-4 text-red-500/80" />)}
                             </div>
                             <div className="mb-1.5">
                                <p className="text-xs text-muted-foreground mb-0.5">当期开奖号码:</p>
@@ -175,26 +197,32 @@ export default function NumberPickingToolsPage() {
                             </div>
                             <div className="mb-1.5">
                                <p className="text-xs text-muted-foreground mb-0.5">工具针对本期预测号码 ({predictedNumbersForTargetDraw.length} 个):</p>
-                               <NumberPickingToolDisplay
-                                numbers={predictedNumbersForTargetDraw}
-                                historicalResultForHighlight={targetDraw}
-                               />
+                               {predictedNumbersForTargetDraw.length > 0 ? (
+                                 <NumberPickingToolDisplay
+                                  numbers={predictedNumbersForTargetDraw}
+                                  historicalResultForHighlight={targetDraw}
+                                 />
+                               ) : (
+                                 <p className="text-xs text-muted-foreground italic">数据不足或算法未生成预测</p>
+                               )}
                             </div>
-                            <div className="text-xs space-y-0.5 text-foreground/90">
-                              <p>
-                                命中正码: <span className="font-semibold">{hitDetails.mainHitCount}</span> 个
-                                {hitDetails.matchedMainNumbers.length > 0 ? ` (${hitDetails.matchedMainNumbers.join(", ")})` : ''}
-                              </p>
-                              <p>
-                                特别号码 ({targetDraw.additionalNumber}): {hitDetails.matchedAdditionalNumberDetails.matched ? 
-                                    <span className="font-semibold text-yellow-600">命中</span> : 
-                                    <span className="text-muted-foreground">未命中</span>
-                                }
-                              </p>
-                              <p>
-                                正码命中率 (对比6个官方正码): <span className="font-semibold">{hitRate.toFixed(1)}%</span>
-                              </p>
-                            </div>
+                            {predictedNumbersForTargetDraw.length > 0 && (
+                              <div className="text-xs space-y-0.5 text-foreground/90">
+                                <p>
+                                  命中正码: <span className="font-semibold">{hitDetails.mainHitCount}</span> 个
+                                  {hitDetails.matchedMainNumbers.length > 0 ? ` (${hitDetails.matchedMainNumbers.join(", ")})` : ''}
+                                </p>
+                                <p>
+                                  特别号码 ({targetDraw.additionalNumber}): {hitDetails.matchedAdditionalNumberDetails.matched ? 
+                                      <span className="font-semibold text-yellow-600">命中</span> : 
+                                      <span className="text-muted-foreground">未命中</span>
+                                  }
+                                </p>
+                                <p>
+                                  正码命中率 (对比6个官方正码，基于预测数量): <span className="font-semibold">{hitRate.toFixed(1)}%</span>
+                                </p>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -211,3 +239,4 @@ export default function NumberPickingToolsPage() {
     </div>
   );
 }
+
