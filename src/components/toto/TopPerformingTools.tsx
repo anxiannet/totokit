@@ -2,7 +2,7 @@
 "use client";
 
 import Link from 'next/link';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp, Percent, ListChecks, ExternalLink } from "lucide-react";
@@ -43,9 +43,7 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
           <TrendingUp className="h-6 w-6 text-primary" />
           近期热门工具
         </CardTitle>
-        <CardDescription>
-          根据最近10期历史开奖结果分析，表现最佳的选号工具。左右滑动查看更多。
-        </CardDescription>
+        {/* CardDescription removed as per request */}
       </CardHeader>
       <CardContent className="p-0"> {/* Adjusted padding for scroll container */}
         <div className="flex overflow-x-auto space-x-4 p-4 no-scrollbar snap-x snap-mandatory">
@@ -59,7 +57,7 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
                     {tool.averageHitRate.toFixed(1)}% 命中率
                   </Badge>
                 </div>
-                <CardDescription className="text-xs pt-1 h-10 line-clamp-2">{tool.description}</CardDescription> {/* Added fixed height for description */}
+                {/* Removed CardDescription for each tool here */}
               </CardHeader>
               <CardContent className="flex-grow space-y-3">
                 <div>
