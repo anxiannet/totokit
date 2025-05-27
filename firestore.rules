@@ -3,22 +3,25 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow public read access to totoResults
+
+    // TOTO Results Collection
+    // Allow public read access.
+    // Disallow all client-side writes. Writes should be managed by a trusted backend process or secure Server Actions.
     match /totoResults/{drawId} {
       allow read: if true;
-      // Allow write only if the user is authenticated (example)
-      // For admin panel, you might need more specific rules or use Admin SDK
-      allow write: if request.auth != null; // Or true for open development
+      allow write: if false;
     }
 
-    // Allow public read access to toolPredictions
-    match /toolPredictions/{predictionId} {
+    // Tool Predictions Collection
+    // Allow public read access if these predictions are meant to be public.
+    // Disallow all client-side writes. Writes should be managed by a trusted backend process or secure Server Actions.
+    match /toolPredictions/{docId} {
       allow read: if true;
-      // Allow write only if the user is authenticated (example)
-      allow write: if request.auth != null; // Or true for open development
+      allow write: if false;
     }
 
-    // Default deny all other paths
+    // Default rule: Deny all reads and writes to any other collections/documents not explicitly matched.
+    // This is crucial for security.
     match /{document=**} {
       allow read, write: if false;
     }
