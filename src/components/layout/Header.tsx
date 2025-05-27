@@ -2,7 +2,7 @@
 "use client";
 
 import Link from 'next/link';
-import { Ticket, Menu as MenuIcon, Gift, Sparkles, Layers, Briefcase, LogIn, Home, BarChart3, ArrowLeft } from 'lucide-react'; // Added BarChart3, ArrowLeft
+import { Ticket, Menu as MenuIcon, Gift, Sparkles, Layers, Briefcase, LogIn, Home, ArrowLeft, ListOrdered } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -15,21 +15,30 @@ import {
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 
+// Props are no longer needed since view switching is handled by navigation or local state
 interface HeaderProps {
-  // Removed onShowAllResults as navigation is handled by Links now
+  onShowAllResults?: () => void; // Kept as optional for now, but can be removed if not used
 }
 
-export function Header({}: HeaderProps) { // Removed props
+export function Header({ onShowAllResults }: HeaderProps) {
   const menuItems = [
     { label: "首页", icon: Home, href: "/" },
     { label: "开奖查询", icon: Gift, href: "/historical-results" },
-    { label: "数据分析", icon: BarChart3, href: "/analytics" }, // Added Analytics link
-    { label: "热门工具", icon: Sparkles, action: () => console.log("热门工具 clicked") },
+    { label: "数据分析", icon: ListOrdered, href: "/analytics" },
+    { label: "选号工具", icon: Sparkles, action: () => console.log("选号工具 clicked") },
     { label: "覆盖选号", icon: Layers, action: () => console.log("覆盖选号 clicked") },
     { label: "我的工具箱", icon: Briefcase, action: () => console.log("我的工具箱 clicked") },
   ];
 
   const authItem = { label: "登录 / 注册", icon: LogIn, action: () => console.log("登录/注册 clicked") };
+
+  const handleMenuItemClick = (itemAction?: () => void) => {
+    if (itemAction) {
+      itemAction();
+    }
+    // Add any logic to close the sheet if needed, though SheetClose asChild should handle it
+  };
+
 
   return (
     <header className="bg-primary text-primary-foreground shadow-md">
@@ -47,8 +56,8 @@ export function Header({}: HeaderProps) { // Removed props
             </Button>
           </SheetTrigger>
           <SheetContent side="right" className="w-[250px] sm:w-[300px] bg-card text-card-foreground">
-            <SheetHeader className="mb-6">
-              <SheetTitle className="sr-only">主菜单</SheetTitle>
+            <SheetHeader className="mb-6 sr-only">
+              {/* <SheetTitle className="sr-only">主菜单</SheetTitle> */}
               <SheetDescription className="sr-only">
                 选择一个选项以继续。
               </SheetDescription>
@@ -71,7 +80,7 @@ export function Header({}: HeaderProps) { // Removed props
                     <Button
                       variant="ghost"
                       className="w-full justify-start text-base py-3 px-4 text-foreground hover:bg-accent hover:text-accent-foreground"
-                      onClick={item.action}
+                      onClick={() => handleMenuItemClick(item.action)}
                     >
                       <item.icon className="mr-3 h-5 w-5 text-primary" />
                       <span>{item.label}</span>
@@ -84,7 +93,7 @@ export function Header({}: HeaderProps) { // Removed props
                 <Button
                   variant="ghost"
                   className="w-full justify-start text-base py-3 px-4 text-foreground hover:bg-accent hover:text-accent-foreground"
-                  onClick={authItem.action}
+                  onClick={() => handleMenuItemClick(authItem.action)}
                 >
                   <authItem.icon className="mr-3 h-5 w-5 text-primary" />
                   <span>{authItem.label}</span>
