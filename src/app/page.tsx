@@ -4,8 +4,10 @@
 import { useState } from 'react';
 import { PredictionConfigurator } from "@/components/toto/PredictionConfigurator";
 import { PredictionResultsDisplay } from "@/components/toto/PredictionResultsDisplay";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Wand2 } from "lucide-react";
+// Tabs components are no longer needed as we are removing the tab structure
+// import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+// Wand2 icon was for the tab trigger, also not needed directly here unless we add a new title
+// import { Wand2 } from "lucide-react"; 
 import type { TotoCombination } from "@/lib/types";
 import { CurrentAndLatestDrawInfo } from "@/components/toto/CurrentAndLatestDrawInfo";
 
@@ -27,24 +29,19 @@ export default function TotoForecasterPage() {
       <main className="flex-grow container mx-auto px-4 py-8 md:px-6 md:py-12">
         <CurrentAndLatestDrawInfo />
         
-        <Tabs defaultValue="predict" className="w-full">
-          <TabsList className="grid w-full grid-cols-1 mb-6"> {/* Only one tab now */}
-            <TabsTrigger value="predict">
-              <Wand2 className="mr-2 h-4 w-4" /> AI 预测器
-            </TabsTrigger>
-            {/* Analytics TabTrigger removed */}
-          </TabsList>
-
-          <TabsContent value="predict" className="space-y-6">
-            <PredictionConfigurator 
-              onPredictionsGenerated={handlePredictionsGenerated}
-              onLoadingChange={handleLoadingChange}
-            />
-            <PredictionResultsDisplay predictions={predictions} isLoading={isGeneratingPredictions} />
-          </TabsContent>
-
-          {/* Analytics TabsContent removed */}
-        </Tabs>
+        {/* Tabs structure removed. Content is now displayed directly. */}
+        <div className="w-full space-y-6 mt-6"> {/* Added mt-6 for spacing similar to what TabsContent might have provided */}
+          {/* You might want to add a title here if needed, e.g., 
+            <h2 className="text-2xl font-semibold flex items-center gap-2 mb-4">
+              <Wand2 className="h-6 w-6 text-primary" /> AI 预测器
+            </h2> 
+          */}
+          <PredictionConfigurator 
+            onPredictionsGenerated={handlePredictionsGenerated}
+            onLoadingChange={handleLoadingChange}
+          />
+          <PredictionResultsDisplay predictions={predictions} isLoading={isGeneratingPredictions} />
+        </div>
         
       </main>
       <footer className="py-6 text-center text-sm text-muted-foreground border-t">
