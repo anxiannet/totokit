@@ -1,33 +1,60 @@
 
 "use client";
 
-import type { TotoCombination } from "@/lib/types";
+import type { TotoCombination, HistoricalResult } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 
 interface NumberPickingToolDisplayProps {
-  numbers: TotoCombination | null; // Can still be null if a tool somehow has no numbers
+  numbers: TotoCombination;
+  historicalResultForHighlight?: HistoricalResult | null;
+  defaultBallColor?: string;
+  matchedMainBallColor?: string;
+  matchedAdditionalBallColor?: string;
+  unmatchedHistoricalBallColor?: string;
 }
 
-export function NumberPickingToolDisplay({ numbers }: NumberPickingToolDisplayProps) {
+export function NumberPickingToolDisplay({
+  numbers,
+  historicalResultForHighlight = null,
+  defaultBallColor = "bg-sky-600 text-white", // Default for general display of tool's numbers
+  matchedMainBallColor = "bg-green-500 text-white",
+  matchedAdditionalBallColor = "bg-yellow-400 text-black",
+  unmatchedHistoricalBallColor = "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200", // For non-hits when comparing
+}: NumberPickingToolDisplayProps) {
   if (!numbers || numbers.length === 0) {
-    // This case should ideally not happen if all tools have predefined numbers
     return <p className="text-sm text-muted-foreground mt-2">此工具当前未提供号码。</p>;
   }
 
-  const getBallColor = (number: number): string => {
-    // Using a consistent color for these tool-generated numbers
-    // e.g. chart-3 (Teal/Green)
-    return "bg-[hsl(var(--chart-3))] text-primary-foreground"; 
+  let winningMainNumbersSet = new Set<number>();
+  let additionalWinningNum: number | null = null;
+
+  if (historicalResultForHighlight) {
+    winningMainNumbersSet = new Set(historicalResultForHighlight.numbers);
+    additionalWinningNum = historicalResultForHighlight.additionalNumber;
+  }
+
+  const getBallStyle = (num: number): string => {
+    if (historicalResultForHighlight) {
+      // Check if this number from the tool's list matches the additional number of the historical draw
+      if (num === additionalWinningNum) {
+        return matchedAdditionalBallColor;
+      }
+      // Check if this number from the tool's list matches any of the main winning numbers of the historical draw
+      if (winningMainNumbersSet.has(num)) {
+        return matchedMainBallColor;
+      }
+      return unmatchedHistoricalBallColor; // Number from tool exists, but didn't match historical
+    }
+    return defaultBallColor; // General display, no highlighting against historical
   };
 
   return (
-    <div className="mt-4 p-3 bg-muted/50 rounded-md">
-      <h4 className="font-semibold mb-2 text-sm">推荐号码 ({numbers.length}个):</h4>
-      <div className="flex flex-wrap gap-2 items-center justify-start"> {/* Changed to justify-start */}
+    <div className="mt-1 mb-1">
+      <div className="flex flex-wrap gap-1.5 items-center justify-start">
         {numbers.map((num, index) => (
           <Badge
-            key={`${num}-${index}-${Math.random()}`} // Added Math.random for better key uniqueness if numbers can repeat across different tools in a rare case, though they shouldn't within one tool
-            className={`flex items-center justify-center w-9 h-9 rounded-full text-base font-bold shadow-md ${getBallColor(num)}`}
+            key={`${num}-${index}-${Math.random()}`}
+            className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold shadow-sm ${getBallStyle(num)}`}
           >
             {num}
           </Badge>
