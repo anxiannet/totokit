@@ -2,15 +2,16 @@
 "use client";
 
 import { useState, type FormEvent, useEffect } from "react";
-import Link from "next/link"; // Import Link
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardFooter } from "@/components/ui/card";
 import { Wand2, Loader2, FileText, AlertCircle } from "lucide-react";
-import type { WeightedCriterion, TotoCombination, HistoricalResult } from "@/lib/types";
+import type { WeightedCriterion, TotoCombination } from "@/lib/types";
 import { MOCK_HISTORICAL_DATA } from "@/lib/types";
 import { generateTotoPredictions } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useAuth } from '@/hooks/useAuth'; // Import useAuth
 
 interface PredictionConfiguratorProps {
   onPredictionsGenerated: (predictions: TotoCombination[]) => void;
@@ -26,30 +27,42 @@ export function PredictionConfigurator({
   onUsageStatusChange
 }: PredictionConfiguratorProps) {
   const { toast } = useToast();
-  const [luckyNumbers, setLuckyNumbers] = useState<string>(""); // Kept for future use, though UI removed
-  const [excludeNumbers, setExcludeNumbers] = useState<string>(""); // Kept for future use
-  const [numberOfCombinations, setNumberOfCombinations] = useState<number>(10); // Default
-  const [weightedCriteria, setWeightedCriteria] = useState<WeightedCriterion[]>([ // Default
+  const { user } = useAuth(); // Get current user
+  const [luckyNumbers, setLuckyNumbers] = useState<string>("");
+  const [excludeNumbers, setExcludeNumbers] = useState<string>("");
+  const [numberOfCombinations, setNumberOfCombinations] = useState<number>(10);
+  const [weightedCriteria, setWeightedCriteria] = useState<WeightedCriterion[]>([
     { id: crypto.randomUUID(), name: "HotNumbers", weight: 0.7 },
     { id: crypto.randomUUID(), name: "OddEvenBalance", weight: 0.3 },
   ]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [hasUsedSmartPickThisDraw, setHasUsedSmartPickThisDraw] = useState<boolean>(false);
 
+  const isAdmin = user && user.email === "admin@totokit.com";
+
   useEffect(() => {
     const usageKey = `smartPickUsed_${CURRENT_DRAW_ID}`;
     const alreadyUsed = localStorage.getItem(usageKey) === 'true';
-    if (alreadyUsed) {
+
+    if (isAdmin) {
+      setHasUsedSmartPickThisDraw(false); // Admin can always use
+      // If alreadyUsed was true (e.g. from a non-admin session), 
+      // and onUsageStatusChange exists, call it to ensure results area might show if page reloaded.
+      if (onUsageStatusChange && alreadyUsed) {
+        onUsageStatusChange(true);
+      }
+    } else if (alreadyUsed) {
       setHasUsedSmartPickThisDraw(true);
       if (onUsageStatusChange) {
         onUsageStatusChange(true);
       }
     }
-  }, [onUsageStatusChange]);
+  }, [onUsageStatusChange, user, isAdmin]); // Add user and isAdmin to dependency array
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (hasUsedSmartPickThisDraw) {
+
+    if (hasUsedSmartPickThisDraw && !isAdmin) { // Restriction only applies to non-admins
       toast({
         title: "已使用",
         description: "您已使用本期免费智能选号。",
@@ -100,11 +113,15 @@ export function PredictionConfigurator({
       }
       onPredictionsGenerated(result.combinations as TotoCombination[]);
 
-      const usageKey = `smartPickUsed_${CURRENT_DRAW_ID}`;
-      localStorage.setItem(usageKey, 'true');
-      setHasUsedSmartPickThisDraw(true);
-      if (onUsageStatusChange) { // Ensure status is updated after usage
-        onUsageStatusChange(true);
+      if (!isAdmin) { // Only set localStorage and usage flag for non-admins
+        const usageKey = `smartPickUsed_${CURRENT_DRAW_ID}`;
+        localStorage.setItem(usageKey, 'true');
+        setHasUsedSmartPickThisDraw(true);
+        // onUsageStatusChange might have already been called true when loading started,
+        // but calling it again here is harmless.
+        if (onUsageStatusChange) { 
+          onUsageStatusChange(true);
+        }
       }
     }
   };
@@ -112,13 +129,12 @@ export function PredictionConfigurator({
   return (
     <Card>
       <form onSubmit={handleSubmit}>
-        {/* UI for luckyNumbers, excludeNumbers, etc. was removed in a previous step */}
         <CardFooter className="pt-6">
           <div className="flex w-full gap-4">
             <Button
               type="submit"
               className="flex-1"
-              disabled={isLoading || hasUsedSmartPickThisDraw}
+              disabled={isLoading || (hasUsedSmartPickThisDraw && !isAdmin)}
             >
               {isLoading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -136,7 +152,7 @@ export function PredictionConfigurator({
           </div>
         </CardFooter>
       </form>
-      {hasUsedSmartPickThisDraw && (
+      {hasUsedSmartPickThisDraw && !isAdmin && ( // Show alert only for non-admins who have used their pick
         <div className="p-4 pt-0 text-sm">
           <Alert>
             <AlertCircle className="h-4 w-4" />
