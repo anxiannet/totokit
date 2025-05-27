@@ -42,7 +42,7 @@ export function PredictionResultsDisplay({ predictions, isLoading }: PredictionR
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Target className="h-6 w-6 text-primary" />
-          本期智能选号结果
+          第 4082 期智能选号结果
         </CardTitle>
         {/* CardDescription removed as per request */}
       </CardHeader>
@@ -90,3 +90,4 @@ export function PredictionResultsDisplay({ predictions, isLoading }: PredictionR
     </Card>
   );
 }
+
