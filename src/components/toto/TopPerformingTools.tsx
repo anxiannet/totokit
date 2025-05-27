@@ -50,7 +50,7 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
       <CardContent className="p-0"> {/* Adjusted padding for scroll container */}
         <div className="flex overflow-x-auto space-x-4 p-4 no-scrollbar snap-x snap-mandatory">
           {tools.map((tool) => (
-            <Card key={tool.id} className="flex-shrink-0 w-[300px] md:w-[340px] snap-start flex flex-col">
+            <Card key={tool.id} className="min-w-full flex-shrink-0 snap-start flex flex-col">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-lg">{tool.name}</CardTitle>
