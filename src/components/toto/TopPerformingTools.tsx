@@ -48,9 +48,13 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
       <CardContent>
         {tools.length > 0 ? (
           <Tabs defaultValue={tools[0].id} className="w-full">
-            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 mb-4 h-auto">
+            <TabsList className="flex overflow-x-auto whitespace-nowrap no-scrollbar mb-4 h-auto p-1">
               {tools.map((tool) => (
-                <TabsTrigger key={tool.id} value={tool.id} className="text-xs sm:text-sm px-2 py-1.5 h-auto whitespace-normal break-words">
+                <TabsTrigger 
+                  key={tool.id} 
+                  value={tool.id} 
+                  className="text-xs sm:text-sm px-3 py-1.5 h-auto flex-shrink-0"
+                >
                   {tool.name}
                 </TabsTrigger>
               ))}
