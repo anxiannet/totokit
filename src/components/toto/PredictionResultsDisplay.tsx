@@ -41,7 +41,7 @@ export function PredictionResultsDisplay({ predictions, isLoading }: PredictionR
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Target className="h-6 w-6 text-primary" />
-          AI 智能选号结果
+          本期智能选号结果
         </CardTitle>
         {/* CardDescription removed as per request */}
       </CardHeader>
@@ -52,9 +52,8 @@ export function PredictionResultsDisplay({ predictions, isLoading }: PredictionR
             <p className="text-muted-foreground">正在生成预测，请稍候...</p>
           </div>
         ) : predictions.length === 0 ? (
-          <div className="flex flex-col items-center justify-center text-center p-4 rounded-lg border border-dashed"> {/* Removed h-40 */}
+          <div className="flex flex-col items-center justify-center text-center p-4 rounded-lg border border-dashed">
             <Info className="h-10 w-10 text-muted-foreground mb-3" />
-            {/* Empty state text removed as per request */}
           </div>
         ) : (
           <ScrollArea className="h-[300px] rounded-md border">
@@ -90,3 +89,4 @@ export function PredictionResultsDisplay({ predictions, isLoading }: PredictionR
     </Card>
   );
 }
+
