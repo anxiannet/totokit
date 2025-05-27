@@ -33,7 +33,8 @@ const Loader2 = (props: React.SVGProps<SVGSVGElement>) => (
 
 export function PredictionResultsDisplay({ predictions, isLoading }: PredictionResultsDisplayProps) {
   const getPredictionBallColor = (number: number): string => {
-    return "bg-primary text-primary-foreground"; 
+    // Using chart-5 (purple) for predicted numbers to differentiate from official results
+    return "bg-[hsl(var(--chart-5))] text-primary-foreground"; 
   };
 
   return (
@@ -89,4 +90,3 @@ export function PredictionResultsDisplay({ predictions, isLoading }: PredictionR
     </Card>
   );
 }
-
