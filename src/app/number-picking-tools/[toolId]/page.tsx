@@ -1,6 +1,4 @@
 
-// REMOVED "use client"; 
-
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,6 +21,7 @@ import {
 } from "@/lib/totoUtils";
 import { zhCN } from "date-fns/locale";
 import { dynamicTools, type NumberPickingTool } from "@/lib/numberPickingAlgos";
+import { saveToolPrediction, type ToolPredictionInput } from "@/lib/actions";
 
 const OfficialDrawDisplay = ({ draw }: { draw: HistoricalResult }) => (
   <div className="flex flex-wrap gap-1.5 items-center">
@@ -55,7 +54,7 @@ export async function generateStaticParams() {
   }));
 }
 
-export default function SingleNumberToolPage({
+export default async function SingleNumberToolPage({ // Made async
   params,
 }: {
   params: { toolId: string };
@@ -64,12 +63,8 @@ export default function SingleNumberToolPage({
   const tool = dynamicTools.find((t) => t.id === toolId);
   const allHistoricalData: HistoricalResult[] = MOCK_HISTORICAL_DATA;
   
-  // For historical performance analysis
   const recentTenHistoricalDrawsForAnalysis: HistoricalResult[] = allHistoricalData.slice(0, 10);
-
-  // For current prediction
   const absoluteLatestTenDrawsForCurrentPrediction: HistoricalResult[] = allHistoricalData.slice(0, 10);
-
 
   if (!tool) {
     return (
@@ -89,7 +84,80 @@ export default function SingleNumberToolPage({
   }
   
   const currentPredictionNumbers = tool.algorithmFn(absoluteLatestTenDrawsForCurrentPrediction);
-  
+
+  // Array to hold promises for saving predictions
+  const savePredictionPromises: Promise<any>[] = [];
+
+  const historicalPerformances = recentTenHistoricalDrawsForAnalysis.map((targetDraw) => {
+    const originalIndex = allHistoricalData.findIndex(
+      (d) => d.drawNumber === targetDraw.drawNumber
+    );
+    if (originalIndex === -1) return null;
+
+    const precedingDrawsStartIndex = originalIndex + 1;
+    const precedingDrawsEndIndex = precedingDrawsStartIndex + 10;
+    const precedingTenDraws = allHistoricalData.slice(
+      precedingDrawsStartIndex,
+      precedingDrawsEndIndex
+    );
+
+    let predictedNumbersForTargetDraw: number[] = [];
+    if (tool.algorithmFn) {
+        predictedNumbersForTargetDraw = tool.algorithmFn(precedingTenDraws);
+    } else {
+        console.warn(`Algorithm function for tool ${tool.id} is undefined.`);
+    }
+
+    // Prepare data for saving and add promise to array
+    if (predictedNumbersForTargetDraw.length > 0) {
+      const predictionData: ToolPredictionInput = {
+        toolId: tool.id,
+        toolName: tool.name,
+        targetDrawNumber: targetDraw.drawNumber,
+        targetDrawDate: targetDraw.date,
+        predictedNumbers: predictedNumbersForTargetDraw,
+      };
+      // Asynchronously save, don't block rendering
+      saveToolPrediction(predictionData).then(result => {
+        if (!result.success) {
+          console.error(`Failed to save prediction for tool ${tool.id}, draw ${targetDraw.drawNumber}: ${result.message}`);
+        } else {
+          // console.log(`Prediction saved for tool ${tool.id}, draw ${targetDraw.drawNumber}: ${result.message}`);
+        }
+      }).catch(error => {
+        console.error(`Error in saveToolPrediction promise for tool ${tool.id}, draw ${targetDraw.drawNumber}:`, error);
+      });
+    }
+    
+
+    const hitDetails = calculateHitDetails(
+      predictedNumbersForTargetDraw,
+      targetDraw
+    );
+    const hitRate =
+      targetDraw.numbers.length > 0 &&
+      predictedNumbersForTargetDraw.length > 0
+        ? (hitDetails.mainHitCount /
+            Math.min(
+              targetDraw.numbers.length,
+              predictedNumbersForTargetDraw.length
+            )) *
+          100
+        : 0;
+    const hasAnyHit =
+      hitDetails.mainHitCount > 0 ||
+      hitDetails.matchedAdditionalNumberDetails.matched;
+
+    return {
+      targetDraw,
+      predictedNumbersForTargetDraw,
+      hitDetails,
+      hitRate,
+      hasAnyHit,
+    };
+  }).filter(Boolean); // Filter out nulls if any (though originalIndex should always be found)
+
+
   return (
     <div className="container mx-auto px-4 py-8 md:px-6 md:py-12">
       <div className="mb-6">
@@ -125,47 +193,11 @@ export default function SingleNumberToolPage({
             <h4 className="text-md font-semibold mb-3">
               历史开奖动态预测表现 (最近10期):
             </h4>
-            {recentTenHistoricalDrawsForAnalysis.length > 0 ? (
+            {historicalPerformances.length > 0 ? (
               <ScrollArea className="h-[calc(100vh-500px)] rounded-md border p-3 space-y-4 bg-background/50">
-                {recentTenHistoricalDrawsForAnalysis.map((targetDraw) => {
-                  const originalIndex = allHistoricalData.findIndex(
-                    (d) => d.drawNumber === targetDraw.drawNumber
-                  );
-                  if (originalIndex === -1) return null;
-
-                  const precedingDrawsStartIndex = originalIndex + 1;
-                  const precedingDrawsEndIndex = precedingDrawsStartIndex + 10;
-                  const precedingTenDraws = allHistoricalData.slice(
-                    precedingDrawsStartIndex,
-                    precedingDrawsEndIndex
-                  );
-
-                  let predictedNumbersForTargetDraw: number[] = [];
-                  if (tool.algorithmFn) {
-                      predictedNumbersForTargetDraw = tool.algorithmFn(precedingTenDraws);
-                  } else {
-                      console.warn(`Algorithm function for tool ${tool.id} is undefined.`);
-                  }
-
-
-                  const hitDetails = calculateHitDetails(
-                    predictedNumbersForTargetDraw,
-                    targetDraw
-                  );
-                  const hitRate =
-                    targetDraw.numbers.length > 0 &&
-                    predictedNumbersForTargetDraw.length > 0
-                      ? (hitDetails.mainHitCount /
-                          Math.min(
-                            targetDraw.numbers.length,
-                            predictedNumbersForTargetDraw.length
-                          )) *
-                        100
-                      : 0;
-                  const hasAnyHit =
-                    hitDetails.mainHitCount > 0 ||
-                    hitDetails.matchedAdditionalNumberDetails.matched;
-
+                {historicalPerformances.map((performance) => {
+                  if (!performance) return null;
+                  const { targetDraw, predictedNumbersForTargetDraw, hitDetails, hitRate, hasAnyHit } = performance;
                   return (
                     <div
                       key={`${tool.id}-${targetDraw.drawNumber}`}

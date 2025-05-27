@@ -1,8 +1,11 @@
+
 "use server";
 
 import { generateNumberCombinations as genkitGenerateNumberCombinations } from "@/ai/flows/generate-number-combinations";
 import type { GenerateNumberCombinationsInput, GenerateNumberCombinationsOutput } from "@/ai/flows/generate-number-combinations";
-import type { WeightedCriterion } from "./types";
+import type { WeightedCriterion, HistoricalResult } from "./types";
+import { db } from "./firebase";
+import { collection, addDoc, serverTimestamp, query, where, getDocs, limit } from "firebase/firestore";
 
 export async function generateTotoPredictions(
   historicalDataString: string,
@@ -27,11 +30,9 @@ export async function generateTotoPredictions(
       }
     });
     
-    // Add default criteria if none are provided to prevent AI errors
     if (Object.keys(weightedCriteria).length === 0) {
-        weightedCriteria['generalBalance'] = 0.5; // Default criteria
+        weightedCriteria['generalBalance'] = 0.5; 
     }
-
 
     const input: GenerateNumberCombinationsInput = {
       historicalData: historicalDataString || "No historical data provided.",
@@ -47,16 +48,14 @@ export async function generateTotoPredictions(
         return { error: "AI did not return valid combinations." };
     }
 
-    // Validate combinations
     const validCombinations = result.combinations.filter(combo => 
       Array.isArray(combo) &&
-      combo.length > 0 && // Ensure combo is not empty
+      combo.length > 0 && 
       combo.every(num => typeof num === 'number' && num >= 1 && num <= 49) &&
-      new Set(combo).size === combo.length // Ensure no duplicates
+      new Set(combo).size === combo.length 
     );
 
     if (validCombinations.length === 0 && result.combinations.length > 0) {
-        // This case means AI returned combinations, but they were malformed.
         return { error: "AI returned malformed combinations. Please try adjusting parameters." };
     }
     
@@ -65,5 +64,47 @@ export async function generateTotoPredictions(
   } catch (error) {
     console.error("Error generating TOTO predictions:", error);
     return { error: error instanceof Error ? error.message : "An unknown error occurred during prediction." };
+  }
+}
+
+export interface ToolPredictionInput {
+  toolId: string;
+  toolName: string;
+  targetDrawNumber: number;
+  targetDrawDate: string;
+  predictedNumbers: number[];
+}
+
+export async function saveToolPrediction(
+  data: ToolPredictionInput
+): Promise<{ success: boolean; message: string; predictionId?: string }> {
+  try {
+    const toolPredictionsCol = collection(db, "toolPredictions");
+
+    // Check if a prediction for this tool and target draw already exists
+    const q = query(
+      toolPredictionsCol,
+      where("toolId", "==", data.toolId),
+      where("targetDrawNumber", "==", data.targetDrawNumber),
+      limit(1)
+    );
+    const querySnapshot = await getDocs(q);
+
+    if (!querySnapshot.empty) {
+      // Prediction already exists
+      return { success: true, message: "Prediction already exists for this tool and draw.", predictionId: querySnapshot.docs[0].id };
+    }
+
+    // Add new prediction
+    const docRef = await addDoc(toolPredictionsCol, {
+      ...data,
+      createdAt: serverTimestamp(),
+    });
+    console.log("Tool prediction saved with ID: ", docRef.id, "for tool:", data.toolId, "draw:", data.targetDrawNumber);
+    return { success: true, message: "Tool prediction saved successfully.", predictionId: docRef.id };
+  } catch (error) {
+    console.error("Error saving tool prediction to Firestore:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return { success: false, message: `Failed to save tool prediction: ${errorMessage}` };
   }
 }
