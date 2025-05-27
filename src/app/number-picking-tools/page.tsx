@@ -31,7 +31,7 @@ import {
   algoLuckyDipDeterministic,
   type NumberPickingTool as DynamicNumberPickingTool,
 } from "@/lib/numberPickingAlgos";
-import { useState } from "react"; // Import useState
+import { useState } from "react";
 
 
 const dynamicTools: DynamicNumberPickingTool[] = [
@@ -113,7 +113,9 @@ const OfficialDrawDisplay = ({ draw }: { draw: HistoricalResult }) => (
 
 export default function NumberPickingToolsPage() {
   const allHistoricalData: HistoricalResult[] = MOCK_HISTORICAL_DATA; // Already sorted descending by drawNumber
-  const [activeToolId, setActiveToolId] = useState<string>(""); // State for active accordion item
+  const [activeToolId, setActiveToolId] = useState<string>(""); 
+
+  const recentTenHistoricalDraws = allHistoricalData.slice(0, 10);
 
   return (
     <div className="container mx-auto px-4 py-8 md:px-6 md:py-12">
@@ -133,7 +135,7 @@ export default function NumberPickingToolsPage() {
             选号工具箱 (动态预测)
           </CardTitle>
           <CardDescription>
-            探索多种选号工具。展开工具查看其算法描述，并对照历史开奖结果分析其动态预测表现。每个工具预测的号码数量可能不同 (1-24个)。预测结果基于历史数据确定性生成。
+            探索多种选号工具。展开工具查看其算法描述，并对照最近10期历史开奖结果分析其动态预测表现。每个工具预测的号码数量可能不同 (1-24个)。预测结果基于历史数据确定性生成。
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -152,21 +154,25 @@ export default function NumberPickingToolsPage() {
                 <AccordionContent className="pt-2 px-4 pb-4">
                   <p className="text-sm text-muted-foreground mb-3">{tool.description}</p>
                   
-                  {activeToolId === tool.id && ( // Only render content if this accordion is active
+                  {activeToolId === tool.id && ( 
                     <>
-                      <h4 className="text-sm font-semibold mb-2 mt-4">历史开奖动态预测表现:</h4>
-                      {allHistoricalData.length > 0 ? (
+                      <h4 className="text-sm font-semibold mb-2 mt-4">历史开奖动态预测表现 (最近10期):</h4>
+                      {recentTenHistoricalDraws.length > 0 ? (
                         <ScrollArea className="h-[400px] border rounded-md p-3 space-y-4 bg-background/50">
-                          {allHistoricalData.map((targetDraw, index) => {
-                            const precedingDrawsStartIndex = index + 1;
+                          {recentTenHistoricalDraws.map((targetDraw, localIndex) => {
+                            // Find the original index in allHistoricalData to correctly slice preceding draws
+                            const originalIndex = allHistoricalData.findIndex(d => d.drawNumber === targetDraw.drawNumber);
+                            if (originalIndex === -1) return null; // Should not happen
+
+                            const precedingDrawsStartIndex = originalIndex + 1;
                             const precedingDrawsEndIndex = precedingDrawsStartIndex + 10; 
                             const precedingTenDraws = allHistoricalData.slice(precedingDrawsStartIndex, precedingDrawsEndIndex);
 
                             let predictedNumbersForTargetDraw: number[] = [];
-                            if (tool.id === "dynamicLastDrawRepeat" && index >= allHistoricalData.length -1) {
-                               // Not enough data for last draw repeat for the last item
-                            } else if (tool.id === "dynamicSecondLastDrawRepeat" && index >= allHistoricalData.length - 2) {
-                               // Not enough data for second last draw repeat for the last two items
+                            if (tool.id === "dynamicLastDrawRepeat" && originalIndex >= allHistoricalData.length -1) {
+                               // Not enough data for last draw repeat for the last item in full list
+                            } else if (tool.id === "dynamicSecondLastDrawRepeat" && originalIndex >= allHistoricalData.length - 2) {
+                               // Not enough data for second last draw repeat for the last two items in full list
                             } else {
                                predictedNumbersForTargetDraw = tool.algorithmFn(precedingTenDraws);
                             }
