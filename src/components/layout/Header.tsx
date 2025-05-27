@@ -16,11 +16,9 @@ import {
 import { Separator } from "@/components/ui/separator";
 
 // Props are no longer needed since view switching is handled by navigation or local state
-interface HeaderProps {
-  onShowAllResults?: () => void; // Kept as optional for now, but can be removed if not used
-}
+interface HeaderProps {}
 
-export function Header({ onShowAllResults }: HeaderProps) {
+export function Header({}: HeaderProps) {
   const menuItems = [
     { label: "首页", icon: Home, href: "/" },
     { label: "开奖查询", icon: Gift, href: "/historical-results" },
@@ -56,11 +54,11 @@ export function Header({ onShowAllResults }: HeaderProps) {
             </Button>
           </SheetTrigger>
           <SheetContent side="right" className="w-[250px] sm:w-[300px] bg-card text-card-foreground">
-            <SheetHeader className="mb-6 sr-only">
-              {/* <SheetTitle className="sr-only">主菜单</SheetTitle> */}
+            <SheetHeader className="mb-6 sr-only"> {/* Make header visually hidden */}
+              <SheetTitle className="sr-only">主菜单</SheetTitle> {/* Make title visually hidden */}
               <SheetDescription className="sr-only">
                 选择一个选项以继续。
-              </SheetDescription>
+              </SheetDescription> {/* Make description visually hidden */}
             </SheetHeader>
             <nav className="flex flex-col space-y-2">
               {menuItems.map((item, index) => (
