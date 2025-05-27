@@ -4,7 +4,7 @@
 import { generateNumberCombinations as genkitGenerateNumberCombinations } from "@/ai/flows/generate-number-combinations";
 import type { GenerateNumberCombinationsInput, GenerateNumberCombinationsOutput } from "@/ai/flows/generate-number-combinations";
 import type { WeightedCriterion, HistoricalResult } from "./types";
-import { db } from "./firebase";
+import { db } from "./firebase"; // Ensure db is correctly initialized
 import { collection, addDoc, serverTimestamp, query, where, getDocs, limit } from "firebase/firestore";
 
 export async function generateTotoPredictions(
@@ -78,10 +78,16 @@ export interface ToolPredictionInput {
 export async function saveToolPrediction(
   data: ToolPredictionInput
 ): Promise<{ success: boolean; message: string; predictionId?: string }> {
+  console.log("[SAVE_TOOL_PREDICTION] Attempting to save prediction:", JSON.stringify(data, null, 2));
+  if (!db) {
+    console.error("[SAVE_TOOL_PREDICTION] Firestore 'db' instance is not initialized.");
+    return { success: false, message: "Firestore 'db' instance is not initialized."};
+  }
   try {
     const toolPredictionsCol = collection(db, "toolPredictions");
 
     // Check if a prediction for this tool and target draw already exists
+    console.log(`[SAVE_TOOL_PREDICTION] Checking for existing prediction for toolId: ${data.toolId}, targetDrawNumber: ${data.targetDrawNumber}`);
     const q = query(
       toolPredictionsCol,
       where("toolId", "==", data.toolId),
@@ -91,19 +97,22 @@ export async function saveToolPrediction(
     const querySnapshot = await getDocs(q);
 
     if (!querySnapshot.empty) {
-      // Prediction already exists
-      return { success: true, message: "Prediction already exists for this tool and draw.", predictionId: querySnapshot.docs[0].id };
+      const existingDocId = querySnapshot.docs[0].id;
+      console.log(`[SAVE_TOOL_PREDICTION] Prediction already exists for toolId: ${data.toolId}, targetDrawNumber: ${data.targetDrawNumber}. Doc ID: ${existingDocId}`);
+      return { success: true, message: "Prediction already exists for this tool and draw.", predictionId: existingDocId };
     }
 
     // Add new prediction
+    console.log(`[SAVE_TOOL_PREDICTION] No existing prediction found. Adding new document for toolId: ${data.toolId}, targetDrawNumber: ${data.targetDrawNumber}`);
     const docRef = await addDoc(toolPredictionsCol, {
       ...data,
       createdAt: serverTimestamp(),
     });
-    console.log("Tool prediction saved with ID: ", docRef.id, "for tool:", data.toolId, "draw:", data.targetDrawNumber);
+    console.log(`[SAVE_TOOL_PREDICTION] Tool prediction saved successfully with ID: ${docRef.id} for tool: ${data.toolId}, draw: ${data.targetDrawNumber}`);
     return { success: true, message: "Tool prediction saved successfully.", predictionId: docRef.id };
-  } catch (error) {
-    console.error("Error saving tool prediction to Firestore:", error);
+  } catch (error)
+ {
+    console.error("[SAVE_TOOL_PREDICTION] Error saving tool prediction to Firestore:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return { success: false, message: `Failed to save tool prediction: ${errorMessage}` };
   }
