@@ -1,5 +1,5 @@
 
-"use client";
+// REMOVED "use client"; 
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,7 @@ import {
 } from "@/lib/totoUtils";
 import { zhCN } from "date-fns/locale";
 import { dynamicTools, type NumberPickingTool } from "@/lib/numberPickingAlgos";
-import { useEffect, useState } from "react";
+// REMOVED: import { useEffect, useState } from "react";
 
 const OfficialDrawDisplay = ({ draw }: { draw: HistoricalResult }) => (
   <div className="flex flex-wrap gap-1.5 items-center">
@@ -50,8 +50,6 @@ const OfficialDrawDisplay = ({ draw }: { draw: HistoricalResult }) => (
   </div>
 );
 
-// This function tells Next.js which `toolId`s are valid
-// It should be defined at the top level of the module, not inside the component.
 export async function generateStaticParams() {
   return dynamicTools.map((tool) => ({
     toolId: tool.id,
@@ -64,27 +62,16 @@ export default function SingleNumberToolPage({
   params: { toolId: string };
 }) {
   const { toolId } = params;
-  const [tool, setTool] = useState<NumberPickingTool | undefined>(undefined);
+  const tool = dynamicTools.find((t) => t.id === toolId);
   const allHistoricalData: HistoricalResult[] = MOCK_HISTORICAL_DATA;
-  const [recentTenHistoricalDraws, setRecentTenHistoricalDraws] = useState<
-    HistoricalResult[]
-  >([]);
+  const recentTenHistoricalDraws: HistoricalResult[] = allHistoricalData.slice(0, 10);
 
-  useEffect(() => {
-    const foundTool = dynamicTools.find((t) => t.id === toolId);
-    setTool(foundTool);
-    // Determine the 10 most recent historical draws for display
-    setRecentTenHistoricalDraws(allHistoricalData.slice(0, 10));
-  }, [toolId, allHistoricalData]);
-
-  if (tool === undefined) { // Check for undefined specifically for initial state or not found
-    // This can briefly show if tool takes a moment to be found by useEffect
-    // For a truly "not found" state after useEffect, you might want a different loading/error handling
+  if (!tool) {
     return (
         <div className="container mx-auto px-4 py-8 md:px-6 md:py-12 text-center">
           <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)]">
-            <Info className="h-12 w-12 text-muted-foreground mb-4" />
-            <p className="text-xl mb-4">正在加载工具信息或工具未找到...</p>
+            <Info className="h-12 w-12 text-destructive mb-4" />
+            <p className="text-xl mb-4">工具未找到</p>
             <Button asChild variant="outline">
               <Link href="/number-picking-tools">
                 <ArrowLeft className="mr-2 h-4 w-4" />
@@ -96,24 +83,6 @@ export default function SingleNumberToolPage({
       );
   }
   
-  if (tool === null) { // Explicitly null if not found after trying
-    return (
-      <div className="container mx-auto px-4 py-8 md:px-6 md:py-12 text-center">
-        <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)]">
-           <Info className="h-12 w-12 text-destructive mb-4" />
-          <p className="text-xl mb-4 text-destructive-foreground">工具未找到</p>
-          <Button asChild variant="outline">
-            <Link href="/number-picking-tools">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              返回工具列表
-            </Link>
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-
   return (
     <div className="container mx-auto px-4 py-8 md:px-6 md:py-12">
       <div className="mb-6">
@@ -128,7 +97,6 @@ export default function SingleNumberToolPage({
       <Card className="w-full">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-xl">
-            {/* Placeholder for potential tool icon */}
             {tool.name}
           </CardTitle>
           <CardDescription>{tool.description}</CardDescription>
