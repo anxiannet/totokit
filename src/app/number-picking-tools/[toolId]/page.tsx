@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, TrendingUp, TrendingDown, Info } from "lucide-react";
+import { ArrowLeft, TrendingUp, TrendingDown, Info, Target } from "lucide-react";
 import type { HistoricalResult } from "@/lib/types";
 import { MOCK_HISTORICAL_DATA } from "@/lib/types";
 import { NumberPickingToolDisplay } from "@/components/toto/NumberPickingToolDisplay";
@@ -23,7 +23,6 @@ import {
 } from "@/lib/totoUtils";
 import { zhCN } from "date-fns/locale";
 import { dynamicTools, type NumberPickingTool } from "@/lib/numberPickingAlgos";
-// REMOVED: import { useEffect, useState } from "react";
 
 const OfficialDrawDisplay = ({ draw }: { draw: HistoricalResult }) => (
   <div className="flex flex-wrap gap-1.5 items-center">
@@ -64,7 +63,13 @@ export default function SingleNumberToolPage({
   const { toolId } = params;
   const tool = dynamicTools.find((t) => t.id === toolId);
   const allHistoricalData: HistoricalResult[] = MOCK_HISTORICAL_DATA;
-  const recentTenHistoricalDraws: HistoricalResult[] = allHistoricalData.slice(0, 10);
+  
+  // For historical performance analysis
+  const recentTenHistoricalDrawsForAnalysis: HistoricalResult[] = allHistoricalData.slice(0, 10);
+
+  // For current prediction
+  const absoluteLatestTenDrawsForCurrentPrediction: HistoricalResult[] = allHistoricalData.slice(0, 10);
+
 
   if (!tool) {
     return (
@@ -82,6 +87,8 @@ export default function SingleNumberToolPage({
         </div>
       );
   }
+  
+  const currentPredictionNumbers = tool.algorithmFn(absoluteLatestTenDrawsForCurrentPrediction);
   
   return (
     <div className="container mx-auto px-4 py-8 md:px-6 md:py-12">
@@ -102,137 +109,151 @@ export default function SingleNumberToolPage({
           <CardDescription>{tool.description}</CardDescription>
         </CardHeader>
         <CardContent>
-          <h4 className="text-md font-semibold mb-2 mt-4">
-            历史开奖动态预测表现 (最近10期):
-          </h4>
-          {recentTenHistoricalDraws.length > 0 ? (
-            <ScrollArea className="h-[calc(100vh-400px)] rounded-md border p-3 space-y-4 bg-background/50">
-              {recentTenHistoricalDraws.map((targetDraw) => {
-                const originalIndex = allHistoricalData.findIndex(
-                  (d) => d.drawNumber === targetDraw.drawNumber
-                );
-                if (originalIndex === -1) return null;
+          <div className="mb-6">
+            <h4 className="text-md font-semibold mb-2 flex items-center gap-1.5">
+                <Target className="h-5 w-5 text-primary" />
+                当前预测号码 ({currentPredictionNumbers.length} 个):
+            </h4>
+            {currentPredictionNumbers.length > 0 ? (
+                <NumberPickingToolDisplay numbers={currentPredictionNumbers} />
+            ) : (
+                <p className="text-sm text-muted-foreground italic">此工具当前未生成号码。</p>
+            )}
+          </div>
+          
+          <div className="border-t pt-6">
+            <h4 className="text-md font-semibold mb-3">
+              历史开奖动态预测表现 (最近10期):
+            </h4>
+            {recentTenHistoricalDrawsForAnalysis.length > 0 ? (
+              <ScrollArea className="h-[calc(100vh-500px)] rounded-md border p-3 space-y-4 bg-background/50">
+                {recentTenHistoricalDrawsForAnalysis.map((targetDraw) => {
+                  const originalIndex = allHistoricalData.findIndex(
+                    (d) => d.drawNumber === targetDraw.drawNumber
+                  );
+                  if (originalIndex === -1) return null;
 
-                const precedingDrawsStartIndex = originalIndex + 1;
-                const precedingDrawsEndIndex = precedingDrawsStartIndex + 10;
-                const precedingTenDraws = allHistoricalData.slice(
-                  precedingDrawsStartIndex,
-                  precedingDrawsEndIndex
-                );
+                  const precedingDrawsStartIndex = originalIndex + 1;
+                  const precedingDrawsEndIndex = precedingDrawsStartIndex + 10;
+                  const precedingTenDraws = allHistoricalData.slice(
+                    precedingDrawsStartIndex,
+                    precedingDrawsEndIndex
+                  );
 
-                let predictedNumbersForTargetDraw: number[] = [];
-                 if (tool.algorithmFn) {
-                    predictedNumbersForTargetDraw = tool.algorithmFn(precedingTenDraws);
-                } else {
-                    console.warn(`Algorithm function for tool ${tool.id} is undefined.`);
-                }
+                  let predictedNumbersForTargetDraw: number[] = [];
+                  if (tool.algorithmFn) {
+                      predictedNumbersForTargetDraw = tool.algorithmFn(precedingTenDraws);
+                  } else {
+                      console.warn(`Algorithm function for tool ${tool.id} is undefined.`);
+                  }
 
 
-                const hitDetails = calculateHitDetails(
-                  predictedNumbersForTargetDraw,
-                  targetDraw
-                );
-                const hitRate =
-                  targetDraw.numbers.length > 0 &&
-                  predictedNumbersForTargetDraw.length > 0
-                    ? (hitDetails.mainHitCount /
-                        Math.min(
-                          targetDraw.numbers.length,
-                          predictedNumbersForTargetDraw.length
-                        )) *
-                      100
-                    : 0;
-                const hasAnyHit =
-                  hitDetails.mainHitCount > 0 ||
-                  hitDetails.matchedAdditionalNumberDetails.matched;
+                  const hitDetails = calculateHitDetails(
+                    predictedNumbersForTargetDraw,
+                    targetDraw
+                  );
+                  const hitRate =
+                    targetDraw.numbers.length > 0 &&
+                    predictedNumbersForTargetDraw.length > 0
+                      ? (hitDetails.mainHitCount /
+                          Math.min(
+                            targetDraw.numbers.length,
+                            predictedNumbersForTargetDraw.length
+                          )) *
+                        100
+                      : 0;
+                  const hasAnyHit =
+                    hitDetails.mainHitCount > 0 ||
+                    hitDetails.matchedAdditionalNumberDetails.matched;
 
-                return (
-                  <div
-                    key={`${tool.id}-${targetDraw.drawNumber}`}
-                    className={`p-3 border rounded-lg ${
-                      hasAnyHit
-                        ? "border-green-500/60 bg-green-500/10"
-                        : "border-border bg-card"
-                    }`}
-                  >
-                    <div className="flex justify-between items-center mb-1.5">
-                      <p className="text-xs font-medium">
-                        目标期号:{" "}
-                        <span className="font-semibold text-primary">
-                          {targetDraw.drawNumber}
-                        </span>{" "}
-                        ({formatDateToLocale(targetDraw.date, zhCN)})
-                      </p>
-                      {predictedNumbersForTargetDraw.length > 0 &&
-                        (hasAnyHit ? (
-                          <TrendingUp className="h-4 w-4 text-green-600" />
-                        ) : (
-                          <TrendingDown className="h-4 w-4 text-red-500/80" />
-                        ))}
-                    </div>
-                    <div className="mb-1.5">
-                      <p className="text-xs text-muted-foreground mb-0.5">
-                        当期开奖号码:
-                      </p>
-                      <OfficialDrawDisplay draw={targetDraw} />
-                    </div>
-                    <div className="mb-1.5">
-                      <p className="text-xs text-muted-foreground mb-0.5">
-                        工具针对本期预测号码 ({predictedNumbersForTargetDraw.length}{" "}
-                        个):
-                      </p>
-                      {predictedNumbersForTargetDraw.length > 0 ? (
-                        <NumberPickingToolDisplay
-                          numbers={predictedNumbersForTargetDraw}
-                          historicalResultForHighlight={targetDraw}
-                        />
-                      ) : (
-                        <p className="text-xs text-muted-foreground italic">
-                          数据不足或算法未生成预测
+                  return (
+                    <div
+                      key={`${tool.id}-${targetDraw.drawNumber}`}
+                      className={`p-3 border rounded-lg ${
+                        hasAnyHit
+                          ? "border-green-500/60 bg-green-500/10"
+                          : "border-border bg-card"
+                      }`}
+                    >
+                      <div className="flex justify-between items-center mb-1.5">
+                        <p className="text-xs font-medium">
+                          目标期号:{" "}
+                          <span className="font-semibold text-primary">
+                            {targetDraw.drawNumber}
+                          </span>{" "}
+                          ({formatDateToLocale(targetDraw.date, zhCN)})
                         </p>
+                        {predictedNumbersForTargetDraw.length > 0 &&
+                          (hasAnyHit ? (
+                            <TrendingUp className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <TrendingDown className="h-4 w-4 text-red-500/80" />
+                          ))}
+                      </div>
+                      <div className="mb-1.5">
+                        <p className="text-xs text-muted-foreground mb-0.5">
+                          当期开奖号码:
+                        </p>
+                        <OfficialDrawDisplay draw={targetDraw} />
+                      </div>
+                      <div className="mb-1.5">
+                        <p className="text-xs text-muted-foreground mb-0.5">
+                          工具针对本期预测号码 ({predictedNumbersForTargetDraw.length}{" "}
+                          个):
+                        </p>
+                        {predictedNumbersForTargetDraw.length > 0 ? (
+                          <NumberPickingToolDisplay
+                            numbers={predictedNumbersForTargetDraw}
+                            historicalResultForHighlight={targetDraw}
+                          />
+                        ) : (
+                          <p className="text-xs text-muted-foreground italic">
+                            数据不足或算法未生成预测
+                          </p>
+                        )}
+                      </div>
+                      {predictedNumbersForTargetDraw.length > 0 && (
+                        <div className="text-xs space-y-0.5 text-foreground/90">
+                          <p>
+                            命中正码:{" "}
+                            <span className="font-semibold">
+                              {hitDetails.mainHitCount}
+                            </span>{" "}
+                            个
+                            {hitDetails.matchedMainNumbers.length > 0
+                              ? ` (${hitDetails.matchedMainNumbers.join(", ")})`
+                              : ""}
+                          </p>
+                          <p>
+                            特别号码 ({targetDraw.additionalNumber}):{" "}
+                            {hitDetails.matchedAdditionalNumberDetails.matched ? (
+                              <span className="font-semibold text-yellow-600">
+                                命中
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">
+                                未命中
+                              </span>
+                            )}
+                          </p>
+                          <p>
+                            正码命中率 (对比工具预测数量):{" "}
+                            <span className="font-semibold">
+                              {hitRate.toFixed(1)}%
+                            </span>
+                          </p>
+                        </div>
                       )}
                     </div>
-                    {predictedNumbersForTargetDraw.length > 0 && (
-                      <div className="text-xs space-y-0.5 text-foreground/90">
-                        <p>
-                          命中正码:{" "}
-                          <span className="font-semibold">
-                            {hitDetails.mainHitCount}
-                          </span>{" "}
-                          个
-                          {hitDetails.matchedMainNumbers.length > 0
-                            ? ` (${hitDetails.matchedMainNumbers.join(", ")})`
-                            : ""}
-                        </p>
-                        <p>
-                          特别号码 ({targetDraw.additionalNumber}):{" "}
-                          {hitDetails.matchedAdditionalNumberDetails.matched ? (
-                            <span className="font-semibold text-yellow-600">
-                              命中
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground">
-                              未命中
-                            </span>
-                          )}
-                        </p>
-                        <p>
-                          正码命中率 (对比官方正码数量):{" "}
-                          <span className="font-semibold">
-                            {hitRate.toFixed(1)}%
-                          </span>
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </ScrollArea>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              无历史数据可供分析。
-            </p>
-          )}
+                  );
+                })}
+              </ScrollArea>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                无历史数据可供分析。
+              </p>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>
