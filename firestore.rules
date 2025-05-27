@@ -4,29 +4,46 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Allow public read for historical TOTO results
+    // TOTO Historical Results
+    // Allow anyone to read historical results.
+    // Only allow writes if the user is authenticated and has an 'isAdmin' custom claim.
     match /totoResults/{drawId} {
       allow read: if true;
-      // IMPORTANT: For production, ensure only authenticated admins can write.
-      // This rule assumes your server actions for syncing run with admin privileges
-      // or that you've set up custom claims for an admin user.
       allow write: if request.auth != null && request.auth.token.isAdmin == true;
+      // Consider adding data validation here for production if needed.
     }
 
-    // toolPredictions might be read by users if you build features around them.
-    // Writes should be controlled, ideally by server actions that might have their own auth checks.
-    // For now, restricting write to admins.
-    match /toolPredictions/{docId} {
-      allow read: if true; // Or restrict if these are not meant to be public
+    // Tool Predictions (Predictions made by specific tools for historical draws)
+    // Allow anyone to read these predictions.
+    // Only allow writes if the user is authenticated and has an 'isAdmin' custom claim.
+    // (Assuming these are populated via admin actions or trusted server processes)
+    match /toolPredictions/{predictionId} {
+      allow read: if true;
       allow write: if request.auth != null && request.auth.token.isAdmin == true;
+      // Data validation should happen in the server action before writing.
     }
 
-    // Users can only read and write their own favorites list.
+    // User Favorite Tools
+    // Users can only read and write their own favorite tools document.
     match /userToolFavorites/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Default deny all other access
+    // Smart Pick AI Results
+    // Allow authenticated users to create their own smart pick results.
+    // Read access might be restricted to the user who created them, or open if desired.
+    // Update/Delete can be restricted to the user or admin.
+    match /smartPickResults/{resultId} {
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      // Example: Allow users to read their own saved smart picks
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      // Example: Allow users to delete their own, or admins to delete any
+      // allow delete: if request.auth != null && (resource.data.userId == request.auth.uid || request.auth.token.isAdmin == true);
+      // For now, keep update/delete restricted unless a specific need arises.
+      allow update, delete: if false;
+    }
+
+    // Default deny all other access to prevent unintended access
     match /{document=**} {
       allow read, write: if false;
     }

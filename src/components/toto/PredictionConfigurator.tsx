@@ -8,10 +8,10 @@ import { Card, CardFooter } from "@/components/ui/card";
 import { Wand2, Loader2, FileText, AlertCircle } from "lucide-react";
 import type { WeightedCriterion, TotoCombination } from "@/lib/types";
 import { MOCK_HISTORICAL_DATA } from "@/lib/types";
-import { generateTotoPredictions } from "@/lib/actions";
+import { generateTotoPredictions, saveSmartPickResult } from "@/lib/actions"; // Import saveSmartPickResult
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { useAuth } from '@/hooks/useAuth'; // Import useAuth
+import { useAuth } from '@/hooks/useAuth';
 
 interface PredictionConfiguratorProps {
   onPredictionsGenerated: (predictions: TotoCombination[]) => void;
@@ -19,7 +19,7 @@ interface PredictionConfiguratorProps {
   onUsageStatusChange?: (hasUsed: boolean) => void;
 }
 
-const CURRENT_DRAW_ID = "4082"; // Used for localStorage key
+const CURRENT_DRAW_ID = "4082"; // Used for localStorage key and Firestore drawId
 
 export function PredictionConfigurator({
   onPredictionsGenerated,
@@ -27,42 +27,37 @@ export function PredictionConfigurator({
   onUsageStatusChange
 }: PredictionConfiguratorProps) {
   const { toast } = useToast();
-  const { user } = useAuth(); // Get current user
-  const [luckyNumbers, setLuckyNumbers] = useState<string>("");
-  const [excludeNumbers, setExcludeNumbers] = useState<string>("");
-  const [numberOfCombinations, setNumberOfCombinations] = useState<number>(10);
-  const [weightedCriteria, setWeightedCriteria] = useState<WeightedCriterion[]>([
-    { id: crypto.randomUUID(), name: "HotNumbers", weight: 0.7 },
-    { id: crypto.randomUUID(), name: "OddEvenBalance", weight: 0.3 },
-  ]);
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [hasUsedSmartPickThisDraw, setHasUsedSmartPickThisDraw] = useState<boolean>(false);
 
   const isAdmin = user && user.email === "admin@totokit.com";
 
   useEffect(() => {
-    const usageKey = `smartPickUsed_${CURRENT_DRAW_ID}`;
-    const alreadyUsed = localStorage.getItem(usageKey) === 'true';
-
     if (isAdmin) {
       setHasUsedSmartPickThisDraw(false); // Admin can always use
-      // If alreadyUsed was true (e.g. from a non-admin session), 
-      // and onUsageStatusChange exists, call it to ensure results area might show if page reloaded.
-      if (onUsageStatusChange && alreadyUsed) {
+      // If admin might have used it before becoming admin in this session
+      if (onUsageStatusChange && localStorage.getItem(`smartPickUsed_${CURRENT_DRAW_ID}`) === 'true') {
         onUsageStatusChange(true);
       }
-    } else if (alreadyUsed) {
+      return;
+    }
+
+    const usageKey = `smartPickUsed_${CURRENT_DRAW_ID}`;
+    const alreadyUsed = localStorage.getItem(usageKey) === 'true';
+    if (alreadyUsed) {
       setHasUsedSmartPickThisDraw(true);
       if (onUsageStatusChange) {
         onUsageStatusChange(true);
       }
     }
-  }, [onUsageStatusChange, user, isAdmin]); // Add user and isAdmin to dependency array
+  }, [isAdmin, onUsageStatusChange, user]);
+
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
 
-    if (hasUsedSmartPickThisDraw && !isAdmin) { // Restriction only applies to non-admins
+    if (hasUsedSmartPickThisDraw && !isAdmin) {
       toast({
         title: "已使用",
         description: "您已使用本期免费智能选号。",
@@ -79,13 +74,14 @@ export function PredictionConfigurator({
 
     const latestTenResults = MOCK_HISTORICAL_DATA.slice(0, 10);
     const historicalDataString = JSON.stringify(latestTenResults);
+    const weightedCriteria: WeightedCriterion[] = [{ id: "default", name: "GeneralBalance", weight: 0.5 }]; // Default criteria
 
     const result = await generateTotoPredictions(
       historicalDataString,
       weightedCriteria,
-      luckyNumbers,
-      excludeNumbers,
-      numberOfCombinations
+      "", // luckyNumbersInput - empty as UI removed
+      "", // excludeNumbersInput - empty as UI removed
+      10  // numberOfCombinations - default to 10
     );
 
     setIsLoading(false);
@@ -113,12 +109,30 @@ export function PredictionConfigurator({
       }
       onPredictionsGenerated(result.combinations as TotoCombination[]);
 
-      if (!isAdmin) { // Only set localStorage and usage flag for non-admins
+      // Save to Firestore
+      const smartPickData = {
+        userId: user ? user.uid : null,
+        drawId: CURRENT_DRAW_ID,
+        combinations: result.combinations as TotoCombination[],
+      };
+      
+      saveSmartPickResult(smartPickData)
+        .then(saveRes => {
+          if (saveRes.success) {
+            toast({ title: "选号已保存", description: "您的智能选号结果已成功保存到云端。" });
+          } else {
+            toast({ title: "保存失败", description: `无法保存选号结果：${saveRes.message || '未知错误'}`, variant: "destructive"});
+          }
+        })
+        .catch(err => {
+           toast({ title: "保存出错", description: `保存选号结果时发生错误：${err.message || '未知错误'}`, variant: "destructive"});
+        });
+
+
+      if (!isAdmin) {
         const usageKey = `smartPickUsed_${CURRENT_DRAW_ID}`;
         localStorage.setItem(usageKey, 'true');
         setHasUsedSmartPickThisDraw(true);
-        // onUsageStatusChange might have already been called true when loading started,
-        // but calling it again here is harmless.
         if (onUsageStatusChange) { 
           onUsageStatusChange(true);
         }
@@ -152,7 +166,7 @@ export function PredictionConfigurator({
           </div>
         </CardFooter>
       </form>
-      {hasUsedSmartPickThisDraw && !isAdmin && ( // Show alert only for non-admins who have used their pick
+      {hasUsedSmartPickThisDraw && !isAdmin && (
         <div className="p-4 pt-0 text-sm">
           <Alert>
             <AlertCircle className="h-4 w-4" />

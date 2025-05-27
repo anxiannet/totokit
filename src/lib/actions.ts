@@ -3,8 +3,8 @@
 
 import { generateNumberCombinations as genkitGenerateNumberCombinations } from "@/ai/flows/generate-number-combinations";
 import type { GenerateNumberCombinationsInput, GenerateNumberCombinationsOutput } from "@/ai/flows/generate-number-combinations";
-import type { WeightedCriterion, HistoricalResult } from "./types";
-import { db } from "./firebase"; // ensure db is correctly initialized for client SDK
+import type { WeightedCriterion, HistoricalResult, TotoCombination } from "./types";
+import { db } from "./firebase";
 import { collection, addDoc, serverTimestamp, query, where, getDocs, limit, doc, writeBatch, runTransaction, arrayUnion, arrayRemove, getDoc } from "firebase/firestore";
 
 export async function generateTotoPredictions(
@@ -151,7 +151,6 @@ export async function syncHistoricalResultsToFirestore(
     let specificMessage = "同步到 Firestore 失败: ";
     if (error instanceof Error) {
       specificMessage += error.message;
-      // Check for Firebase specific error code for permission denied
       if ((error as any).code === 'permission-denied' || (error as any).code === 'PERMISSION_DENIED') {
         specificMessage += " (Firestore权限被拒绝。请确认管理员声明已在客户端和服务端生效，且Firestore规则配置正确。管理员用户可能需要重新登录以刷新其ID令牌。) ";
       }
@@ -228,5 +227,32 @@ export async function toggleFavoriteTool(
     console.error("Error toggling favorite tool:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return { success: false, favorited: false, message: `操作失败: ${errorMessage}` };
+  }
+}
+
+interface SmartPickResultInput {
+  userId: string | null;
+  drawId: string;
+  combinations: TotoCombination[];
+}
+
+export async function saveSmartPickResult(
+  data: SmartPickResultInput
+): Promise<{ success: boolean; message?: string; docId?: string }> {
+  if (!db) {
+    console.error("[SAVE_SMART_PICK] Firestore 'db' instance is not initialized.");
+    return { success: false, message: "Firestore 'db' instance is not initialized." };
+  }
+  try {
+    const docRef = await addDoc(collection(db, "smartPickResults"), {
+      ...data,
+      createdAt: serverTimestamp(),
+    });
+    console.log(`[SAVE_SMART_PICK] Smart pick result saved successfully with ID: ${docRef.id} for draw ${data.drawId}, user: ${data.userId || 'anonymous'}`);
+    return { success: true, message: "智能选号结果已保存。", docId: docRef.id };
+  } catch (error) {
+    console.error("[SAVE_SMART_PICK] Error saving smart pick result to Firestore:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return { success: false, message: `保存智能选号结果失败: ${errorMessage}` };
   }
 }
