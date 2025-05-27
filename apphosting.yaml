@@ -5,3 +5,30 @@ runConfig:
   # Increase this value if you'd like to automatically spin up
   # more instances in response to increased traffic.
   maxInstances: 1
+env:
+  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    value: totokitcom.firebaseapp.com
+    availability:
+      - BUILD
+      - RUNTIME
+      
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    secret: totokitAPIkey
+
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: totokitcom.firebaseapp.com
+
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: totokitcom
+
+  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    value: 941511793608
+
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: 1:941511793608:web:5eda0475b800ecf6bcfefd
+
+  - variable: NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+    value: G-8TTZVXJR4W
+
+  - variable: GOOGLE_API_KEY
+    value: AIzaSyAgche4LtWWILknsTmsb9MtcsqdBfsu2fk
