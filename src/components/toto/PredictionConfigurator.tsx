@@ -1,12 +1,13 @@
 
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardFooter } from "@/components/ui/card";
-import { Wand2, Loader2 } from "lucide-react";
-import type { WeightedCriterion, TotoCombination, HistoricalResult } from "@/lib/types"; // Added HistoricalResult
-import { MOCK_HISTORICAL_DATA } from "@/lib/types"; // Added MOCK_HISTORICAL_DATA
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // Added Alert
+import { Wand2, Loader2, Info } from "lucide-react"; // Added Info
+import type { WeightedCriterion, TotoCombination } from "@/lib/types";
+import { MOCK_HISTORICAL_DATA } from "@/lib/types";
 import { generateTotoPredictions } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 
@@ -15,10 +16,10 @@ interface PredictionConfiguratorProps {
   onLoadingChange: (isLoading: boolean) => void;
 }
 
+const CURRENT_DRAW_NUMBER = "4082"; // Define the current draw number
+
 export function PredictionConfigurator({ onPredictionsGenerated, onLoadingChange }: PredictionConfiguratorProps) {
   const { toast } = useToast();
-  // Default/empty values as UI for these was removed
-  // const [historicalData, setHistoricalData] = useState<string>(""); // No longer used directly as state
   const [luckyNumbers, setLuckyNumbers] = useState<string>("");
   const [excludeNumbers, setExcludeNumbers] = useState<string>("");
   const [numberOfCombinations, setNumberOfCombinations] = useState<number>(10);
@@ -27,18 +28,37 @@ export function PredictionConfigurator({ onPredictionsGenerated, onLoadingChange
     { id: crypto.randomUUID(), name: "OddEvenBalance", weight: 0.3 },
   ]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [hasUsedSmartPickThisDraw, setHasUsedSmartPickThisDraw] = useState<boolean>(false);
+
+  useEffect(() => {
+    // Check localStorage on mount
+    const smartPickUsedKey = `smartPickUsed_${CURRENT_DRAW_NUMBER}`;
+    const alreadyUsed = localStorage.getItem(smartPickUsedKey);
+    if (alreadyUsed === 'true') {
+      setHasUsedSmartPickThisDraw(true);
+    }
+  }, []);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
+
+    if (hasUsedSmartPickThisDraw) {
+      toast({
+        title: "已使用",
+        description: "您已使用本期免费智能选号。",
+        variant: "default",
+      });
+      return;
+    }
+
     setIsLoading(true);
     onLoadingChange(true);
 
-    // Prepare historical data: latest 10 results
     const latestTenResults = MOCK_HISTORICAL_DATA.slice(0, 10);
     const historicalDataString = JSON.stringify(latestTenResults);
 
     const result = await generateTotoPredictions(
-      historicalDataString, 
+      historicalDataString,
       weightedCriteria,
       luckyNumbers,
       excludeNumbers,
@@ -56,18 +76,22 @@ export function PredictionConfigurator({ onPredictionsGenerated, onLoadingChange
       });
       onPredictionsGenerated([]);
     } else if (result.combinations) {
-        if (result.combinations.length === 0) {
-             toast({
-                title: "未生成组合",
-                description: "AI无法根据当前参数生成组合。",
-                variant: "default",
-            });
-        } else {
-            toast({
-                title: "已生成预测！",
-                description: `成功生成 ${result.combinations.length} 个组合。`,
-            });
-        }
+      if (result.combinations.length === 0) {
+        toast({
+          title: "未生成组合",
+          description: "AI无法根据当前参数生成组合。",
+          variant: "default",
+        });
+      } else {
+        toast({
+          title: "已生成预测！",
+          description: `成功生成 ${result.combinations.length} 个组合。`,
+        });
+        // Mark as used for this draw in this session
+        const smartPickUsedKey = `smartPickUsed_${CURRENT_DRAW_NUMBER}`;
+        localStorage.setItem(smartPickUsedKey, 'true');
+        setHasUsedSmartPickThisDraw(true);
+      }
       onPredictionsGenerated(result.combinations as TotoCombination[]);
     }
   };
@@ -75,8 +99,8 @@ export function PredictionConfigurator({ onPredictionsGenerated, onLoadingChange
   return (
     <Card>
       <form onSubmit={handleSubmit}>
-        <CardFooter className="pt-6">
-          <Button type="submit" className="w-full" disabled={isLoading}>
+        <CardFooter className="pt-6 flex-col items-stretch space-y-4"> {/* Use flex-col and space-y */}
+          <Button type="submit" className="w-full" disabled={isLoading || hasUsedSmartPickThisDraw}>
             {isLoading ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
@@ -84,6 +108,15 @@ export function PredictionConfigurator({ onPredictionsGenerated, onLoadingChange
             )}
             智能选号
           </Button>
+          {hasUsedSmartPickThisDraw && (
+            <Alert variant="default" className="mt-4">
+              <Info className="h-5 w-5" />
+              <AlertTitle>提示</AlertTitle>
+              <AlertDescription>
+                您已使用本期免费智能选号。如需更多组号码，请加入会员。
+              </AlertDescription>
+            </Alert>
+          )}
         </CardFooter>
       </form>
     </Card>
