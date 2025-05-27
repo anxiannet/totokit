@@ -1,8 +1,8 @@
 
 "use client";
 
-import Link from 'next/link'; // Import Link for navigation
-import { Ticket, Menu as MenuIcon, Gift, Sparkles, Layers, Briefcase, LogIn, Home } from 'lucide-react'; // Added Home icon
+import Link from 'next/link';
+import { Ticket, Menu as MenuIcon, Gift, Sparkles, Layers, Briefcase, LogIn, Home, BarChart3, ArrowLeft } from 'lucide-react'; // Added BarChart3, ArrowLeft
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -13,9 +13,17 @@ import {
   SheetClose,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { Separator } from "@/components/ui/separator";
 
-export function Header() {
+interface HeaderProps {
+  // Removed onShowAllResults as navigation is handled by Links now
+}
+
+export function Header({}: HeaderProps) { // Removed props
   const menuItems = [
+    { label: "首页", icon: Home, href: "/" },
+    { label: "开奖查询", icon: Gift, href: "/historical-results" },
+    { label: "数据分析", icon: BarChart3, href: "/analytics" }, // Added Analytics link
     { label: "热门工具", icon: Sparkles, action: () => console.log("热门工具 clicked") },
     { label: "覆盖选号", icon: Layers, action: () => console.log("覆盖选号 clicked") },
     { label: "我的工具箱", icon: Briefcase, action: () => console.log("我的工具箱 clicked") },
@@ -26,12 +34,12 @@ export function Header() {
   return (
     <header className="bg-primary text-primary-foreground shadow-md">
       <div className="container mx-auto flex h-16 items-center justify-between px-4 md:px-6">
-        <div className="flex items-center gap-2">
+        <Link href="/" className="flex items-center gap-2">
           <Ticket className="h-8 w-8" />
           <h1 className="text-2xl font-bold tracking-tight">
             TOTOKIT
           </h1>
-        </div>
+        </Link>
         <Sheet>
           <SheetTrigger asChild>
             <Button variant="ghost" size="icon" aria-label="主菜单">
@@ -46,47 +54,32 @@ export function Header() {
               </SheetDescription>
             </SheetHeader>
             <nav className="flex flex-col space-y-2">
-              {/* 首页 item - using Link */}
-              <SheetClose asChild>
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start text-base py-3 px-4 text-foreground hover:bg-accent hover:text-accent-foreground"
-                  asChild // Important for Link to work correctly with Button
-                >
-                  <Link href="/">
-                    <Home className="mr-3 h-5 w-5 text-primary" />
-                    <span>首页</span>
-                  </Link>
-                </Button>
-              </SheetClose>
-
-              {/* 开奖查询 item - using Link */}
-              <SheetClose asChild>
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start text-base py-3 px-4 text-foreground hover:bg-accent hover:text-accent-foreground"
-                  asChild // Important for Link to work correctly with Button
-                >
-                  <Link href="/historical-results">
-                    <Gift className="mr-3 h-5 w-5 text-primary" />
-                    <span>开奖查询</span>
-                  </Link>
-                </Button>
-              </SheetClose>
-
               {menuItems.map((item, index) => (
-                <SheetClose asChild key={index}>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start text-base py-3 px-4 text-foreground hover:bg-accent hover:text-accent-foreground"
-                    onClick={item.action}
-                  >
-                    <item.icon className="mr-3 h-5 w-5 text-primary" />
-                    <span>{item.label}</span>
-                  </Button>
+                <SheetClose asChild key={item.label}>
+                  {item.href ? (
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start text-base py-3 px-4 text-foreground hover:bg-accent hover:text-accent-foreground"
+                      asChild
+                    >
+                      <Link href={item.href}>
+                        <item.icon className="mr-3 h-5 w-5 text-primary" />
+                        <span>{item.label}</span>
+                      </Link>
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start text-base py-3 px-4 text-foreground hover:bg-accent hover:text-accent-foreground"
+                      onClick={item.action}
+                    >
+                      <item.icon className="mr-3 h-5 w-5 text-primary" />
+                      <span>{item.label}</span>
+                    </Button>
+                  )}
                 </SheetClose>
               ))}
-              <div className="my-2 border-t border-border" /> {/* Separator */}
+              <Separator className="my-2" />
               <SheetClose asChild>
                 <Button
                   variant="ghost"

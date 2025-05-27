@@ -4,13 +4,11 @@
 import { useState } from 'react';
 import { PredictionConfigurator } from "@/components/toto/PredictionConfigurator";
 import { PredictionResultsDisplay } from "@/components/toto/PredictionResultsDisplay";
-// Removed LatestOfficialResults import
-// Removed WinChecker import
-import { AnalyticsDashboard } from "@/components/toto/AnalyticsDashboard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Wand2, BarChart3 } from "lucide-react"; // Removed CheckSquare, Trophy
+import { Wand2 } from "lucide-react";
 import type { TotoCombination } from "@/lib/types";
 import { CurrentAndLatestDrawInfo } from "@/components/toto/CurrentAndLatestDrawInfo";
+
 
 export default function TotoForecasterPage() {
   const [predictions, setPredictions] = useState<TotoCombination[]>([]);
@@ -30,13 +28,11 @@ export default function TotoForecasterPage() {
         <CurrentAndLatestDrawInfo />
         
         <Tabs defaultValue="predict" className="w-full">
-          <TabsList className="grid w-full grid-cols-1 md:grid-cols-2 mb-6"> {/* Updated grid-cols */}
+          <TabsList className="grid w-full grid-cols-1 mb-6"> {/* Only one tab now */}
             <TabsTrigger value="predict">
               <Wand2 className="mr-2 h-4 w-4" /> AI 预测器
             </TabsTrigger>
-            <TabsTrigger value="analytics">
-              <BarChart3 className="mr-2 h-4 w-4" /> 数据分析
-            </TabsTrigger>
+            {/* Analytics TabTrigger removed */}
           </TabsList>
 
           <TabsContent value="predict" className="space-y-6">
@@ -47,9 +43,7 @@ export default function TotoForecasterPage() {
             <PredictionResultsDisplay predictions={predictions} isLoading={isGeneratingPredictions} />
           </TabsContent>
 
-          <TabsContent value="analytics">
-            <AnalyticsDashboard />
-          </TabsContent>
+          {/* Analytics TabsContent removed */}
         </Tabs>
         
       </main>
