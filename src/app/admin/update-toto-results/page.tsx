@@ -9,14 +9,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { MOCK_HISTORICAL_DATA, type HistoricalResult } from "@/lib/types";
 import { z } from "zod";
-import { ArrowLeft, CheckCircle, XCircle, Info, Loader2, ShieldAlert, RefreshCw } from "lucide-react";
+import { ArrowLeft, CheckCircle, XCircle, Info, Loader2, ShieldAlert, RefreshCw, Database } from "lucide-react";
 import Link from "next/link";
-// import { syncHistoricalResultsToFirestore } from "@/lib/actions"; // Server action no longer directly used for this
+import { syncHistoricalResultsToFirestore } from "@/lib/actions"; // Server action for direct Firestore sync
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { getIdTokenResult } from "firebase/auth";
-// import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions"; // Removed Cloud Function imports
-// import { app as firebaseApp } from "@/lib/firebase"; // Removed Cloud Function imports
 
 // Zod schema for validation
 const HistoricalResultSchema = z.object({
@@ -37,14 +35,13 @@ export default function AdminUpdateTotoResultsPage() {
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [validationStatus, setValidationStatus] = useState<"success" | "error" | "info" | null>(null);
   const [validatedJsonOutput, setValidatedJsonOutput] = useState<string | null>(null);
-  // const [isSyncing, setIsSyncing] = useState(false); // No longer needed for Cloud Function sync
+  const [isSyncingDirectly, setIsSyncingDirectly] = useState(false);
   const [isCheckingAdmin, setIsCheckingAdmin] = useState(true);
   const [isAdminByEmail, setIsAdminByEmail] = useState(false);
   const [adminClaimStatus, setAdminClaimStatus] = useState<AdminClaimStatus>("loading");
   const [isCheckingClaim, setIsCheckingClaim] = useState(false);
 
   const adminEmail = "admin@totokit.com";
-  // const functions = getFunctions(firebaseApp); // Removed Cloud Function initialization
 
   const checkAdminClaim = async (forceRefresh: boolean = false) => {
     if (!user) {
@@ -84,7 +81,6 @@ export default function AdminUpdateTotoResultsPage() {
       setIsCheckingAdmin(false);
       if (user && user.email === adminEmail) {
         setIsAdminByEmail(true);
-        // Pre-fill with current mock data from types.ts for easier editing
         setJsonData(JSON.stringify(MOCK_HISTORICAL_DATA, null, 2));
         checkAdminClaim(); 
       } else {
@@ -105,10 +101,9 @@ export default function AdminUpdateTotoResultsPage() {
       const validationResult = HistoricalResultsArraySchema.safeParse(parsedData);
 
       if (validationResult.success) {
-        // Sort data by drawNumber descending before setting for validated output
         const sortedData = [...validationResult.data].sort((a, b) => b.drawNumber - a.drawNumber);
         setValidationStatus("success");
-        setValidationMessage("JSON数据有效！请按照以下步骤更新应用数据。");
+        setValidationMessage("JSON数据有效！请按照以下步骤更新应用数据，或直接同步到Firestore。");
         setValidatedJsonOutput(JSON.stringify(sortedData, null, 2));
       } else {
         setValidationStatus("error");
@@ -121,7 +116,42 @@ export default function AdminUpdateTotoResultsPage() {
     }
   };
 
-  // Removed handleSyncToFirestoreWithCloudFunction
+  const handleSyncDirectlyToFirestore = async () => {
+    if (!validatedJsonOutput || adminClaimStatus !== "verified") {
+      toast({
+        title: "操作无法执行",
+        description: "需要有效的JSON数据和已验证的管理员权限才能同步。",
+        variant: "destructive",
+      });
+      return;
+    }
+    setIsSyncingDirectly(true);
+    try {
+      const result = await syncHistoricalResultsToFirestore(validatedJsonOutput);
+      if (result.success) {
+        toast({
+          title: "同步成功 (服务器操作)",
+          description: result.message,
+        });
+      } else {
+        toast({
+          title: "同步失败 (服务器操作)",
+          description: result.message,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error calling syncHistoricalResultsToFirestore:", error);
+      toast({
+        title: "同步出错 (服务器操作)",
+        description: error instanceof Error ? error.message : "发生未知错误。",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSyncingDirectly(false);
+    }
+  };
+
 
   if (isCheckingAdmin || authLoading) {
     return (
@@ -216,7 +246,7 @@ export default function AdminUpdateTotoResultsPage() {
         <CardHeader>
           <CardTitle>管理员：手动更新TOTO开奖结果</CardTitle>
           <CardDescription>
-            在此处粘贴新的完整TOTO开奖结果JSON数组。系统将验证数据并提供更新项目文件的说明。
+            在此处粘贴新的完整TOTO开奖结果JSON数组。系统将验证数据并提供更新项目文件的说明，或直接同步到 Firestore。
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -255,7 +285,24 @@ export default function AdminUpdateTotoResultsPage() {
 
           {validatedJsonOutput && validationStatus === "success" && (
             <div className="mt-6 space-y-4 p-4 border rounded-md bg-muted/50">
-              {/* Removed Cloud Function Sync Button and related logic */}
+              <Button 
+                onClick={handleSyncDirectlyToFirestore} 
+                disabled={isSyncingDirectly || adminClaimStatus !== 'verified'}
+                className="w-full mb-4"
+              >
+                {isSyncingDirectly ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Database className="mr-2 h-4 w-4" />
+                )}
+                同步到 Firestore (服务器操作)
+              </Button>
+              {adminClaimStatus !== 'verified' && (
+                <p className="text-xs text-red-600 text-center -mt-2 mb-3">
+                  需要已验证的管理员权限才能同步到 Firestore。
+                </p>
+              )}
+
               <h3 className="text-md font-semibold">1. 更新 `src/data/totoResults.json` 文件:</h3>
               <p className="text-sm">复制以下已验证和排序的JSON数据，并用它替换掉 <code>src/data/totoResults.json</code> 文件的全部内容。</p>
               <Textarea
@@ -299,7 +346,7 @@ export default function AdminUpdateTotoResultsPage() {
         </CardContent>
         <CardFooter>
           <p className="text-xs text-muted-foreground">
-            此页面用于辅助手动更新本地数据文件。
+            此页面用于辅助手动更新本地数据文件或通过服务器操作同步到 Firestore。
           </p>
         </CardFooter>
       </Card>
@@ -308,4 +355,3 @@ export default function AdminUpdateTotoResultsPage() {
 }
     
 
-    
