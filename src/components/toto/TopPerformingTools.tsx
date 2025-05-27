@@ -2,14 +2,17 @@
 "use client";
 
 import Link from 'next/link';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"; // Added CardFooter
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TrendingUp, ListChecks, ExternalLink } from "lucide-react";
+import { TrendingUp, ListChecks, ExternalLink, Info } from "lucide-react"; // Added Info
 import type { NumberPickingTool as DynamicNumberPickingTool } from "@/lib/numberPickingAlgos";
 import { NumberPickingToolDisplay } from "./NumberPickingToolDisplay";
 import type { TotoCombination } from '@/lib/types';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { cn } from '@/lib/utils';
+
 
 export interface TopToolDisplayInfo extends DynamicNumberPickingTool {
   averageHitRate: number;
@@ -21,78 +24,164 @@ interface TopPerformingToolsProps {
 }
 
 export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [isInteracting, setIsInteracting] = useState(false); // To prevent observer updates during programmatic scroll
+
+  // Initialize refs array
+  useEffect(() => {
+    itemRefs.current = itemRefs.current.slice(0, tools.length);
+  }, [tools.length]);
+
+  const scrollToTool = useCallback((index: number) => {
+    if (itemRefs.current[index] && scrollContainerRef.current) {
+      setIsInteracting(true);
+      itemRefs.current[index]?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'start',
+      });
+      // Allow observer to take over after scroll animation might complete
+      setTimeout(() => setIsInteracting(false), 600); // Adjust timeout as needed
+    }
+  }, []);
+
+  // Effect for tab click
+  useEffect(() => {
+    scrollToTool(activeIndex);
+  }, [activeIndex, scrollToTool]);
+
+  // Effect for IntersectionObserver
+  useEffect(() => {
+    if (isInteracting) return; // Don't observe while programmatically scrolling
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (isInteracting) return;
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+            const index = itemRefs.current.findIndex(ref => ref === entry.target);
+            if (index !== -1 && activeIndex !== index) {
+              setActiveIndex(index);
+            }
+          }
+        });
+      },
+      {
+        root: scrollContainerRef.current,
+        threshold: 0.5, // Trigger when 50% of the item is visible
+      }
+    );
+
+    itemRefs.current.forEach(ref => {
+      if (ref) observer.observe(ref);
+    });
+
+    return () => {
+      itemRefs.current.forEach(ref => {
+        if (ref) observer.unobserve(ref);
+      });
+    };
+  }, [tools, activeIndex, isInteracting]); // Add isInteracting to dependencies
+
+
   if (!tools || tools.length === 0) {
     return (
-      <Card className="mt-8">
+      <Card className="mt-6 shadow-lg">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 text-xl font-semibold">
             <TrendingUp className="h-6 w-6 text-primary" />
             近期热门工具
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">暂无热门工具数据。</p>
+        <CardContent className="flex flex-col items-center justify-center text-center p-8 min-h-[200px]">
+            <Info className="h-10 w-10 text-muted-foreground mb-3" />
+            <p className="text-muted-foreground">暂无热门工具数据或正在加载...</p>
         </CardContent>
       </Card>
     );
   }
 
   return (
-    <Card className="mt-8 shadow-lg">
+    <Card className="mt-6 shadow-lg">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-xl font-semibold">
           <TrendingUp className="h-6 w-6 text-primary" />
           近期热门工具
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        {tools.length > 0 ? (
-          <Tabs defaultValue={tools[0].id} className="w-full">
-            <TabsList className="flex overflow-x-auto whitespace-nowrap no-scrollbar mb-4 h-auto p-1">
-              {tools.map((tool) => (
-                <TabsTrigger
-                  key={tool.id}
-                  value={tool.id}
-                  className="text-xs sm:text-sm px-3 py-1.5 h-auto flex-shrink-0"
-                >
-                  {tool.name}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-            {tools.map((tool) => (
-              <TabsContent key={tool.id} value={tool.id} className="mt-2">
-                <div className="border p-4 rounded-lg bg-muted/30">
-                  <div className="flex justify-between items-center mb-3">
-                    <h4 className="text-md font-semibold">{tool.name}</h4>
-                    <Badge variant="secondary" className="flex items-center gap-1 text-xs sm:text-sm">
-                      命中率：{tool.averageHitRate.toFixed(1)}%
-                    </Badge>
-                  </div>
-
+      <CardContent className="pt-2 pb-4 px-0 sm:px-2 md:px-4"> {/* Adjusted padding */}
+        <Tabs
+          value={tools[activeIndex]?.id || tools[0]?.id}
+          onValueChange={(value) => {
+            const newIndex = tools.findIndex(tool => tool.id === value);
+            if (newIndex !== -1) {
+              setActiveIndex(newIndex);
+            }
+          }}
+          className="w-full"
+        >
+          <TabsList className="flex overflow-x-auto whitespace-nowrap no-scrollbar mb-4 h-auto p-1 mx-2 sm:mx-0 rounded-lg bg-muted">
+            {tools.map((tool, index) => (
+              <TabsTrigger
+                key={tool.id}
+                value={tool.id}
+                className={cn(
+                    "text-xs sm:text-sm px-3 py-1.5 h-auto flex-shrink-0 data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm",
+                    activeIndex === index ? "font-semibold" : ""
+                )}
+                onClick={() => setActiveIndex(index)}
+              >
+                {tool.name}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          
+          <div
+            ref={scrollContainerRef}
+            className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar px-2 sm:px-0" // Added horizontal padding for cards edge spacing
+            onScroll={() => {
+              // Basic scroll event handling if needed, but IntersectionObserver is preferred for active item detection
+            }}
+          >
+            {tools.map((tool, index) => (
+              <div
+                key={tool.id}
+                ref={el => itemRefs.current[index] = el}
+                className="min-w-full snap-start flex-shrink-0 px-2" // Added px-2 for spacing between full-width cards
+              >
+                <div className="border p-4 rounded-lg bg-card shadow-sm min-h-[150px] flex flex-col justify-between">
                   <div>
-                    <h5 className="text-sm font-medium mb-1 text-muted-foreground flex items-center gap-1">
-                      <ListChecks className="h-4 w-4"/>
-                      当前预测 ({tool.currentPrediction.length} 个):
-                    </h5>
+                    <div className="flex justify-between items-center mb-3">
+                        <h5 className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+                          <ListChecks className="h-4 w-4 text-primary/80"/>
+                          当前预测 ({tool.currentPrediction.length} 个):
+                        </h5>
+                        <Badge variant="secondary" className="text-xs sm:text-sm">
+                        平均命中率：{tool.averageHitRate.toFixed(1)}%
+                        </Badge>
+                    </div>
+                    
                     {tool.currentPrediction.length > 0 ? (
-                      <NumberPickingToolDisplay numbers={tool.currentPrediction} />
+                        <div className="mb-3">
+                         <NumberPickingToolDisplay numbers={tool.currentPrediction} />
+                        </div>
                     ) : (
-                      <p className="text-xs text-muted-foreground italic">此工具当前未生成号码</p>
+                      <p className="text-xs text-muted-foreground italic mb-3">此工具当前未生成号码</p>
                     )}
                   </div>
-                  <Button asChild variant="outline" size="sm" className="w-full mt-4 text-xs sm:text-sm">
-                      <Link href={`/number-picking-tools#${tool.id}`}>
+                  <Button asChild variant="outline" size="sm" className="w-full mt-auto text-xs sm:text-sm">
+                      <Link href={`/number-picking-tools/${tool.id}`}>
                           查看详细分析
                           <ExternalLink className="ml-1.5 h-3.5 w-3.5 sm:ml-2 sm:h-4 sm:w-4" />
                       </Link>
                    </Button>
                 </div>
-              </TabsContent>
+              </div>
             ))}
-          </Tabs>
-        ) : (
-          <p className="text-muted-foreground text-center py-4">正在加载工具信息...</p>
-        )}
+          </div>
+        </Tabs>
       </CardContent>
     </Card>
   );
