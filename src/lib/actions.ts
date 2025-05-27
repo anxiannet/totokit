@@ -246,12 +246,13 @@ export async function saveSmartPickResult(
     const transformedCombinations = data.combinations.map(combo => ({ numbers: combo }));
 
     const dataToSave = {
-      userId: data.userId, // This is request.resource.data.userId
+      userId: data.userId, 
       drawId: data.drawId,
       combinations: transformedCombinations,
       createdAt: serverTimestamp(),
     };
-    console.log("[SAVE_SMART_PICK] Attempting to save smart pick result:", JSON.stringify(dataToSave, null, 2));
+    
+    console.log(`[SAVE_SMART_PICK] Attempting to save smart pick result. Provided userId: ${data.userId}. Full data to save:`, JSON.stringify(dataToSave, null, 2));
 
     const docRef = await addDoc(collection(db, "smartPickResults"), dataToSave);
     console.log(`[SAVE_SMART_PICK] Smart pick result saved successfully with ID: ${docRef.id} for draw ${data.drawId}, user: ${data.userId || 'anonymous'}`);
@@ -262,7 +263,7 @@ export async function saveSmartPickResult(
     if (error instanceof Error) {
       errorMessage += error.message;
        if ((error as any).code === 'permission-denied' || (error as any).code === 7 || (error as any).code === 'PERMISSION_DENIED') {
-        errorMessage += " (Firestore权限不足。如果您已登录，请尝试重新登录以刷新权限。如果您未登录，请检查匿名写入规则。确保Firestore安全规则已正确部署。)";
+        errorMessage += ` (Firestore权限不足。尝试保存的userId: ${data.userId}. 如果已登录，请尝试重新登录以刷新权限。如果未登录，请检查匿名写入规则。确保Firestore安全规则已正确部署。)`;
       }
     } else {
       errorMessage += "未知错误";
@@ -270,3 +271,4 @@ export async function saveSmartPickResult(
     return { success: false, message: errorMessage };
   }
 }
+
