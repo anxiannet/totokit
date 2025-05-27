@@ -50,7 +50,7 @@ export function NumberPickingToolDisplay({
 
   return (
     <div className="mt-1 mb-1">
-      <div className="flex flex-wrap gap-1.5 items-center justify-start">
+      <div className="flex flex-wrap w-full gap-1.5 items-center justify-start">
         {numbers.map((num, index) => (
           <Badge
             key={`${num}-${index}-${Math.random()}`}
