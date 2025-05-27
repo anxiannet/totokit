@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -8,14 +9,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { MOCK_HISTORICAL_DATA, type HistoricalResult } from "@/lib/types";
 import { z } from "zod";
-import { ArrowLeft, CheckCircle, XCircle, Info, UploadCloud, Loader2, ShieldAlert, RefreshCw } from "lucide-react";
+import { ArrowLeft, CheckCircle, XCircle, Info, Loader2, ShieldAlert, RefreshCw } from "lucide-react";
 import Link from "next/link";
 // import { syncHistoricalResultsToFirestore } from "@/lib/actions"; // Server action no longer directly used for this
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { getIdTokenResult } from "firebase/auth";
-import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions"; // Import Firebase Functions
-import { app as firebaseApp } from "@/lib/firebase"; // Import initialized Firebase app
+// import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions"; // Removed Cloud Function imports
+// import { app as firebaseApp } from "@/lib/firebase"; // Removed Cloud Function imports
 
 // Zod schema for validation
 const HistoricalResultSchema = z.object({
@@ -36,14 +37,14 @@ export default function AdminUpdateTotoResultsPage() {
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [validationStatus, setValidationStatus] = useState<"success" | "error" | "info" | null>(null);
   const [validatedJsonOutput, setValidatedJsonOutput] = useState<string | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
+  // const [isSyncing, setIsSyncing] = useState(false); // No longer needed for Cloud Function sync
   const [isCheckingAdmin, setIsCheckingAdmin] = useState(true);
   const [isAdminByEmail, setIsAdminByEmail] = useState(false);
   const [adminClaimStatus, setAdminClaimStatus] = useState<AdminClaimStatus>("loading");
   const [isCheckingClaim, setIsCheckingClaim] = useState(false);
 
   const adminEmail = "admin@totokit.com";
-  const functions = getFunctions(firebaseApp); // Initialize Firebase Functions
+  // const functions = getFunctions(firebaseApp); // Removed Cloud Function initialization
 
   const checkAdminClaim = async (forceRefresh: boolean = false) => {
     if (!user) {
@@ -83,8 +84,9 @@ export default function AdminUpdateTotoResultsPage() {
       setIsCheckingAdmin(false);
       if (user && user.email === adminEmail) {
         setIsAdminByEmail(true);
+        // Pre-fill with current mock data from types.ts for easier editing
         setJsonData(JSON.stringify(MOCK_HISTORICAL_DATA, null, 2));
-        checkAdminClaim();
+        checkAdminClaim(); 
       } else {
         setIsAdminByEmail(false);
         setAdminClaimStatus("not_admin_email");
@@ -103,9 +105,10 @@ export default function AdminUpdateTotoResultsPage() {
       const validationResult = HistoricalResultsArraySchema.safeParse(parsedData);
 
       if (validationResult.success) {
+        // Sort data by drawNumber descending before setting for validated output
         const sortedData = [...validationResult.data].sort((a, b) => b.drawNumber - a.drawNumber);
         setValidationStatus("success");
-        setValidationMessage("JSON数据有效！请按照以下步骤更新应用数据或通过云函数同步到Firestore。");
+        setValidationMessage("JSON数据有效！请按照以下步骤更新应用数据。");
         setValidatedJsonOutput(JSON.stringify(sortedData, null, 2));
       } else {
         setValidationStatus("error");
@@ -118,61 +121,7 @@ export default function AdminUpdateTotoResultsPage() {
     }
   };
 
-  const handleSyncToFirestoreWithCloudFunction = async () => {
-    if (!validatedJsonOutput || validationStatus !== "success") {
-      toast({
-        title: "操作失败",
-        description: "请先验证JSON数据。",
-        variant: "destructive",
-      });
-      return;
-    }
-    if (adminClaimStatus !== "verified") {
-      toast({
-        title: "权限不足",
-        description: "您没有管理员权限来执行此操作。如果您的权限最近已更新，请尝试重新登录或刷新声明。",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsSyncing(true);
-    try {
-      const syncFunction = httpsCallable(functions, 'syncTotoResultsCallable');
-      const result = await syncFunction({ jsonDataString: validatedJsonOutput }) as HttpsCallableResult<{ success: boolean; message: string; count?: number }>;
-      
-      if (result.data.success) {
-        toast({
-          title: "同步成功 (云函数)",
-          description: result.data.message,
-        });
-      } else {
-        toast({
-          title: "同步失败 (云函数)",
-          description: result.data.message || "通过云函数同步时发生未知错误。",
-          variant: "destructive",
-        });
-      }
-    } catch (error: any) {
-      console.error("Error calling syncTotoResultsCallable Cloud Function:", error);
-      let description = "调用云函数时出错。";
-      if (error.message) {
-        description += ` 详情: ${error.message}`;
-      }
-      if (error.code === 'functions/permission-denied' || error.details?.code === 'permission-denied') {
-        description = "云函数权限被拒绝。请确保您以管理员身份登录，并且您的账户拥有最新的管理员声明。可能需要重新登录。";
-      } else if (error.code === 'functions/unauthenticated' || error.details?.code === 'unauthenticated') {
-         description = "云函数调用未通过身份验证。请确保您已登录。";
-      }
-      toast({
-        title: "同步出错 (云函数)",
-        description: description,
-        variant: "destructive",
-      });
-    } finally {
-      setIsSyncing(false);
-    }
-  };
+  // Removed handleSyncToFirestoreWithCloudFunction
 
   if (isCheckingAdmin || authLoading) {
     return (
@@ -209,55 +158,65 @@ export default function AdminUpdateTotoResultsPage() {
             返回主页
           </Link>
         </Button>
-        <Button onClick={() => checkAdminClaim(true)} variant="outline" size="sm" disabled={isCheckingClaim}>
-          {isCheckingClaim ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-          刷新并检查管理员声明
-        </Button>
+        {user && user.email === adminEmail && (
+          <Button onClick={() => checkAdminClaim(true)} variant="outline" size="sm" disabled={isCheckingClaim}>
+            {isCheckingClaim ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+            刷新并检查管理员声明
+          </Button>
+        )}
       </div>
+      
+      {user && user.email === adminEmail && (
+        <Card className="w-full mb-6">
+          <CardHeader>
+            <CardTitle>管理员状态 (用于 Firestore 操作)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isCheckingClaim ? (
+              <div className="flex items-center space-x-2">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <p>正在检查管理员声明...</p>
+              </div>
+            ) : adminClaimStatus === "verified" ? (
+              <Alert variant="default">
+                <CheckCircle className="h-5 w-5" />
+                <AlertTitle>管理员声明已验证</AlertTitle>
+                <AlertDescription>
+                  您的账户拥有执行 Firestore 操作的管理员权限。
+                </AlertDescription>
+              </Alert>
+            ) : adminClaimStatus === "not_found" ? (
+              <Alert variant="destructive">
+                <XCircle className="h-5 w-5" />
+                <AlertTitle>管理员声明未找到</AlertTitle>
+                <AlertDescription>
+                  您的账户没有管理员声明。如果您认为这是一个错误，或者您的权限最近已更新，请尝试完全退出并重新登录，然后再次刷新声明。Firestore 操作可能无法执行。
+                </AlertDescription>
+              </Alert>
+            ) : adminClaimStatus === "error" ? (
+              <Alert variant="destructive">
+                <XCircle className="h-5 w-5" />
+                <AlertTitle>检查声明时出错</AlertTitle>
+                <AlertDescription>
+                  获取您的管理员声明时发生错误。请稍后再试。Firestore 操作可能无法执行。
+                </AlertDescription>
+              </Alert>
+            ) : null }
+             {(adminClaimStatus === "not_found" || adminClaimStatus === "error") && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  注意：管理员声明验证仅与需要特定声明（如 Firestore 规则中的 `request.auth.token.isAdmin == true`）的操作相关。
+                </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
-      <Card className="w-full mb-6">
-        <CardHeader>
-          <CardTitle>管理员状态</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isCheckingClaim ? (
-            <div className="flex items-center space-x-2">
-              <Loader2 className="h-5 w-5 animate-spin" />
-              <p>正在检查管理员声明...</p>
-            </div>
-          ) : adminClaimStatus === "verified" ? (
-            <Alert variant="default">
-              <CheckCircle className="h-5 w-5" />
-              <AlertTitle>管理员声明已验证</AlertTitle>
-              <AlertDescription>
-                您的账户拥有管理员权限。
-              </AlertDescription>
-            </Alert>
-          ) : adminClaimStatus === "not_found" ? (
-            <Alert variant="destructive">
-              <XCircle className="h-5 w-5" />
-              <AlertTitle>管理员声明未找到</AlertTitle>
-              <AlertDescription>
-                您的账户没有管理员声明。如果您认为这是一个错误，或者您的权限最近已更新，请尝试完全退出并重新登录，然后再次刷新声明。
-              </AlertDescription>
-            </Alert>
-          ) : adminClaimStatus === "error" ? (
-             <Alert variant="destructive">
-              <XCircle className="h-5 w-5" />
-              <AlertTitle>检查声明时出错</AlertTitle>
-              <AlertDescription>
-                获取您的管理员声明时发生错误。请稍后再试。
-              </AlertDescription>
-            </Alert>
-          ) : null }
-        </CardContent>
-      </Card>
 
       <Card className="w-full">
         <CardHeader>
           <CardTitle>管理员：手动更新TOTO开奖结果</CardTitle>
           <CardDescription>
-            在此处粘贴新的完整TOTO开奖结果JSON数组。系统将验证数据并提供更新项目文件的说明或通过云函数同步到Firestore数据库。
+            在此处粘贴新的完整TOTO开奖结果JSON数组。系统将验证数据并提供更新项目文件的说明。
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -296,26 +255,8 @@ export default function AdminUpdateTotoResultsPage() {
 
           {validatedJsonOutput && validationStatus === "success" && (
             <div className="mt-6 space-y-4 p-4 border rounded-md bg-muted/50">
-              <div className="flex flex-col sm:flex-row gap-4">
-                 <Button 
-                    onClick={handleSyncToFirestoreWithCloudFunction} 
-                    disabled={isSyncing || adminClaimStatus !== 'verified'}
-                    className="w-full sm:w-auto"
-                    title={adminClaimStatus !== 'verified' ? '需要管理员权限才能同步' : '通过云函数同步到 Firestore'}
-                  >
-                  {isSyncing ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <UploadCloud className="mr-2 h-4 w-4" />
-                  )}
-                  通过云函数同步到 Firestore
-                </Button>
-                {adminClaimStatus !== 'verified' && (
-                    <p className="text-xs text-destructive self-center">同步功能需要已验证的管理员权限。</p>
-                )}
-              </div>
-              <hr className="my-4" />
-              <h3 className="text-md font-semibold">1. (可选) 更新 `src/data/totoResults.json` 文件:</h3>
+              {/* Removed Cloud Function Sync Button and related logic */}
+              <h3 className="text-md font-semibold">1. 更新 `src/data/totoResults.json` 文件:</h3>
               <p className="text-sm">复制以下已验证和排序的JSON数据，并用它替换掉 <code>src/data/totoResults.json</code> 文件的全部内容。</p>
               <Textarea
                 value={validatedJsonOutput}
@@ -324,7 +265,7 @@ export default function AdminUpdateTotoResultsPage() {
                 className="font-mono text-xs bg-white dark:bg-background"
               />
               
-              <h3 className="text-md font-semibold mt-4">2. (可选) 更新 `src/lib/types.ts` 文件:</h3>
+              <h3 className="text-md font-semibold mt-4">2. 更新 `src/lib/types.ts` 文件:</h3>
               <p className="text-sm">
                 打开 <code>src/lib/types.ts</code> 文件，并进行如下修改：
               </p>
@@ -335,7 +276,7 @@ export default function AdminUpdateTotoResultsPage() {
 
               <h3 className="text-md font-semibold mt-4">3. 重启应用:</h3>
               <p className="text-sm">
-                如果您修改了本地文件 (<code>types.ts</code> 或 <code>totoResults.json</code>)，为了使这些更改生效，您需要重新启动您的Next.js开发服务器 (通常是停止并重新运行 <code>npm run dev</code>) 或重新部署您的应用。通过云函数同步到Firestore的更改会实时生效。
+                为了使这些本地文件更改生效，您需要重新启动您的Next.js开发服务器 (通常是停止并重新运行 <code>npm run dev</code>) 或重新部署您的应用。
               </p>
             </div>
           )}
@@ -358,11 +299,13 @@ export default function AdminUpdateTotoResultsPage() {
         </CardContent>
         <CardFooter>
           <p className="text-xs text-muted-foreground">
-            此页面用于辅助手动更新本地数据文件或通过云函数将数据同步到Firestore。真正的权限控制依赖于Firestore安全规则和Cloud Function的权限验证。
+            此页面用于辅助手动更新本地数据文件。
           </p>
         </CardFooter>
       </Card>
     </div>
   );
 }
+    
+
     
