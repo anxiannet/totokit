@@ -9,11 +9,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { MOCK_HISTORICAL_DATA, type HistoricalResult } from "@/lib/types";
 import { z } from "zod";
-import { ArrowLeft, CheckCircle, XCircle, Info, UploadCloud, Loader2, ShieldAlert } from "lucide-react";
+import { ArrowLeft, CheckCircle, XCircle, Info, UploadCloud, Loader2, ShieldAlert, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { syncHistoricalResultsToFirestore } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/useAuth"; // Import useAuth
+import { useAuth } from "@/hooks/useAuth";
+import { getIdTokenResult } from "firebase/auth"; // Import getIdTokenResult
 
 // Zod schema for validation
 const HistoricalResultSchema = z.object({
@@ -25,8 +26,10 @@ const HistoricalResultSchema = z.object({
 
 const HistoricalResultsArraySchema = z.array(HistoricalResultSchema);
 
+type AdminClaimStatus = "loading" | "verified" | "not_found" | "error" | "not_admin_email";
+
 export default function AdminUpdateTotoResultsPage() {
-  const { user, loading: authLoading } = useAuth(); // Get user and auth loading state
+  const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const [jsonData, setJsonData] = useState("");
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
@@ -34,19 +37,51 @@ export default function AdminUpdateTotoResultsPage() {
   const [validatedJsonOutput, setValidatedJsonOutput] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isCheckingAdmin, setIsCheckingAdmin] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdminByEmail, setIsAdminByEmail] = useState(false);
+  const [adminClaimStatus, setAdminClaimStatus] = useState<AdminClaimStatus>("loading");
+  const [isCheckingClaim, setIsCheckingClaim] = useState(false);
 
   const adminEmail = "admin@totokit.com";
+
+  const checkAdminClaim = async (forceRefresh: boolean = false) => {
+    if (!user) {
+      setAdminClaimStatus("not_found"); // Or some other appropriate status
+      return;
+    }
+    setIsCheckingClaim(true);
+    try {
+      const idTokenResult = await user.getIdTokenResult(forceRefresh);
+      console.log("ID Token Claims:", idTokenResult.claims);
+      if (idTokenResult.claims.isAdmin === true) {
+        setAdminClaimStatus("verified");
+      } else {
+        setAdminClaimStatus("not_found");
+      }
+    } catch (error) {
+      console.error("Error fetching ID token result:", error);
+      setAdminClaimStatus("error");
+      toast({
+        title: "检查声明失败",
+        description: "无法获取用户声明，请稍后再试。",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCheckingClaim(false);
+    }
+  };
+
 
   useEffect(() => {
     if (!authLoading) {
       setIsCheckingAdmin(false);
       if (user && user.email === adminEmail) {
-        setIsAdmin(true);
-        // Pre-fill textarea with current mock data as a starting point
+        setIsAdminByEmail(true);
         setJsonData(JSON.stringify(MOCK_HISTORICAL_DATA, null, 2));
+        // Automatically check claims on load if user is admin by email
+        checkAdminClaim();
       } else {
-        setIsAdmin(false);
+        setIsAdminByEmail(false);
+        setAdminClaimStatus("not_admin_email");
       }
     }
   }, [user, authLoading]);
@@ -86,6 +121,15 @@ export default function AdminUpdateTotoResultsPage() {
       });
       return;
     }
+    if (adminClaimStatus !== "verified") {
+      toast({
+        title: "权限不足",
+        description: "您没有管理员权限来执行此操作。如果您的权限最近已更新，请尝试重新登录或刷新声明。",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSyncing(true);
     try {
       const result = await syncHistoricalResultsToFirestore(validatedJsonOutput);
@@ -120,7 +164,7 @@ export default function AdminUpdateTotoResultsPage() {
     );
   }
 
-  if (!isAdmin) {
+  if (!isAdminByEmail) {
     return (
       <div className="container mx-auto px-4 py-8 md:px-6 md:py-12 text-center">
         <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)]">
@@ -140,14 +184,56 @@ export default function AdminUpdateTotoResultsPage() {
 
   return (
     <div className="container mx-auto px-4 py-8 md:px-6 md:py-12">
-      <div className="mb-6">
+      <div className="mb-6 flex justify-between items-center">
         <Button asChild variant="outline" size="sm">
           <Link href="/">
             <ArrowLeft className="mr-2 h-4 w-4" />
             返回主页
           </Link>
         </Button>
+        <Button onClick={() => checkAdminClaim(true)} variant="outline" size="sm" disabled={isCheckingClaim}>
+          {isCheckingClaim ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+          刷新并检查管理员声明
+        </Button>
       </div>
+
+      <Card className="w-full mb-6">
+        <CardHeader>
+          <CardTitle>管理员状态</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isCheckingClaim ? (
+            <div className="flex items-center space-x-2">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <p>正在检查管理员声明...</p>
+            </div>
+          ) : adminClaimStatus === "verified" ? (
+            <Alert variant="default">
+              <CheckCircle className="h-5 w-5" />
+              <AlertTitle>管理员声明已验证</AlertTitle>
+              <AlertDescription>
+                您的账户拥有管理员权限。
+              </AlertDescription>
+            </Alert>
+          ) : adminClaimStatus === "not_found" ? (
+            <Alert variant="destructive">
+              <XCircle className="h-5 w-5" />
+              <AlertTitle>管理员声明未找到</AlertTitle>
+              <AlertDescription>
+                您的账户没有管理员声明。如果您认为这是一个错误，或者您的权限最近已更新，请尝试完全退出并重新登录，然后再次刷新声明。
+              </AlertDescription>
+            </Alert>
+          ) : adminClaimStatus === "error" ? (
+             <Alert variant="destructive">
+              <XCircle className="h-5 w-5" />
+              <AlertTitle>检查声明时出错</AlertTitle>
+              <AlertDescription>
+                获取您的管理员声明时发生错误。请稍后再试。
+              </AlertDescription>
+            </Alert>
+          ) : null }
+        </CardContent>
+      </Card>
 
       <Card className="w-full">
         <CardHeader>
@@ -195,8 +281,9 @@ export default function AdminUpdateTotoResultsPage() {
               <div className="flex flex-col sm:flex-row gap-4">
                  <Button 
                     onClick={handleSyncToFirestore} 
-                    disabled={isSyncing}
+                    disabled={isSyncing || adminClaimStatus !== 'verified'}
                     className="w-full sm:w-auto"
+                    title={adminClaimStatus !== 'verified' ? '需要管理员权限才能同步' : '同步到 Firestore'}
                   >
                   {isSyncing ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -205,6 +292,9 @@ export default function AdminUpdateTotoResultsPage() {
                   )}
                   同步到 Firestore 数据库
                 </Button>
+                {adminClaimStatus !== 'verified' && (
+                    <p className="text-xs text-destructive self-center">同步功能需要已验证的管理员权限。</p>
+                )}
               </div>
               <hr className="my-4" />
               <h3 className="text-md font-semibold">1. (可选) 更新 `src/data/totoResults.json` 文件:</h3>
@@ -250,10 +340,13 @@ export default function AdminUpdateTotoResultsPage() {
         </CardContent>
         <CardFooter>
           <p className="text-xs text-muted-foreground">
-            此页面用于辅助手动更新本地数据文件或将数据同步到Firestore。
+            此页面用于辅助手动更新本地数据文件或将数据同步到Firestore。真正的权限控制依赖于Firestore安全规则。
           </p>
         </CardFooter>
       </Card>
     </div>
   );
 }
+
+
+    
