@@ -50,9 +50,9 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
           <Tabs defaultValue={tools[0].id} className="w-full">
             <TabsList className="flex overflow-x-auto whitespace-nowrap no-scrollbar mb-4 h-auto p-1">
               {tools.map((tool) => (
-                <TabsTrigger 
-                  key={tool.id} 
-                  value={tool.id} 
+                <TabsTrigger
+                  key={tool.id}
+                  value={tool.id}
                   className="text-xs sm:text-sm px-3 py-1.5 h-auto flex-shrink-0"
                 >
                   {tool.name}
@@ -69,7 +69,7 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
                       {tool.averageHitRate.toFixed(1)}% 命中率
                     </Badge>
                   </div>
-                  
+
                   <div>
                     <h5 className="text-sm font-medium mb-1 text-muted-foreground flex items-center gap-1">
                       <ListChecks className="h-4 w-4"/>
