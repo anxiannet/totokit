@@ -19,8 +19,8 @@ import { NumberPickingToolDisplay } from "@/components/toto/NumberPickingToolDis
 import { calculateHitDetails, getBallColor as getOfficialBallColor, formatDateToLocale } from "@/lib/totoUtils";
 import { zhCN } from "date-fns/locale";
 import {
-  algoHotSix,
-  algoColdSix,
+  algoHotNumbers,
+  algoColdNumbers,
   algoLastDrawRepeat,
   algoSecondLastDrawRepeat,
   algoFrequentEven,
@@ -35,64 +35,64 @@ import {
 
 const dynamicTools: DynamicNumberPickingTool[] = [
   {
-    id: "dynamicHotSix",
+    id: "dynamicHotNumbers",
     name: "动态热门追踪",
-    description: "基于目标期前10期数据，统计最常出现的6个正码进行预测。",
-    algorithmFn: algoHotSix,
+    description: "基于目标期前10期数据，统计最常出现的最多10个正码进行预测 (至少1个)。",
+    algorithmFn: algoHotNumbers,
   },
   {
-    id: "dynamicColdSix",
+    id: "dynamicColdNumbers",
     name: "动态冷码挖掘",
-    description: "基于目标期前10期数据，选择出现次数最少的6个正码进行预测。",
-    algorithmFn: algoColdSix,
+    description: "基于目标期前10期数据，选择出现次数最少的最多10个正码进行预测 (至少1个)。",
+    algorithmFn: algoColdNumbers,
   },
   {
     id: "dynamicLastDrawRepeat",
-    name: "动态上期延续",
+    name: "动态上期延续 (6码)",
     description: "预测号码直接采用目标期之前一期的6个中奖正码。",
-    algorithmFn: algoLastDrawRepeat, // Note: algoLastDrawRepeat needs only the single preceding draw, effectively using a "window" of 1.
+    algorithmFn: algoLastDrawRepeat,
   },
   {
     id: "dynamicSecondLastDrawRepeat",
-    name: "动态隔期重现",
+    name: "动态隔期重现 (6码)",
     description: "预测号码直接采用目标期之前第二期的6个中奖正码。",
-    algorithmFn: algoSecondLastDrawRepeat, // Similar to above, window of 1, but two draws back.
+    algorithmFn: algoSecondLastDrawRepeat, 
   },
   {
     id: "dynamicFrequentEven",
     name: "动态偶数偏好",
-    description: "基于目标期前10期数据，选择出现频率最高的6个偶数正码。",
+    description: "基于目标期前10期数据，选择出现频率最高的最多10个偶数正码 (至少1个)。",
     algorithmFn: algoFrequentEven,
   },
   {
     id: "dynamicFrequentOdd",
     name: "动态奇数偏好",
-    description: "基于目标期前10期数据，选择出现频率最高的6个奇数正码。",
+    description: "基于目标期前10期数据，选择出现频率最高的最多10个奇数正码 (至少1个)。",
     algorithmFn: algoFrequentOdd,
   },
   {
     id: "dynamicFrequentSmallZone",
     name: "动态小号区精选",
-    description: "基于目标期前10期数据，选择1-24号范围内出现频率最高的6个号码。",
+    description: "基于目标期前10期数据，选择1-24号范围内出现频率最高的最多10个号码 (至少1个)。",
     algorithmFn: algoFrequentSmallZone,
   },
   {
     id: "dynamicFrequentLargeZone",
     name: "动态大号区精选",
-    description: "基于目标期前10期数据，选择25-49号范围内出现频率最高的6个号码。",
+    description: "基于目标期前10期数据，选择25-49号范围内出现频率最高的最多10个号码 (至少1个)。",
     algorithmFn: algoFrequentLargeZone,
   },
   {
     id: "dynamicUniquePoolRandom",
     name: "动态综合随机池",
-    description: "汇总目标期前10期所有出现过的号码（含特别号码，去重），从中随机选6个。",
+    description: "汇总目标期前10期所有出现过的号码（含特别号码，去重），从中随机选出一组号码 (6-20个，不超过池大小)。",
     algorithmFn: algoUniquePoolRandom,
   },
   {
     id: "dynamicLuckyDip",
     name: "动态幸运一搏",
-    description: "完全随机生成6个号码，不参考目标期前的历史数据。",
-    algorithmFn: algoLuckyDip, // This algo doesn't use historical data by design.
+    description: "完全随机生成一组号码 (6-24个)，不参考目标期前的历史数据。",
+    algorithmFn: algoLuckyDip,
   },
 ];
 
@@ -131,7 +131,7 @@ export default function NumberPickingToolsPage() {
             选号工具箱 (动态预测)
           </CardTitle>
           <CardDescription>
-            探索多种选号工具。展开工具查看其算法描述，并对照历史开奖结果分析其动态预测表现。
+            探索多种选号工具。展开工具查看其算法描述，并对照历史开奖结果分析其动态预测表现。每个工具预测的号码数量可能不同 (1-24个)。
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -148,17 +148,16 @@ export default function NumberPickingToolsPage() {
                   {allHistoricalData.length > 0 ? (
                     <ScrollArea className="h-[400px] border rounded-md p-3 space-y-4 bg-background/50">
                       {allHistoricalData.map((targetDraw, index) => {
-                        // Get the 10 draws preceding the targetDraw
-                        // MOCK_HISTORICAL_DATA is sorted descending, so preceding draws are at higher indices
                         const precedingDrawsStartIndex = index + 1;
                         const precedingDrawsEndIndex = index + 1 + 10;
                         const precedingTenDraws = allHistoricalData.slice(precedingDrawsStartIndex, precedingDrawsEndIndex);
 
-                        // For algoLuckyDip and potentially others, historical data might not be strictly needed or used in the same way.
-                        // The algorithms themselves handle empty or insufficient precedingDraws.
                         const predictedNumbersForTargetDraw = tool.algorithmFn(precedingTenDraws);
                         
                         const hitDetails = calculateHitDetails(predictedNumbersForTargetDraw, targetDraw);
+                        // Hit rate calculation needs to be relative to the number of predicted numbers if we want to normalize
+                        // Or, keep it simple: how many of the 6 official main numbers were hit.
+                        // For now, let's keep it based on hitting the 6 official main numbers.
                         const hitRate = targetDraw.numbers && targetDraw.numbers.length > 0 ? (hitDetails.mainHitCount / targetDraw.numbers.length) * 100 : 0;
                         const hasAnyHit = hitDetails.mainHitCount > 0 || hitDetails.matchedAdditionalNumberDetails.matched;
 
@@ -178,7 +177,7 @@ export default function NumberPickingToolsPage() {
                                <p className="text-xs text-muted-foreground mb-0.5">工具针对本期预测号码 ({predictedNumbersForTargetDraw.length} 个):</p>
                                <NumberPickingToolDisplay
                                 numbers={predictedNumbersForTargetDraw}
-                                historicalResultForHighlight={targetDraw} // Highlight hits against targetDraw
+                                historicalResultForHighlight={targetDraw}
                                />
                             </div>
                             <div className="text-xs space-y-0.5 text-foreground/90">
@@ -193,7 +192,7 @@ export default function NumberPickingToolsPage() {
                                 }
                               </p>
                               <p>
-                                正码命中率 (基于6个正码): <span className="font-semibold">{hitRate.toFixed(1)}%</span>
+                                正码命中率 (对比6个官方正码): <span className="font-semibold">{hitRate.toFixed(1)}%</span>
                               </p>
                             </div>
                           </div>
@@ -212,4 +211,3 @@ export default function NumberPickingToolsPage() {
     </div>
   );
 }
-
