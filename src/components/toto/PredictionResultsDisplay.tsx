@@ -66,7 +66,7 @@ export function PredictionResultsDisplay({ predictions, isLoading }: PredictionR
                 >
                   <div className="flex items-center gap-2">
                     <Badge variant="secondary" className="w-8 h-8 flex items-center justify-center text-sm font-semibold">
-                      {index + 1}
+                      {String.fromCharCode(65 + index)}
                     </Badge>
                     <div className="flex space-x-1 sm:space-x-1.5">
                       {combination.map((num) => (
