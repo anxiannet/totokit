@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -11,10 +10,12 @@ import { MOCK_HISTORICAL_DATA, type HistoricalResult } from "@/lib/types";
 import { z } from "zod";
 import { ArrowLeft, CheckCircle, XCircle, Info, UploadCloud, Loader2, ShieldAlert, RefreshCw } from "lucide-react";
 import Link from "next/link";
-import { syncHistoricalResultsToFirestore } from "@/lib/actions";
+// import { syncHistoricalResultsToFirestore } from "@/lib/actions"; // Server action no longer directly used for this
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { getIdTokenResult } from "firebase/auth"; // Import getIdTokenResult
+import { getIdTokenResult } from "firebase/auth";
+import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions"; // Import Firebase Functions
+import { app as firebaseApp } from "@/lib/firebase"; // Import initialized Firebase app
 
 // Zod schema for validation
 const HistoricalResultSchema = z.object({
@@ -42,10 +43,11 @@ export default function AdminUpdateTotoResultsPage() {
   const [isCheckingClaim, setIsCheckingClaim] = useState(false);
 
   const adminEmail = "admin@totokit.com";
+  const functions = getFunctions(firebaseApp); // Initialize Firebase Functions
 
   const checkAdminClaim = async (forceRefresh: boolean = false) => {
     if (!user) {
-      setAdminClaimStatus("not_found"); // Or some other appropriate status
+      setAdminClaimStatus("not_found");
       return;
     }
     setIsCheckingClaim(true);
@@ -56,6 +58,11 @@ export default function AdminUpdateTotoResultsPage() {
         setAdminClaimStatus("verified");
       } else {
         setAdminClaimStatus("not_found");
+        toast({
+          title: "管理员声明未找到",
+          description: "您的账户没有管理员声明。如果您的权限最近已更新，请尝试完全退出并重新登录，然后再次刷新声明。",
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error("Error fetching ID token result:", error);
@@ -77,7 +84,6 @@ export default function AdminUpdateTotoResultsPage() {
       if (user && user.email === adminEmail) {
         setIsAdminByEmail(true);
         setJsonData(JSON.stringify(MOCK_HISTORICAL_DATA, null, 2));
-        // Automatically check claims on load if user is admin by email
         checkAdminClaim();
       } else {
         setIsAdminByEmail(false);
@@ -99,7 +105,7 @@ export default function AdminUpdateTotoResultsPage() {
       if (validationResult.success) {
         const sortedData = [...validationResult.data].sort((a, b) => b.drawNumber - a.drawNumber);
         setValidationStatus("success");
-        setValidationMessage("JSON数据有效！请按照以下步骤更新应用数据或同步到Firestore。");
+        setValidationMessage("JSON数据有效！请按照以下步骤更新应用数据或通过云函数同步到Firestore。");
         setValidatedJsonOutput(JSON.stringify(sortedData, null, 2));
       } else {
         setValidationStatus("error");
@@ -112,7 +118,7 @@ export default function AdminUpdateTotoResultsPage() {
     }
   };
 
-  const handleSyncToFirestore = async () => {
+  const handleSyncToFirestoreWithCloudFunction = async () => {
     if (!validatedJsonOutput || validationStatus !== "success") {
       toast({
         title: "操作失败",
@@ -132,23 +138,35 @@ export default function AdminUpdateTotoResultsPage() {
 
     setIsSyncing(true);
     try {
-      const result = await syncHistoricalResultsToFirestore(validatedJsonOutput);
-      if (result.success) {
+      const syncFunction = httpsCallable(functions, 'syncTotoResultsCallable');
+      const result = await syncFunction({ jsonDataString: validatedJsonOutput }) as HttpsCallableResult<{ success: boolean; message: string; count?: number }>;
+      
+      if (result.data.success) {
         toast({
-          title: "同步成功",
-          description: result.message,
+          title: "同步成功 (云函数)",
+          description: result.data.message,
         });
       } else {
         toast({
-          title: "同步失败",
-          description: result.message,
+          title: "同步失败 (云函数)",
+          description: result.data.message || "通过云函数同步时发生未知错误。",
           variant: "destructive",
         });
       }
-    } catch (error) {
+    } catch (error: any) {
+      console.error("Error calling syncTotoResultsCallable Cloud Function:", error);
+      let description = "调用云函数时出错。";
+      if (error.message) {
+        description += ` 详情: ${error.message}`;
+      }
+      if (error.code === 'functions/permission-denied' || error.details?.code === 'permission-denied') {
+        description = "云函数权限被拒绝。请确保您以管理员身份登录，并且您的账户拥有最新的管理员声明。可能需要重新登录。";
+      } else if (error.code === 'functions/unauthenticated' || error.details?.code === 'unauthenticated') {
+         description = "云函数调用未通过身份验证。请确保您已登录。";
+      }
       toast({
-        title: "同步出错",
-        description: error instanceof Error ? error.message : "未知错误发生",
+        title: "同步出错 (云函数)",
+        description: description,
         variant: "destructive",
       });
     } finally {
@@ -239,7 +257,7 @@ export default function AdminUpdateTotoResultsPage() {
         <CardHeader>
           <CardTitle>管理员：手动更新TOTO开奖结果</CardTitle>
           <CardDescription>
-            在此处粘贴新的完整TOTO开奖结果JSON数组。系统将验证数据并提供更新项目文件的说明或同步到Firestore数据库。
+            在此处粘贴新的完整TOTO开奖结果JSON数组。系统将验证数据并提供更新项目文件的说明或通过云函数同步到Firestore数据库。
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -280,17 +298,17 @@ export default function AdminUpdateTotoResultsPage() {
             <div className="mt-6 space-y-4 p-4 border rounded-md bg-muted/50">
               <div className="flex flex-col sm:flex-row gap-4">
                  <Button 
-                    onClick={handleSyncToFirestore} 
+                    onClick={handleSyncToFirestoreWithCloudFunction} 
                     disabled={isSyncing || adminClaimStatus !== 'verified'}
                     className="w-full sm:w-auto"
-                    title={adminClaimStatus !== 'verified' ? '需要管理员权限才能同步' : '同步到 Firestore'}
+                    title={adminClaimStatus !== 'verified' ? '需要管理员权限才能同步' : '通过云函数同步到 Firestore'}
                   >
                   {isSyncing ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
                     <UploadCloud className="mr-2 h-4 w-4" />
                   )}
-                  同步到 Firestore 数据库
+                  通过云函数同步到 Firestore
                 </Button>
                 {adminClaimStatus !== 'verified' && (
                     <p className="text-xs text-destructive self-center">同步功能需要已验证的管理员权限。</p>
@@ -317,7 +335,7 @@ export default function AdminUpdateTotoResultsPage() {
 
               <h3 className="text-md font-semibold mt-4">3. 重启应用:</h3>
               <p className="text-sm">
-                如果您修改了本地文件 (<code>types.ts</code> 或 <code>totoResults.json</code>)，为了使这些更改生效，您需要重新启动您的Next.js开发服务器 (通常是停止并重新运行 <code>npm run dev</code>) 或重新部署您的应用。同步到Firestore的更改会实时生效。
+                如果您修改了本地文件 (<code>types.ts</code> 或 <code>totoResults.json</code>)，为了使这些更改生效，您需要重新启动您的Next.js开发服务器 (通常是停止并重新运行 <code>npm run dev</code>) 或重新部署您的应用。通过云函数同步到Firestore的更改会实时生效。
               </p>
             </div>
           )}
@@ -340,13 +358,11 @@ export default function AdminUpdateTotoResultsPage() {
         </CardContent>
         <CardFooter>
           <p className="text-xs text-muted-foreground">
-            此页面用于辅助手动更新本地数据文件或将数据同步到Firestore。真正的权限控制依赖于Firestore安全规则。
+            此页面用于辅助手动更新本地数据文件或通过云函数将数据同步到Firestore。真正的权限控制依赖于Firestore安全规则和Cloud Function的权限验证。
           </p>
         </CardFooter>
       </Card>
     </div>
   );
 }
-
-
     
