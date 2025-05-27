@@ -3,16 +3,10 @@
 
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
-// Inputs and Labels are no longer needed as fields are removed
-// import { Input } from "@/components/ui/input";
-// import { Label } from "@/components/ui/label";
-// import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-// Accordion and its related icons are no longer needed
-// import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-// import { PlusCircle, Trash2 } from "lucide-react";
+import { Card, CardFooter } from "@/components/ui/card";
 import { Wand2, Loader2 } from "lucide-react";
-import type { WeightedCriterion, TotoCombination } from "@/lib/types";
+import type { WeightedCriterion, TotoCombination, HistoricalResult } from "@/lib/types"; // Added HistoricalResult
+import { MOCK_HISTORICAL_DATA } from "@/lib/types"; // Added MOCK_HISTORICAL_DATA
 import { generateTotoPredictions } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 
@@ -23,8 +17,8 @@ interface PredictionConfiguratorProps {
 
 export function PredictionConfigurator({ onPredictionsGenerated, onLoadingChange }: PredictionConfiguratorProps) {
   const { toast } = useToast();
-  // These state variables will now hold default/empty values as UI is removed
-  const [historicalData, setHistoricalData] = useState<string>("");
+  // Default/empty values as UI for these was removed
+  // const [historicalData, setHistoricalData] = useState<string>(""); // No longer used directly as state
   const [luckyNumbers, setLuckyNumbers] = useState<string>("");
   const [excludeNumbers, setExcludeNumbers] = useState<string>("");
   const [numberOfCombinations, setNumberOfCombinations] = useState<number>(10);
@@ -34,29 +28,17 @@ export function PredictionConfigurator({ onPredictionsGenerated, onLoadingChange
   ]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
-  // Handlers for criteria are no longer needed if UI is removed, but logic can be kept for future
-  // const handleAddCriterion = () => {
-  //   setWeightedCriteria([...weightedCriteria, { id: crypto.randomUUID(), name: "", weight: 0.5 }]);
-  // };
-
-  // const handleRemoveCriterion = (id: string) => {
-  //   setWeightedCriteria(weightedCriteria.filter(c => c.id !== id));
-  // };
-
-  // const handleCriterionChange = (id: string, field: "name" | "weight", value: string | number) => {
-  //   setWeightedCriteria(
-  //     weightedCriteria.map(c => (c.id === id ? { ...c, [field]: field === "weight" ? Number(value) : value } : c))
-  //   );
-  // };
-
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setIsLoading(true);
     onLoadingChange(true);
 
-    // Values passed to generateTotoPredictions will be the initial/empty state values
+    // Prepare historical data: latest 10 results
+    const latestTenResults = MOCK_HISTORICAL_DATA.slice(0, 10);
+    const historicalDataString = JSON.stringify(latestTenResults);
+
     const result = await generateTotoPredictions(
-      historicalData, 
+      historicalDataString, 
       weightedCriteria,
       luckyNumbers,
       excludeNumbers,
@@ -77,7 +59,7 @@ export function PredictionConfigurator({ onPredictionsGenerated, onLoadingChange
         if (result.combinations.length === 0) {
              toast({
                 title: "未生成组合",
-                description: "AI无法根据当前参数生成组合。请尝试调整参数。", // This message might need adjustment as parameters are no longer user-configurable
+                description: "AI无法根据当前参数生成组合。",
                 variant: "default",
             });
         } else {
@@ -91,11 +73,9 @@ export function PredictionConfigurator({ onPredictionsGenerated, onLoadingChange
   };
 
   return (
-    // CardHeader and CardContent are removed
     <Card>
       <form onSubmit={handleSubmit}>
-        {/* CardContent containing Accordion and inputs is removed */}
-        <CardFooter className="pt-6"> {/* Added pt-6 to CardFooter as it's now the first visible element inside Card */}
+        <CardFooter className="pt-6">
           <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />

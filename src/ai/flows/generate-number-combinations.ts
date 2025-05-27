@@ -1,3 +1,4 @@
+
 // src/ai/flows/generate-number-combinations.ts
 'use server';
 
@@ -13,7 +14,7 @@ import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
 const GenerateNumberCombinationsInputSchema = z.object({
-  historicalData: z.string().describe('Historical TOTO results data.'),
+  historicalData: z.string().describe('Historical TOTO results data, typically a JSON string of the latest 10 results.'),
   weightedCriteria: z
     .record(z.number())
     .describe(
@@ -56,6 +57,7 @@ const generateNumberCombinationsPrompt = ai.definePrompt({
   prompt: `You are an AI TOTO number prediction expert.
 
   Based on the historical TOTO results data, and the user-defined weighted criteria, generate a ranked set of potential winning combinations.
+  Please ensure each time you are called, you generate a fresh and diverse set of combinations.
 
   Historical Data: {{{historicalData}}}
   Weighted Criteria: {{#each weightedCriteria}}{{@key}}: {{{this}}} {{/each}}
@@ -67,8 +69,8 @@ const generateNumberCombinationsPrompt = ai.definePrompt({
   Do not return an explanation.
   Ensure no duplicate numbers are in the same combination. Each number must be between 1 and 49 inclusive.
   Ensure that the total number of generated combinations matches the Number of Combinations specified.
-  Ensure that the lucky numbers are included in the generated combinations.
-  Ensure that the exclude numbers are not included in the generated combinations.
+  Ensure that the lucky numbers are included in the generated combinations if provided.
+  Ensure that the exclude numbers are not included in the generated combinations if provided.
   `,
 });
 
