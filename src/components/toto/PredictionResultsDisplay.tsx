@@ -41,7 +41,7 @@ export function PredictionResultsDisplay({ predictions, isLoading }: PredictionR
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Target className="h-6 w-6 text-primary" />
-          {/* "AI 预测" text was already removed in a previous step */}
+          AI 智能选号结果
         </CardTitle>
         {/* CardDescription removed as per request */}
       </CardHeader>
@@ -90,4 +90,3 @@ export function PredictionResultsDisplay({ predictions, isLoading }: PredictionR
     </Card>
   );
 }
-
