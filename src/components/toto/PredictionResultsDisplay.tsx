@@ -32,11 +32,7 @@ const Loader2 = (props: React.SVGProps<SVGSVGElement>) => (
 
 
 export function PredictionResultsDisplay({ predictions, isLoading }: PredictionResultsDisplayProps) {
-  // getBallColor is defined in lib/totoUtils.ts and used for official results.
-  // For predictions, we might want a consistent color, or one based on the prediction's "hotness" if available.
-  // For now, using a simple color scheme similar to official results but could be adapted.
   const getPredictionBallColor = (number: number): string => {
-    // Using a generic primary color for predicted numbers for now.
     return "bg-primary text-primary-foreground"; 
   };
 
@@ -45,11 +41,9 @@ export function PredictionResultsDisplay({ predictions, isLoading }: PredictionR
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Target className="h-6 w-6 text-primary" />
-          {/* AI 预测 text removed */}
+          {/* "AI 预测" text was already removed in a previous step */}
         </CardTitle>
-        <CardDescription>
-          由AI生成的TOTO号码组合排序。第一个组合被认为是潜力最高的。
-        </CardDescription>
+        {/* CardDescription removed as per request */}
       </CardHeader>
       <CardContent>
         {isLoading ? (
@@ -60,8 +54,7 @@ export function PredictionResultsDisplay({ predictions, isLoading }: PredictionR
         ) : predictions.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-40 text-center p-4 rounded-lg border border-dashed">
             <Info className="h-10 w-10 text-muted-foreground mb-3" />
-            <p className="text-muted-foreground font-medium">尚无可用预测。</p>
-            <p className="text-sm text-muted-foreground">配置参数并点击“生成预测号码”。</p>
+            {/* Empty state text removed as per request */}
           </div>
         ) : (
           <ScrollArea className="h-[300px] rounded-md border">

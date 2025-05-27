@@ -1,13 +1,17 @@
+
 "use client";
 
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { PlusCircle, Trash2, Wand2, Loader2 } from "lucide-react";
+// Inputs and Labels are no longer needed as fields are removed
+// import { Input } from "@/components/ui/input";
+// import { Label } from "@/components/ui/label";
+// import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+// Accordion and its related icons are no longer needed
+// import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+// import { PlusCircle, Trash2 } from "lucide-react";
+import { Wand2, Loader2 } from "lucide-react";
 import type { WeightedCriterion, TotoCombination } from "@/lib/types";
 import { generateTotoPredictions } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
@@ -19,6 +23,7 @@ interface PredictionConfiguratorProps {
 
 export function PredictionConfigurator({ onPredictionsGenerated, onLoadingChange }: PredictionConfiguratorProps) {
   const { toast } = useToast();
+  // These state variables will now hold default/empty values as UI is removed
   const [historicalData, setHistoricalData] = useState<string>("");
   const [luckyNumbers, setLuckyNumbers] = useState<string>("");
   const [excludeNumbers, setExcludeNumbers] = useState<string>("");
@@ -29,27 +34,29 @@ export function PredictionConfigurator({ onPredictionsGenerated, onLoadingChange
   ]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
-  const handleAddCriterion = () => {
-    setWeightedCriteria([...weightedCriteria, { id: crypto.randomUUID(), name: "", weight: 0.5 }]);
-  };
+  // Handlers for criteria are no longer needed if UI is removed, but logic can be kept for future
+  // const handleAddCriterion = () => {
+  //   setWeightedCriteria([...weightedCriteria, { id: crypto.randomUUID(), name: "", weight: 0.5 }]);
+  // };
 
-  const handleRemoveCriterion = (id: string) => {
-    setWeightedCriteria(weightedCriteria.filter(c => c.id !== id));
-  };
+  // const handleRemoveCriterion = (id: string) => {
+  //   setWeightedCriteria(weightedCriteria.filter(c => c.id !== id));
+  // };
 
-  const handleCriterionChange = (id: string, field: "name" | "weight", value: string | number) => {
-    setWeightedCriteria(
-      weightedCriteria.map(c => (c.id === id ? { ...c, [field]: field === "weight" ? Number(value) : value } : c))
-    );
-  };
+  // const handleCriterionChange = (id: string, field: "name" | "weight", value: string | number) => {
+  //   setWeightedCriteria(
+  //     weightedCriteria.map(c => (c.id === id ? { ...c, [field]: field === "weight" ? Number(value) : value } : c))
+  //   );
+  // };
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setIsLoading(true);
     onLoadingChange(true);
 
+    // Values passed to generateTotoPredictions will be the initial/empty state values
     const result = await generateTotoPredictions(
-      historicalData,
+      historicalData, 
       weightedCriteria,
       luckyNumbers,
       excludeNumbers,
@@ -70,7 +77,7 @@ export function PredictionConfigurator({ onPredictionsGenerated, onLoadingChange
         if (result.combinations.length === 0) {
              toast({
                 title: "未生成组合",
-                description: "AI无法根据当前参数生成组合。请尝试调整参数。",
+                description: "AI无法根据当前参数生成组合。请尝试调整参数。", // This message might need adjustment as parameters are no longer user-configurable
                 variant: "default",
             });
         } else {
@@ -84,117 +91,11 @@ export function PredictionConfigurator({ onPredictionsGenerated, onLoadingChange
   };
 
   return (
+    // CardHeader and CardContent are removed
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Wand2 className="h-6 w-6 text-primary" />
-          配置 AI 预测
-        </CardTitle>
-        <CardDescription>
-          设置参数，让人工智能生成TOTO号码组合。
-        </CardDescription>
-      </CardHeader>
       <form onSubmit={handleSubmit}>
-        <CardContent className="space-y-6">
-          <Accordion type="single" collapsible defaultValue="item-1">
-            <AccordionItem value="item-1">
-              <AccordionTrigger>基本参数</AccordionTrigger>
-              <AccordionContent className="space-y-4 pt-4">
-                <div>
-                  <Label htmlFor="luckyNumbers">幸运号码（逗号分隔）</Label>
-                  <Input
-                    id="luckyNumbers"
-                    value={luckyNumbers}
-                    onChange={(e) => setLuckyNumbers(e.target.value)}
-                    placeholder="例如：7, 18, 23"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="excludeNumbers">排除号码（逗号分隔）</Label>
-                  <Input
-                    id="excludeNumbers"
-                    value={excludeNumbers}
-                    onChange={(e) => setExcludeNumbers(e.target.value)}
-                    placeholder="例如：4, 13, 44"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="numberOfCombinations">生成组合数量</Label>
-                  <Input
-                    id="numberOfCombinations"
-                    type="number"
-                    value={numberOfCombinations}
-                    onChange={(e) => setNumberOfCombinations(Math.max(1, parseInt(e.target.value, 10)))}
-                    min="1"
-                    max="50"
-                  />
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-            <AccordionItem value="item-2">
-              <AccordionTrigger>加权标准</AccordionTrigger>
-              <AccordionContent className="space-y-4 pt-4">
-                <p className="text-sm text-muted-foreground">
-                  为AI定义标准及其权重。权重是相对的（例如，0.7强于0.3）。
-                </p>
-                {weightedCriteria.map((criterion, index) => (
-                  <div key={criterion.id} className="flex items-end gap-2 p-2 border rounded-md">
-                    <div className="flex-grow">
-                      <Label htmlFor={`criterionName-${index}`}>标准名称</Label>
-                      <Input
-                        id={`criterionName-${index}`}
-                        value={criterion.name}
-                        onChange={(e) => handleCriterionChange(criterion.id, "name", e.target.value)}
-                        placeholder="例如：热门号码加成"
-                      />
-                    </div>
-                    <div className="w-1/3">
-                      <Label htmlFor={`criterionWeight-${index}`}>权重</Label>
-                      <Input
-                        id={`criterionWeight-${index}`}
-                        type="number"
-                        step="0.1"
-                        value={criterion.weight}
-                        onChange={(e) => handleCriterionChange(criterion.id, "weight", e.target.value)}
-                        placeholder="例如：0.5"
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleRemoveCriterion(criterion.id)}
-                      aria-label="移除标准"
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>
-                ))}
-                <Button type="button" variant="outline" onClick={handleAddCriterion} className="w-full">
-                  <PlusCircle className="mr-2 h-4 w-4" /> 添加标准
-                </Button>
-              </AccordionContent>
-            </AccordionItem>
-            <AccordionItem value="item-3">
-              <AccordionTrigger>历史数据（可选）</AccordionTrigger>
-              <AccordionContent className="pt-4">
-                <Label htmlFor="historicalData">粘贴历史TOTO结果（CSV或JSON格式）</Label>
-                <Textarea
-                  id="historicalData"
-                  value={historicalData}
-                  onChange={(e) => setHistoricalData(e.target.value)}
-                  placeholder="期号,日期,号码1,号码2,号码3,号码4,号码5,号码6,附加号码&#10;3920,2024-07-15,5,12,23,31,40,49,18"
-                  rows={5}
-                  className="mt-1"
-                />
-                <p className="mt-1 text-xs text-muted-foreground">
-                  提供历史数据可以提高AI预测的准确性。如果为空，AI将使用通用模式。
-                </p>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        </CardContent>
-        <CardFooter>
+        {/* CardContent containing Accordion and inputs is removed */}
+        <CardFooter className="pt-6"> {/* Added pt-6 to CardFooter as it's now the first visible element inside Card */}
           <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
