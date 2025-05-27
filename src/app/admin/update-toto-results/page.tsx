@@ -9,10 +9,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { MOCK_HISTORICAL_DATA, type HistoricalResult } from "@/lib/types";
 import { z } from "zod";
-import { ArrowLeft, CheckCircle, XCircle, Info, UploadCloud, Loader2 } from "lucide-react";
+import { ArrowLeft, CheckCircle, XCircle, Info, UploadCloud, Loader2, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import { syncHistoricalResultsToFirestore } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth"; // Import useAuth
 
 // Zod schema for validation
 const HistoricalResultSchema = z.object({
@@ -25,18 +26,31 @@ const HistoricalResultSchema = z.object({
 const HistoricalResultsArraySchema = z.array(HistoricalResultSchema);
 
 export default function AdminUpdateTotoResultsPage() {
+  const { user, loading: authLoading } = useAuth(); // Get user and auth loading state
   const { toast } = useToast();
   const [jsonData, setJsonData] = useState("");
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [validationStatus, setValidationStatus] = useState<"success" | "error" | "info" | null>(null);
   const [validatedJsonOutput, setValidatedJsonOutput] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isCheckingAdmin, setIsCheckingAdmin] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  const adminEmail = "admin@totokit.com";
 
   useEffect(() => {
-    // Pre-fill textarea with current mock data as a starting point
-    // Or load from src/data/totoResults.json if preferred
-    setJsonData(JSON.stringify(MOCK_HISTORICAL_DATA, null, 2));
-  }, []);
+    if (!authLoading) {
+      setIsCheckingAdmin(false);
+      if (user && user.email === adminEmail) {
+        setIsAdmin(true);
+        // Pre-fill textarea with current mock data as a starting point
+        setJsonData(JSON.stringify(MOCK_HISTORICAL_DATA, null, 2));
+      } else {
+        setIsAdmin(false);
+      }
+    }
+  }, [user, authLoading]);
+
 
   const handleValidateAndPrepare = () => {
     setValidationMessage(null);
@@ -54,8 +68,8 @@ export default function AdminUpdateTotoResultsPage() {
         setValidatedJsonOutput(JSON.stringify(sortedData, null, 2));
       } else {
         setValidationStatus("error");
-        const errorIssues = validationResult.error.issues.map(issue => `路径 '${issue.path.join('.') || 'root'}': ${issue.message}`).join("\n");
-        setValidationMessage(`JSON数据无效：\n${errorIssues}`);
+        const errorIssues = validationResult.error.issues.map(issue => `路径 '${issue.path.join('.') || 'root'}': ${issue.message}`).join("\\n");
+        setValidationMessage(`JSON数据无效：\\n${errorIssues}`);
       }
     } catch (error) {
       setValidationStatus("error");
@@ -98,6 +112,31 @@ export default function AdminUpdateTotoResultsPage() {
     }
   };
 
+  if (isCheckingAdmin || authLoading) {
+    return (
+      <div className="container mx-auto flex min-h-[calc(100vh-8rem)] items-center justify-center">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="container mx-auto px-4 py-8 md:px-6 md:py-12 text-center">
+        <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)]">
+          <ShieldAlert className="h-16 w-16 text-destructive mb-6" />
+          <h1 className="text-3xl font-bold mb-4">无权访问</h1>
+          <p className="text-lg text-muted-foreground mb-6">抱歉，您没有权限访问此页面。</p>
+          <Button asChild>
+            <Link href="/">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              返回主页
+            </Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto px-4 py-8 md:px-6 md:py-12">

@@ -1,8 +1,8 @@
-// src/components/layout/Header.tsx
+
 "use client";
 
 import Link from 'next/link';
-import { Ticket, Menu as MenuIcon, Gift, Sparkles, Layers, Briefcase, LogIn, Home, ArrowLeft, ListOrdered, UserCircle, LogOut, UserPlus } from 'lucide-react';
+import { Ticket, Menu as MenuIcon, Gift, Sparkles, Layers, Briefcase, LogIn, Home, ArrowLeft, ListOrdered, UserCircle, LogOut, UserPlus, Settings } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -14,18 +14,18 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
-import { useAuth } from '@/hooks/useAuth'; // Import useAuth
-import { auth } from '@/lib/firebase'; // Import auth for signOut
+import { useAuth } from '@/hooks/useAuth';
+import { auth } from '@/lib/firebase';
 import { signOut } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
-import { useRouter } from 'next/navigation'; // Import useRouter
+import { useRouter } from 'next/navigation';
 
 interface HeaderProps {
   // No longer directly handling view switching from main page
 }
 
 export function Header({}: HeaderProps) {
-  const { user } = useAuth(); // Get user from AuthContext
+  const { user } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
 
@@ -33,7 +33,7 @@ export function Header({}: HeaderProps) {
     try {
       await signOut(auth);
       toast({ title: "已退出登录" });
-      router.push('/'); // Redirect to home after logout
+      router.push('/');
     } catch (error: any) {
       toast({ title: "退出失败", description: error.message, variant: "destructive" });
     }
@@ -44,9 +44,11 @@ export function Header({}: HeaderProps) {
     { label: "开奖查询", icon: Gift, href: "/historical-results" },
     { label: "数据分析", icon: ListOrdered, href: "/analytics" },
     { label: "选号工具", icon: Sparkles, href: "/number-picking-tools" },
-    { label: "覆盖选号", icon: Layers, action: () => console.log("覆盖选号 clicked") },
-    { label: "我的工具箱", icon: Briefcase, action: () => console.log("我的工具箱 clicked") },
+    // { label: "覆盖选号", icon: Layers, action: () => console.log("覆盖选号 clicked") },
+    // { label: "我的工具箱", icon: Briefcase, action: () => console.log("我的工具箱 clicked") },
   ];
+
+  const adminEmail = "admin@totokit.com";
 
   const authMenuItem = user
     ? { label: "退出登录", icon: LogOut, action: handleLogout }
@@ -69,7 +71,7 @@ export function Header({}: HeaderProps) {
             </Button>
           </SheetTrigger>
           <SheetContent side="right" className="w-[250px] sm:w-[300px] bg-card text-card-foreground">
-            <SheetHeader className="mb-6 sr-only">
+            <SheetHeader className="sr-only">
               <SheetTitle className="sr-only">主菜单</SheetTitle>
               <SheetDescription className="sr-only">
                 选择一个选项以继续。
@@ -83,7 +85,6 @@ export function Header({}: HeaderProps) {
                     <p className="text-sm font-medium text-foreground">
                       {user.email || "用户"}
                     </p>
-                     {/* You can add more user details here if available */}
                   </div>
                 </div>
               </div>
@@ -114,6 +115,22 @@ export function Header({}: HeaderProps) {
                   )}
                 </SheetClose>
               ))}
+
+              {user && user.email === adminEmail && (
+                <SheetClose asChild>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start text-base py-3 px-4 text-foreground hover:bg-accent hover:text-accent-foreground"
+                    asChild
+                  >
+                    <Link href="/admin/update-toto-results">
+                      <Settings className="mr-3 h-5 w-5 text-primary" />
+                      <span>管理员后台</span>
+                    </Link>
+                  </Button>
+                </SheetClose>
+              )}
+
               <Separator className="my-2" />
               <SheetClose asChild>
                 {authMenuItem.href ? (

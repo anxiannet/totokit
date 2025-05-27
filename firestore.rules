@@ -4,36 +4,31 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // TOTO Results (e.g., /totoResults/4080)
-    // - Anyone can read historical TOTO results.
-    // - Writes are handled by the `syncHistoricalResultsToFirestore` Server Action,
-    //   triggered from the admin page.
+    // Allow public read for historical TOTO results
     match /totoResults/{drawId} {
       allow read: if true;
-      // WARNING: For production, this rule is too permissive if any authenticated user can access the admin page
-      // and trigger the server action. Ideally, you should restrict this to specific admin UIDs,
-      // e.g., `allow write: if request.auth != null && request.auth.uid == "YOUR_ADMIN_UID";`
-      // Or, if using Admin SDK from a backend service for updates, client writes can be `if false;`.
-      // For now, allowing any authenticated user for the server action.
-      allow write: if request.auth != null;
+      // IMPORTANT: For production, ensure only authenticated admins can write.
+      // This rule assumes your server actions for syncing run with admin privileges
+      // or that you've set up custom claims for an admin user.
+      allow write: if request.auth != null && request.auth.token.isAdmin == true;
     }
 
-    // Tool Predictions (e.g., /toolPredictions/somePredictionId)
-    // - Predictions are saved by the `saveToolPrediction` Server Action when a user views a tool detail page.
-    // - Read access: Assuming predictions might be publicly readable for analysis or display in the future.
-    match /toolPredictions/{predictionId} {
-      allow read: if true; // Adjust if predictions should not be public.
-      // Allows the server action (running under an authenticated user's context) to write.
-      allow write: if request.auth != null;
+    // toolPredictions might be read by users if you build features around them.
+    // Writes should be controlled, ideally by server actions that might have their own auth checks.
+    // For now, restricting write to admins.
+    match /toolPredictions/{docId} {
+      allow read: if true; // Or restrict if these are not meant to be public
+      allow write: if request.auth != null && request.auth.token.isAdmin == true;
     }
 
-    // User Tool Favorites (e.g., /userToolFavorites/aSpecificUserId)
-    // - A user can only read and write their own list of favorite tools.
+    // Users can only read and write their own favorites list.
     match /userToolFavorites/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // By default, all other paths not explicitly matched above are denied access
-    // because Firestore rules deny by default if no 'allow' statement matches.
+    // Default deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
   }
 }
