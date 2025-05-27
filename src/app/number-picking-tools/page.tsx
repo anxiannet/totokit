@@ -12,80 +12,87 @@ import {
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Wand2, CheckCircle, XCircle, TrendingUp, TrendingDown } from "lucide-react";
+import { ArrowLeft, Wand2, TrendingUp, TrendingDown } from "lucide-react";
 import type { TotoCombination, HistoricalResult } from "@/lib/types";
 import { MOCK_HISTORICAL_DATA } from "@/lib/types";
 import { NumberPickingToolDisplay } from "@/components/toto/NumberPickingToolDisplay";
 import { calculateHitDetails, getBallColor as getOfficialBallColor, formatDateToLocale } from "@/lib/totoUtils";
 import { zhCN } from "date-fns/locale";
+import {
+  algoHotSix,
+  algoColdSix,
+  algoLastDrawRepeat,
+  algoSecondLastDrawRepeat,
+  algoFrequentEven,
+  algoFrequentOdd,
+  algoFrequentSmallZone,
+  algoFrequentLargeZone,
+  algoUniquePoolRandom,
+  algoLuckyDip,
+  type NumberPickingTool as DynamicNumberPickingTool,
+} from "@/lib/numberPickingAlgos";
 
-interface FixedNumberPickingTool {
-  id: string;
-  name: string;
-  description: string;
-  predictedNumbers: TotoCombination;
-}
 
-const tools: FixedNumberPickingTool[] = [
+const dynamicTools: DynamicNumberPickingTool[] = [
   {
-    id: "hotNumbersFixed",
-    name: "精选热门组合",
-    description: "根据对大量历史数据的统计分析，这组号码在特定周期内表现出较高的出现频率或关联性。适合追逐当前热点的玩家。",
-    predictedNumbers: [7, 11, 19, 23, 34, 40, 48], 
+    id: "dynamicHotSix",
+    name: "动态热门追踪",
+    description: "基于目标期前10期数据，统计最常出现的6个正码进行预测。",
+    algorithmFn: algoHotSix,
   },
   {
-    id: "coldNumbersFixed",
-    name: "冷码回补精选",
-    description: "基于长期未出现的“冷”号码有可能回补的原理，精选出具有潜在回归机会的号码组合。",
-    predictedNumbers: [1, 6, 16, 26, 36, 46], 
+    id: "dynamicColdSix",
+    name: "动态冷码挖掘",
+    description: "基于目标期前10期数据，选择出现次数最少的6个正码进行预测。",
+    algorithmFn: algoColdSix,
   },
   {
-    id: "lastDrawRelatedFixed",
-    name: "上期延续参考",
-    description: "上一期开奖结果中的部分号码或其特征有时会在下一期延续。这里提供一组与近期趋势有一定关联性的号码作为参考。",
-    predictedNumbers: [4, 10, 14, 24, 30, 34, 40, 44], 
+    id: "dynamicLastDrawRepeat",
+    name: "动态上期延续",
+    description: "预测号码直接采用目标期之前一期的6个中奖正码。",
+    algorithmFn: algoLastDrawRepeat, // Note: algoLastDrawRepeat needs only the single preceding draw, effectively using a "window" of 1.
   },
   {
-    id: "biDrawPatternFixed",
-    name: "隔期模式观察",
-    description: "观察TOTO历史数据，有时号码会出现隔期重复的模式。这组号码是基于此类观察的精选。",
-    predictedNumbers: [3, 9, 13, 19, 23, 29, 33, 39, 43, 49], 
+    id: "dynamicSecondLastDrawRepeat",
+    name: "动态隔期重现",
+    description: "预测号码直接采用目标期之前第二期的6个中奖正码。",
+    algorithmFn: algoSecondLastDrawRepeat, // Similar to above, window of 1, but two draws back.
   },
   {
-    id: "evenAdvantageFixed",
-    name: "偶数优势策略",
-    description: "精选一组偶数号码。统计学上，某些组合中偶数可能占据一定比例。",
-    predictedNumbers: [2, 8, 12, 18, 22, 28, 32, 38, 42, 48], 
+    id: "dynamicFrequentEven",
+    name: "动态偶数偏好",
+    description: "基于目标期前10期数据，选择出现频率最高的6个偶数正码。",
+    algorithmFn: algoFrequentEven,
   },
   {
-    id: "oddCoreFixed",
-    name: "奇数核心策略",
-    description: "精选一组奇数号码。与偶数策略对应，关注奇数在组合中的表现。",
-    predictedNumbers: [1, 7, 11, 17, 21, 27, 31, 37, 41, 47], 
+    id: "dynamicFrequentOdd",
+    name: "动态奇数偏好",
+    description: "基于目标期前10期数据，选择出现频率最高的6个奇数正码。",
+    algorithmFn: algoFrequentOdd,
   },
   {
-    id: "smallZonePotentialFixed",
-    name: "小号区潜力股",
-    description: "号码1-24为小区。这组号码是小区内经过筛选的潜力组合。",
-    predictedNumbers: [3, 5, 7, 9, 12, 15, 18, 20, 21, 24], 
+    id: "dynamicFrequentSmallZone",
+    name: "动态小号区精选",
+    description: "基于目标期前10期数据，选择1-24号范围内出现频率最高的6个号码。",
+    algorithmFn: algoFrequentSmallZone,
   },
   {
-    id: "largeZoneSelectedFixed",
-    name: "大号区精选集",
-    description: "号码25-49为大区。这组号码是大区内经过筛选的潜力组合。",
-    predictedNumbers: [25, 28, 30, 33, 35, 37, 40, 42, 44, 47], 
+    id: "dynamicFrequentLargeZone",
+    name: "动态大号区精选",
+    description: "基于目标期前10期数据，选择25-49号范围内出现频率最高的6个号码。",
+    algorithmFn: algoFrequentLargeZone,
   },
   {
-    id: "balancedComprehensiveFixed",
-    name: "综合平衡选号",
-    description: "这组号码综合考虑了多种因素（如奇偶、大小分布等），旨在提供一个相对平衡的号码池选择。",
-    predictedNumbers: [1, 4, 6, 9, 10, 14, 15, 18, 20, 23, 27, 31, 33, 36, 40, 41, 45, 49], 
+    id: "dynamicUniquePoolRandom",
+    name: "动态综合随机池",
+    description: "汇总目标期前10期所有出现过的号码（含特别号码，去重），从中随机选6个。",
+    algorithmFn: algoUniquePoolRandom,
   },
   {
-    id: "luckyStarFixed",
-    name: "固定幸运星组合",
-    description: "一组特别挑选的固定幸运号码，覆盖多个数字区域，希望能为您带来意想不到的好运。",
-    predictedNumbers: [5, 6, 8, 10, 12, 15, 16, 18, 20, 22, 24, 25, 26, 28, 30, 32, 34, 35, 36, 38, 40, 42, 44, 45], 
+    id: "dynamicLuckyDip",
+    name: "动态幸运一搏",
+    description: "完全随机生成6个号码，不参考目标期前的历史数据。",
+    algorithmFn: algoLuckyDip, // This algo doesn't use historical data by design.
   },
 ];
 
@@ -104,7 +111,7 @@ const OfficialDrawDisplay = ({ draw }: { draw: HistoricalResult }) => (
 );
 
 export default function NumberPickingToolsPage() {
-  const historicalData: HistoricalResult[] = MOCK_HISTORICAL_DATA;
+  const allHistoricalData: HistoricalResult[] = MOCK_HISTORICAL_DATA; // Already sorted descending by drawNumber
 
   return (
     <div className="container mx-auto px-4 py-8 md:px-6 md:py-12">
@@ -121,52 +128,57 @@ export default function NumberPickingToolsPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Wand2 className="h-6 w-6 text-primary" />
-            选号工具箱
+            选号工具箱 (动态预测)
           </CardTitle>
           <CardDescription>
-            探索多种基于不同策略的选号工具。展开工具查看其固定号码，并对照历史开奖结果分析其表现。
+            探索多种选号工具。展开工具查看其算法描述，并对照历史开奖结果分析其动态预测表现。
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Accordion type="single" collapsible className="w-full space-y-3">
-            {tools.map((tool) => (
+            {dynamicTools.map((tool) => (
               <AccordionItem value={tool.id} key={tool.id} className="border bg-card shadow-sm rounded-lg">
                 <AccordionTrigger className="text-base font-semibold hover:no-underline px-4 py-3">
                   {tool.name}
                 </AccordionTrigger>
                 <AccordionContent className="pt-2 px-4 pb-4">
-                  <p className="text-sm text-muted-foreground mb-2">{tool.description}</p>
-                  <div className="mb-3 p-3 bg-muted/30 rounded-md">
-                    <h4 className="text-xs font-medium text-muted-foreground mb-1">工具固定号码 ({tool.predictedNumbers.length}个):</h4>
-                    <NumberPickingToolDisplay numbers={tool.predictedNumbers} defaultBallColor="bg-sky-500 text-white" />
-                  </div>
-
-                  <h4 className="text-sm font-semibold mb-2 mt-4">历史开奖对照表现:</h4>
-                  {historicalData.length > 0 ? (
+                  <p className="text-sm text-muted-foreground mb-3">{tool.description}</p>
+                  
+                  <h4 className="text-sm font-semibold mb-2 mt-4">历史开奖动态预测表现:</h4>
+                  {allHistoricalData.length > 0 ? (
                     <ScrollArea className="h-[400px] border rounded-md p-3 space-y-4 bg-background/50">
-                      {historicalData.map((draw) => {
-                        const hitDetails = calculateHitDetails(tool.predictedNumbers, draw);
-                        // Ensure draw.numbers is not empty to avoid division by zero
-                        const hitRate = draw.numbers && draw.numbers.length > 0 ? (hitDetails.mainHitCount / draw.numbers.length) * 100 : 0;
+                      {allHistoricalData.map((targetDraw, index) => {
+                        // Get the 10 draws preceding the targetDraw
+                        // MOCK_HISTORICAL_DATA is sorted descending, so preceding draws are at higher indices
+                        const precedingDrawsStartIndex = index + 1;
+                        const precedingDrawsEndIndex = index + 1 + 10;
+                        const precedingTenDraws = allHistoricalData.slice(precedingDrawsStartIndex, precedingDrawsEndIndex);
+
+                        // For algoLuckyDip and potentially others, historical data might not be strictly needed or used in the same way.
+                        // The algorithms themselves handle empty or insufficient precedingDraws.
+                        const predictedNumbersForTargetDraw = tool.algorithmFn(precedingTenDraws);
+                        
+                        const hitDetails = calculateHitDetails(predictedNumbersForTargetDraw, targetDraw);
+                        const hitRate = targetDraw.numbers && targetDraw.numbers.length > 0 ? (hitDetails.mainHitCount / targetDraw.numbers.length) * 100 : 0;
                         const hasAnyHit = hitDetails.mainHitCount > 0 || hitDetails.matchedAdditionalNumberDetails.matched;
 
                         return (
-                          <div key={`${tool.id}-${draw.drawNumber}`} className={`p-3 border rounded-lg ${hasAnyHit ? 'border-green-500/60 bg-green-500/10' : 'border-border bg-card'}`}>
+                          <div key={`${tool.id}-${targetDraw.drawNumber}`} className={`p-3 border rounded-lg ${hasAnyHit ? 'border-green-500/60 bg-green-500/10' : 'border-border bg-card'}`}>
                             <div className="flex justify-between items-center mb-1.5">
                               <p className="text-xs font-medium">
-                                对照期号: <span className="font-semibold text-primary">{draw.drawNumber}</span> ({formatDateToLocale(draw.date, zhCN)})
+                                目标期号: <span className="font-semibold text-primary">{targetDraw.drawNumber}</span> ({formatDateToLocale(targetDraw.date, zhCN)})
                               </p>
                               {hasAnyHit ? <TrendingUp className="h-4 w-4 text-green-600" /> : <TrendingDown className="h-4 w-4 text-red-500/80" />}
                             </div>
                             <div className="mb-1.5">
                                <p className="text-xs text-muted-foreground mb-0.5">当期开奖号码:</p>
-                               <OfficialDrawDisplay draw={draw} />
+                               <OfficialDrawDisplay draw={targetDraw} />
                             </div>
                             <div className="mb-1.5">
-                               <p className="text-xs text-muted-foreground mb-0.5">工具号码命中情况 (共 {tool.predictedNumbers.length} 个):</p>
+                               <p className="text-xs text-muted-foreground mb-0.5">工具针对本期预测号码 ({predictedNumbersForTargetDraw.length} 个):</p>
                                <NumberPickingToolDisplay
-                                numbers={tool.predictedNumbers}
-                                historicalResultForHighlight={draw}
+                                numbers={predictedNumbersForTargetDraw}
+                                historicalResultForHighlight={targetDraw} // Highlight hits against targetDraw
                                />
                             </div>
                             <div className="text-xs space-y-0.5 text-foreground/90">
@@ -175,7 +187,7 @@ export default function NumberPickingToolsPage() {
                                 {hitDetails.matchedMainNumbers.length > 0 ? ` (${hitDetails.matchedMainNumbers.join(", ")})` : ''}
                               </p>
                               <p>
-                                特别号码 ({draw.additionalNumber}): {hitDetails.matchedAdditionalNumberDetails.matched ? 
+                                特别号码 ({targetDraw.additionalNumber}): {hitDetails.matchedAdditionalNumberDetails.matched ? 
                                     <span className="font-semibold text-yellow-600">命中</span> : 
                                     <span className="text-muted-foreground">未命中</span>
                                 }
@@ -189,7 +201,7 @@ export default function NumberPickingToolsPage() {
                       })}
                     </ScrollArea>
                   ) : (
-                    <p className="text-sm text-muted-foreground">无历史数据可供对照。</p>
+                    <p className="text-sm text-muted-foreground">无历史数据可供分析。</p>
                   )}
                 </AccordionContent>
               </AccordionItem>
@@ -200,3 +212,4 @@ export default function NumberPickingToolsPage() {
     </div>
   );
 }
+
