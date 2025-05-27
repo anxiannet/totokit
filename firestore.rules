@@ -1,29 +1,32 @@
-
-rules_version = '2';
-
-service cloud.firestore {
-  match /databases/{database}/documents {
-
-    // TOTO Results Collection
-    // Allow public read access.
-    // Disallow all client-side writes. Writes should be managed by a trusted backend process or secure Server Actions.
-    match /totoResults/{drawId} {
-      allow read: if true;
-      allow write: if false;
-    }
-
-    // Tool Predictions Collection
-    // Allow public read access if these predictions are meant to be public.
-    // Disallow all client-side writes. Writes should be managed by a trusted backend process or secure Server Actions.
-    match /toolPredictions/{docId} {
-      allow read: if true;
-      allow write: if false;
-    }
-
-    // Default rule: Deny all reads and writes to any other collections/documents not explicitly matched.
-    // This is crucial for security.
-    match /{document=**} {
-      allow read, write: if false;
+{
+  "rules": {
+    "databases": {
+      "(default)": {
+        "documents": {
+          "totoResults/{drawId}": {
+            "allow read": "if true;", // All users can read TOTO results
+            // Write access should be restricted to trusted server environments
+            // or authenticated admin users.
+            // For Next.js Server Actions using the client SDK, this might need
+            // to be `allow write: if request.auth != null && <some_admin_check>;`
+            // or rely on server-side validation if using Admin SDK.
+            // For now, keeping it simple for development; SECURE THIS FOR PRODUCTION.
+            "allow write": "if true;" // Example: allow if user is admin (requires custom claims)
+                                      // "if request.auth != null && request.auth.token.isAdmin == true;"
+                                      // Or, for server-side only writes with client SDK,
+                                      // you might need to allow writes more broadly here and secure at the server action level.
+          },
+          "toolPredictions/{docId}": {
+            "allow read": "if true;", // Predictions can be public
+            // Write access should be restricted to trusted server environments
+            // (e.g., your Next.js Server Action).
+            "allow write": "if true;" // As above, secure for production based on how Server Actions authenticate.
+          },
+          "userToolFavorites/{userId}": {
+            "allow read, write": "if request.auth != null && request.auth.uid == userId;"
+          }
+        }
+      }
     }
   }
 }

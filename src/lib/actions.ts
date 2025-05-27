@@ -4,8 +4,8 @@
 import { generateNumberCombinations as genkitGenerateNumberCombinations } from "@/ai/flows/generate-number-combinations";
 import type { GenerateNumberCombinationsInput, GenerateNumberCombinationsOutput } from "@/ai/flows/generate-number-combinations";
 import type { WeightedCriterion, HistoricalResult } from "./types";
-import { db } from "./firebase"; // Ensure db is correctly initialized
-import { collection, addDoc, serverTimestamp, query, where, getDocs, limit, doc, writeBatch, setDoc } from "firebase/firestore";
+import { db } from "./firebase";
+import { collection, addDoc, serverTimestamp, query, where, getDocs, limit, doc, writeBatch, setDoc, arrayUnion, arrayRemove, getDoc, updateDoc, runTransaction } from "firebase/firestore";
 
 export async function generateTotoPredictions(
   historicalDataString: string,
@@ -86,7 +86,6 @@ export async function saveToolPrediction(
   try {
     const toolPredictionsCol = collection(db, "toolPredictions");
 
-    // Check if a prediction for this tool and target draw already exists
     console.log(`[SAVE_TOOL_PREDICTION] Checking for existing prediction for toolId: ${data.toolId}, targetDrawNumber: ${data.targetDrawNumber}`);
     const q = query(
       toolPredictionsCol,
@@ -102,7 +101,6 @@ export async function saveToolPrediction(
       return { success: true, message: "Prediction already exists for this tool and draw.", predictionId: existingDocId };
     }
 
-    // Add new prediction
     console.log(`[SAVE_TOOL_PREDICTION] No existing prediction found. Adding new document for toolId: ${data.toolId}, targetDrawNumber: ${data.targetDrawNumber}`);
     const docRef = await addDoc(toolPredictionsCol, {
       ...data,
@@ -110,8 +108,7 @@ export async function saveToolPrediction(
     });
     console.log(`[SAVE_TOOL_PREDICTION] Tool prediction saved successfully with ID: ${docRef.id} for tool: ${data.toolId}, draw: ${data.targetDrawNumber}`);
     return { success: true, message: "Tool prediction saved successfully.", predictionId: docRef.id };
-  } catch (error)
- {
+  } catch (error) {
     console.error("[SAVE_TOOL_PREDICTION] Error saving tool prediction to Firestore:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return { success: false, message: `Failed to save tool prediction: ${errorMessage}` };
@@ -135,13 +132,12 @@ export async function syncHistoricalResultsToFirestore(
     let count = 0;
 
     for (const result of results) {
-      // Validate basic structure of each result
       if (typeof result.drawNumber !== 'number' || !result.date || !Array.isArray(result.numbers)) {
         console.warn("[SYNC_FIRESTORE] Skipping invalid result object:", result);
         continue;
       }
       const resultDocRef = doc(db, "totoResults", String(result.drawNumber));
-      batch.set(resultDocRef, result, { merge: true }); // Use merge:true to create or overwrite
+      batch.set(resultDocRef, result, { merge: true });
       count++;
     }
 
@@ -152,5 +148,75 @@ export async function syncHistoricalResultsToFirestore(
     console.error("[SYNC_FIRESTORE] Error syncing historical results to Firestore:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return { success: false, message: `同步到 Firestore 失败: ${errorMessage}` };
+  }
+}
+
+export async function getUserFavoriteTools(userId: string): Promise<string[]> {
+  if (!db) {
+    console.error("[GET_USER_FAVORITES] Firestore 'db' instance is not initialized.");
+    throw new Error("Database not initialized");
+  }
+  if (!userId) {
+    console.warn("[GET_USER_FAVORITES] No userId provided.");
+    return [];
+  }
+  try {
+    const userFavoritesRef = doc(db, "userToolFavorites", userId);
+    const docSnap = await getDoc(userFavoritesRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      return data.favoriteToolIds || [];
+    }
+    return [];
+  } catch (error) {
+    console.error("Error fetching user favorite tools:", error);
+    throw error; // Re-throw to be caught by React Query
+  }
+}
+
+export async function toggleFavoriteTool(
+  userId: string,
+  toolId: string
+): Promise<{ success: boolean; favorited: boolean; message?: string }> {
+  if (!db) {
+    return { success: false, favorited: false, message: "Database not initialized" };
+  }
+  if (!userId) {
+    return { success: false, favorited: false, message: "User not authenticated" };
+  }
+
+  const userFavoritesRef = doc(db, "userToolFavorites", userId);
+
+  try {
+    let currentFavoritedStatus = false;
+    await runTransaction(db, async (transaction) => {
+      const sfDoc = await transaction.get(userFavoritesRef);
+      let favoriteToolIds: string[] = [];
+      if (!sfDoc.exists()) {
+        // Document doesn't exist, create it and add the toolId
+        transaction.set(userFavoritesRef, { favoriteToolIds: [toolId] });
+        currentFavoritedStatus = true;
+      } else {
+        favoriteToolIds = sfDoc.data().favoriteToolIds || [];
+        if (favoriteToolIds.includes(toolId)) {
+          // Tool is already favorited, remove it
+          transaction.update(userFavoritesRef, {
+            favoriteToolIds: arrayRemove(toolId),
+          });
+          currentFavoritedStatus = false;
+        } else {
+          // Tool is not favorited, add it
+          transaction.update(userFavoritesRef, {
+            favoriteToolIds: arrayUnion(toolId),
+          });
+          currentFavoritedStatus = true;
+        }
+      }
+    });
+    return { success: true, favorited: currentFavoritedStatus };
+  } catch (error) {
+    console.error("Error toggling favorite tool:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return { success: false, favorited: false, message: `操作失败: ${errorMessage}` };
   }
 }

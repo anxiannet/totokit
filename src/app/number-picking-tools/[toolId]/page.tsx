@@ -1,4 +1,7 @@
 
+"use client"; // This page now needs client-side interactivity for the favorite button
+
+import { useState, useEffect } from 'react';
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,7 +13,7 @@ import {
 } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, TrendingUp, TrendingDown, Info, Target } from "lucide-react";
+import { ArrowLeft, TrendingUp, TrendingDown, Info, Target, Star, Loader2 } from "lucide-react";
 import type { HistoricalResult } from "@/lib/types";
 import { MOCK_HISTORICAL_DATA } from "@/lib/types";
 import { NumberPickingToolDisplay } from "@/components/toto/NumberPickingToolDisplay";
@@ -22,49 +25,149 @@ import {
 import { zhCN } from "date-fns/locale";
 import { dynamicTools, type NumberPickingTool } from "@/lib/numberPickingAlgos";
 import { saveToolPrediction, type ToolPredictionInput } from "@/lib/actions";
+import { useAuth } from "@/hooks/useAuth";
+import { useUserFavorites } from "@/hooks/useUserFavorites";
+import { cn } from "@/lib/utils";
 
-const OfficialDrawDisplay = ({ draw }: { draw: HistoricalResult }) => (
-  <div className="flex flex-wrap gap-1.5 items-center">
-    {draw.numbers.map((num) => (
-      <Badge
-        key={`official-${draw.drawNumber}-main-${num}`}
-        className={`flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold shadow-sm ${getOfficialBallColor(
-          num,
-          false
-        )}`}
-      >
-        {num}
-      </Badge>
-    ))}
-    <span className="mx-1 text-muted-foreground">+</span>
-    <Badge
-      className={`flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold shadow-sm ${getOfficialBallColor(
-        draw.additionalNumber,
-        true
-      )}`}
-    >
-      {draw.additionalNumber}
-    </Badge>
-  </div>
-);
-
+// generateStaticParams can still be exported from a client component page
 export async function generateStaticParams() {
   return dynamicTools.map((tool) => ({
     toolId: tool.id,
   }));
 }
 
-export default async function SingleNumberToolPage({ // Made async
+export default function SingleNumberToolPage({
   params,
 }: {
   params: { toolId: string };
 }) {
   const { toolId } = params;
-  const tool = dynamicTools.find((t) => t.id === toolId);
-  const allHistoricalData: HistoricalResult[] = MOCK_HISTORICAL_DATA;
+  const { user } = useAuth();
+  const { isFavorited, toggleFavorite, isTogglingFavorite } = useUserFavorites();
+
+  // Data that was previously derived directly in Server Component,
+  // now handled within the Client Component or passed if refactored.
+  // For this example, we'll derive it here.
+  const [tool, setTool] = useState<NumberPickingTool | undefined>(undefined);
+  const [historicalPerformances, setHistoricalPerformances] = useState<any[]>([]);
+  const [currentPredictionNumbers, setCurrentPredictionNumbers] = useState<number[]>([]);
+  const [isLoadingPageData, setIsLoadingPageData] = useState(true);
+
+
+  useEffect(() => {
+    const foundTool = dynamicTools.find((t) => t.id === toolId);
+    setTool(foundTool);
+
+    if (foundTool) {
+      const allHistoricalData: HistoricalResult[] = MOCK_HISTORICAL_DATA;
+      const recentTenHistoricalDrawsForAnalysis: HistoricalResult[] = allHistoricalData.slice(0, 10);
+      const absoluteLatestTenDrawsForCurrentPrediction: HistoricalResult[] = allHistoricalData.slice(0, 10);
+      
+      setCurrentPredictionNumbers(foundTool.algorithmFn(absoluteLatestTenDrawsForCurrentPrediction));
+
+      const performances = recentTenHistoricalDrawsForAnalysis.map((targetDraw) => {
+        const originalIndex = allHistoricalData.findIndex(
+          (d) => d.drawNumber === targetDraw.drawNumber
+        );
+        if (originalIndex === -1) return null;
+
+        const precedingDrawsStartIndex = originalIndex + 1;
+        const precedingDrawsEndIndex = precedingDrawsStartIndex + 10;
+        const precedingTenDraws = allHistoricalData.slice(
+          precedingDrawsStartIndex,
+          precedingDrawsEndIndex
+        );
+
+        let predictedNumbersForTargetDraw: number[] = [];
+        if (foundTool.algorithmFn) {
+            predictedNumbersForTargetDraw = foundTool.algorithmFn(precedingTenDraws);
+        } else {
+            console.warn(`Algorithm function for tool ${foundTool.id} is undefined.`);
+        }
+        
+        if (predictedNumbersForTargetDraw.length > 0) {
+          const predictionData: ToolPredictionInput = {
+            toolId: foundTool.id,
+            toolName: foundTool.name,
+            targetDrawNumber: targetDraw.drawNumber,
+            targetDrawDate: targetDraw.date,
+            predictedNumbers: predictedNumbersForTargetDraw,
+          };
+          saveToolPrediction(predictionData).then(result => {
+            if (!result.success) {
+              // console.error(`Failed to save prediction for tool ${foundTool.id}, draw ${targetDraw.drawNumber}: ${result.message}`);
+            }
+          }).catch(error => {
+            // console.error(`Error in saveToolPrediction promise for tool ${foundTool.id}, draw ${targetDraw.drawNumber}:`, error);
+          });
+        }
+        
+        const hitDetails = calculateHitDetails(
+          predictedNumbersForTargetDraw,
+          targetDraw
+        );
+        const hitRate =
+          targetDraw.numbers.length > 0 &&
+          predictedNumbersForTargetDraw.length > 0
+            ? (hitDetails.mainHitCount /
+                Math.min(
+                  targetDraw.numbers.length,
+                  predictedNumbersForTargetDraw.length
+                )) *
+              100
+            : 0;
+        const hasAnyHit =
+          hitDetails.mainHitCount > 0 ||
+          hitDetails.matchedAdditionalNumberDetails.matched;
+
+        return {
+          targetDraw,
+          predictedNumbersForTargetDraw,
+          hitDetails,
+          hitRate,
+          hasAnyHit,
+        };
+      }).filter(Boolean);
+      setHistoricalPerformances(performances as any[]);
+    }
+    setIsLoadingPageData(false);
+  }, [toolId]);
+
+  const OfficialDrawDisplay = ({ draw }: { draw: HistoricalResult }) => (
+    <div className="flex flex-wrap gap-1.5 items-center">
+      {draw.numbers.map((num) => (
+        <Badge
+          key={`official-${draw.drawNumber}-main-${num}`}
+          className={`flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold shadow-sm ${getOfficialBallColor(
+            num,
+            false
+          )}`}
+        >
+          {num}
+        </Badge>
+      ))}
+      <span className="mx-1 text-muted-foreground">+</span>
+      <Badge
+        className={`flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold shadow-sm ${getOfficialBallColor(
+          draw.additionalNumber,
+          true
+        )}`}
+      >
+        {draw.additionalNumber}
+      </Badge>
+    </div>
+  );
   
-  const recentTenHistoricalDrawsForAnalysis: HistoricalResult[] = allHistoricalData.slice(0, 10);
-  const absoluteLatestTenDrawsForCurrentPrediction: HistoricalResult[] = allHistoricalData.slice(0, 10);
+  if (isLoadingPageData) {
+    return (
+      <div className="container mx-auto px-4 py-8 md:px-6 md:py-12 text-center">
+        <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)]">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+          <p>正在加载工具数据...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!tool) {
     return (
@@ -83,80 +186,7 @@ export default async function SingleNumberToolPage({ // Made async
       );
   }
   
-  const currentPredictionNumbers = tool.algorithmFn(absoluteLatestTenDrawsForCurrentPrediction);
-
-  // Array to hold promises for saving predictions
-  const savePredictionPromises: Promise<any>[] = [];
-
-  const historicalPerformances = recentTenHistoricalDrawsForAnalysis.map((targetDraw) => {
-    const originalIndex = allHistoricalData.findIndex(
-      (d) => d.drawNumber === targetDraw.drawNumber
-    );
-    if (originalIndex === -1) return null;
-
-    const precedingDrawsStartIndex = originalIndex + 1;
-    const precedingDrawsEndIndex = precedingDrawsStartIndex + 10;
-    const precedingTenDraws = allHistoricalData.slice(
-      precedingDrawsStartIndex,
-      precedingDrawsEndIndex
-    );
-
-    let predictedNumbersForTargetDraw: number[] = [];
-    if (tool.algorithmFn) {
-        predictedNumbersForTargetDraw = tool.algorithmFn(precedingTenDraws);
-    } else {
-        console.warn(`Algorithm function for tool ${tool.id} is undefined.`);
-    }
-
-    // Prepare data for saving and add promise to array
-    if (predictedNumbersForTargetDraw.length > 0) {
-      const predictionData: ToolPredictionInput = {
-        toolId: tool.id,
-        toolName: tool.name,
-        targetDrawNumber: targetDraw.drawNumber,
-        targetDrawDate: targetDraw.date,
-        predictedNumbers: predictedNumbersForTargetDraw,
-      };
-      // Asynchronously save, don't block rendering
-      saveToolPrediction(predictionData).then(result => {
-        if (!result.success) {
-          console.error(`Failed to save prediction for tool ${tool.id}, draw ${targetDraw.drawNumber}: ${result.message}`);
-        } else {
-          // console.log(`Prediction saved for tool ${tool.id}, draw ${targetDraw.drawNumber}: ${result.message}`);
-        }
-      }).catch(error => {
-        console.error(`Error in saveToolPrediction promise for tool ${tool.id}, draw ${targetDraw.drawNumber}:`, error);
-      });
-    }
-    
-
-    const hitDetails = calculateHitDetails(
-      predictedNumbersForTargetDraw,
-      targetDraw
-    );
-    const hitRate =
-      targetDraw.numbers.length > 0 &&
-      predictedNumbersForTargetDraw.length > 0
-        ? (hitDetails.mainHitCount /
-            Math.min(
-              targetDraw.numbers.length,
-              predictedNumbersForTargetDraw.length
-            )) *
-          100
-        : 0;
-    const hasAnyHit =
-      hitDetails.mainHitCount > 0 ||
-      hitDetails.matchedAdditionalNumberDetails.matched;
-
-    return {
-      targetDraw,
-      predictedNumbersForTargetDraw,
-      hitDetails,
-      hitRate,
-      hasAnyHit,
-    };
-  }).filter(Boolean); // Filter out nulls if any (though originalIndex should always be found)
-
+  const isCurrentlyFavorited = isFavorited(tool.id);
 
   return (
     <div className="container mx-auto px-4 py-8 md:px-6 md:py-12">
@@ -171,9 +201,33 @@ export default async function SingleNumberToolPage({ // Made async
 
       <Card className="w-full">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-xl">
-            {tool.name}
-          </CardTitle>
+          <div className="flex justify-between items-start">
+            <CardTitle className="flex items-center gap-2 text-xl">
+              {tool.name}
+            </CardTitle>
+            {user && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => toggleFavorite(tool.id, tool.name)}
+                disabled={isTogglingFavorite}
+                aria-label={isCurrentlyFavorited ? "取消收藏" : "收藏"}
+              >
+                {isTogglingFavorite && <Loader2 className="h-4 w-4 animate-spin" />}
+                {!isTogglingFavorite && (
+                  <Star
+                    className={cn(
+                      "h-5 w-5",
+                      isCurrentlyFavorited
+                        ? "fill-yellow-400 text-yellow-500"
+                        : "text-muted-foreground"
+                    )}
+                  />
+                )}
+              </Button>
+            )}
+          </div>
           <CardDescription>{tool.description}</CardDescription>
         </CardHeader>
         <CardContent>
@@ -194,7 +248,7 @@ export default async function SingleNumberToolPage({ // Made async
               历史开奖动态预测表现 (最近10期):
             </h4>
             {historicalPerformances.length > 0 ? (
-              <ScrollArea className="h-[calc(100vh-500px)] rounded-md border p-3 space-y-4 bg-background/50">
+              <ScrollArea className="h-[calc(100vh-550px)] rounded-md border p-3 space-y-4 bg-background/50">
                 {historicalPerformances.map((performance) => {
                   if (!performance) return null;
                   const { targetDraw, predictedNumbersForTargetDraw, hitDetails, hitRate, hasAnyHit } = performance;
