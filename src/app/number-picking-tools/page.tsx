@@ -18,84 +18,9 @@ import { MOCK_HISTORICAL_DATA } from "@/lib/types";
 import { NumberPickingToolDisplay } from "@/components/toto/NumberPickingToolDisplay";
 import { calculateHitDetails, getBallColor as getOfficialBallColor, formatDateToLocale } from "@/lib/totoUtils";
 import { zhCN } from "date-fns/locale";
-import {
-  algoHotNumbers,
-  algoColdNumbers,
-  algoLastDrawRepeat,
-  algoSecondLastDrawRepeat,
-  algoFrequentEven,
-  algoFrequentOdd,
-  algoFrequentSmallZone,
-  algoFrequentLargeZone,
-  algoUniquePoolDeterministic,
-  algoLuckyDipDeterministic,
-  type NumberPickingTool as DynamicNumberPickingTool,
-} from "@/lib/numberPickingAlgos";
-import { useState } from "react";
+import { dynamicTools } from "@/lib/numberPickingAlgos"; // Import from new location
+import { useState, useEffect } from "react";
 
-
-const dynamicTools: DynamicNumberPickingTool[] = [
-  {
-    id: "dynamicHotNumbers",
-    name: "动态热门追踪",
-    description: "基于目标期前10期数据，统计最常出现的最多10个正码进行预测 (至少1个，若无则不预测)。结果固定。",
-    algorithmFn: algoHotNumbers,
-  },
-  {
-    id: "dynamicColdNumbers",
-    name: "动态冷码挖掘",
-    description: "基于目标期前10期数据，选择出现次数最少的最多10个正码进行预测 (至少1个，若无则不预测)。结果固定。",
-    algorithmFn: algoColdNumbers,
-  },
-  {
-    id: "dynamicLastDrawRepeat",
-    name: "动态上期延续 (6码)",
-    description: "预测号码直接采用目标期之前一期的6个中奖正码。若数据不足则不预测。结果固定。",
-    algorithmFn: algoLastDrawRepeat,
-  },
-  {
-    id: "dynamicSecondLastDrawRepeat",
-    name: "动态隔期重现 (6码)",
-    description: "预测号码直接采用目标期之前第二期的6个中奖正码。若数据不足则不预测。结果固定。",
-    algorithmFn: algoSecondLastDrawRepeat, 
-  },
-  {
-    id: "dynamicFrequentEven",
-    name: "动态偶数偏好",
-    description: "基于目标期前10期数据，选择出现频率最高的最多10个偶数正码 (至少1个，若无则不预测)。结果固定。",
-    algorithmFn: algoFrequentEven,
-  },
-  {
-    id: "dynamicFrequentOdd",
-    name: "动态奇数偏好",
-    description: "基于目标期前10期数据，选择出现频率最高的最多10个奇数正码 (至少1个，若无则不预测)。结果固定。",
-    algorithmFn: algoFrequentOdd,
-  },
-  {
-    id: "dynamicFrequentSmallZone",
-    name: "动态小号区精选",
-    description: "基于目标期前10期数据，选择1-24号范围内出现频率最高的最多10个号码 (至少1个，若无则不预测)。结果固定。",
-    algorithmFn: algoFrequentSmallZone,
-  },
-  {
-    id: "dynamicFrequentLargeZone",
-    name: "动态大号区精选",
-    description: "基于目标期前10期数据，选择25-49号范围内出现频率最高的最多10个号码 (至少1个，若无则不预测)。结果固定。",
-    algorithmFn: algoFrequentLargeZone,
-  },
-  {
-    id: "dynamicUniquePoolDeterministic",
-    name: "动态综合池精选",
-    description: "汇总目标期前10期所有出现过的号码（含特别号码，去重并排序），从中确定性地选出一组号码 (数量可变，最多15个)。结果固定。",
-    algorithmFn: algoUniquePoolDeterministic,
-  },
-  {
-    id: "dynamicLuckyDipDeterministic",
-    name: "动态幸运序列",
-    description: "基于目标期前10期数据特征，以确定性算法生成一组号码 (数量可变，6-15个)。结果固定。",
-    algorithmFn: algoLuckyDipDeterministic,
-  },
-];
 
 const OfficialDrawDisplay = ({ draw }: { draw: HistoricalResult }) => (
   <div className="flex flex-wrap gap-1.5 items-center">
@@ -112,10 +37,15 @@ const OfficialDrawDisplay = ({ draw }: { draw: HistoricalResult }) => (
 );
 
 export default function NumberPickingToolsPage() {
-  const allHistoricalData: HistoricalResult[] = MOCK_HISTORICAL_DATA; // Already sorted descending by drawNumber
+  const allHistoricalData: HistoricalResult[] = MOCK_HISTORICAL_DATA; 
   const [activeToolId, setActiveToolId] = useState<string>(""); 
+  const [recentTenHistoricalDraws, setRecentTenHistoricalDraws] = useState<HistoricalResult[]>([]);
 
-  const recentTenHistoricalDraws = allHistoricalData.slice(0, 10);
+  useEffect(() => {
+    // Determine the 10 most recent historical draws for display
+    setRecentTenHistoricalDraws(allHistoricalData.slice(0, 10));
+  }, [allHistoricalData]);
+
 
   return (
     <div className="container mx-auto px-4 py-8 md:px-6 md:py-12">
@@ -159,26 +89,28 @@ export default function NumberPickingToolsPage() {
                       <h4 className="text-sm font-semibold mb-2 mt-4">历史开奖动态预测表现 (最近10期):</h4>
                       {recentTenHistoricalDraws.length > 0 ? (
                         <ScrollArea className="h-[400px] border rounded-md p-3 space-y-4 bg-background/50">
-                          {recentTenHistoricalDraws.map((targetDraw, localIndex) => {
-                            // Find the original index in allHistoricalData to correctly slice preceding draws
+                          {recentTenHistoricalDraws.map((targetDraw) => {
                             const originalIndex = allHistoricalData.findIndex(d => d.drawNumber === targetDraw.drawNumber);
-                            if (originalIndex === -1) return null; // Should not happen
+                            if (originalIndex === -1) return null;
 
                             const precedingDrawsStartIndex = originalIndex + 1;
                             const precedingDrawsEndIndex = precedingDrawsStartIndex + 10; 
                             const precedingTenDraws = allHistoricalData.slice(precedingDrawsStartIndex, precedingDrawsEndIndex);
 
                             let predictedNumbersForTargetDraw: number[] = [];
-                            if (tool.id === "dynamicLastDrawRepeat" && originalIndex >= allHistoricalData.length -1) {
-                               // Not enough data for last draw repeat for the last item in full list
+                            // Special handling for algorithms that might not have enough preceding data
+                            // For example, LastDrawRepeat needs at least 1 preceding, SecondLastDrawRepeat needs at least 2.
+                            // Most algorithms are designed to handle `lastTenResults` being potentially shorter than 10.
+                            if (tool.id === "dynamicLastDrawRepeat" && originalIndex >= allHistoricalData.length -1 ) {
+                               // Not enough data for last draw repeat
                             } else if (tool.id === "dynamicSecondLastDrawRepeat" && originalIndex >= allHistoricalData.length - 2) {
-                               // Not enough data for second last draw repeat for the last two items in full list
+                               // Not enough data for second last draw repeat
                             } else {
                                predictedNumbersForTargetDraw = tool.algorithmFn(precedingTenDraws);
                             }
                             
                             const hitDetails = calculateHitDetails(predictedNumbersForTargetDraw, targetDraw);
-                            const hitRate = targetDraw.numbers && targetDraw.numbers.length > 0 && predictedNumbersForTargetDraw.length > 0
+                            const hitRate = targetDraw.numbers.length > 0 && predictedNumbersForTargetDraw.length > 0
                                           ? (hitDetails.mainHitCount / Math.min(targetDraw.numbers.length, predictedNumbersForTargetDraw.length)) * 100 
                                           : 0; 
                             const hasAnyHit = hitDetails.mainHitCount > 0 || hitDetails.matchedAdditionalNumberDetails.matched;
@@ -219,7 +151,7 @@ export default function NumberPickingToolsPage() {
                                       }
                                     </p>
                                     <p>
-                                      正码命中率 (对比6个官方正码，基于预测数量): <span className="font-semibold">{hitRate.toFixed(1)}%</span>
+                                      正码命中率 (对比官方正码数量): <span className="font-semibold">{hitRate.toFixed(1)}%</span>
                                     </p>
                                   </div>
                                 )}

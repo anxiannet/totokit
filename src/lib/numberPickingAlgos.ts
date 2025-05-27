@@ -27,20 +27,35 @@ function getSortedNumbersByFrequency(frequencies: Record<number, number>, order:
     .map(([numStr]) => parseInt(numStr, 10));
 }
 
-// Generates a deterministic sequence of unique numbers for LuckyDip based on input seed
+// Generates a deterministic sequence of unique numbers
 function getDeterministicSequence(count: number, seed1: number, seed2: number): TotoCombination {
   const picked: Set<number> = new Set();
   let currentNum = seed1;
-  const step = seed2 || 7; // Ensure step is not 0
+  const step = seed2 || 7; 
 
-  while (picked.size < count) {
-    currentNum = (currentNum + step -1) % TOTO_NUMBER_RANGE.max + 1; // Cycle through 1-49
+  // Adjust step if it's a multiple of 49 to avoid infinite loops with small counts
+  const effectiveStep = (step % TOTO_NUMBER_RANGE.max === 0 && TOTO_NUMBER_RANGE.max > 0) ? 1 : step;
+
+
+  let iterations = 0; // Safety counter
+  const maxIterations = TOTO_NUMBER_RANGE.max * 2; // Allow for some collisions
+
+  while (picked.size < count && iterations < maxIterations) {
+    currentNum = (currentNum + effectiveStep -1);
+    if (currentNum > TOTO_NUMBER_RANGE.max) {
+        currentNum = (currentNum % TOTO_NUMBER_RANGE.max);
+        if (currentNum === 0) currentNum = TOTO_NUMBER_RANGE.max;
+    }
+     if (currentNum < TOTO_NUMBER_RANGE.min) { // Should not happen with positive step
+        currentNum = TOTO_NUMBER_RANGE.min;
+    }
+
+
     if (!picked.has(currentNum)) {
       picked.add(currentNum);
     }
-    // Safety break if somehow stuck (e.g., count > 49)
-    if (picked.size >= TOTO_NUMBER_RANGE.max && picked.size < count) break; 
-    if (picked.size > TOTO_NUMBER_RANGE.max * 2 && picked.size < count) break; // Sanity check
+    iterations++;
+    if (picked.size >= TOTO_NUMBER_RANGE.max && picked.size < count) break;
   }
   return Array.from(picked).slice(0, count).sort((a, b) => a - b);
 }
@@ -48,18 +63,17 @@ function getDeterministicSequence(count: number, seed1: number, seed2: number): 
 
 function ensureUniqueNumbers(numbers: number[], minCount: number = 1, maxCount: number = 24): TotoCombination {
   let uniqueNumbers = Array.from(new Set(numbers.filter(n => n >= TOTO_NUMBER_RANGE.min && n <= TOTO_NUMBER_RANGE.max)));
-  
-  // Sort before any slicing or returning
   uniqueNumbers.sort((a, b) => a - b);
 
-  // If we have fewer than minCount, return what we have (no random padding)
-  // unless minCount is 0, which implies no minimum.
-  // The primary role is now to ensure uniqueness and cap at maxCount.
-  if (uniqueNumbers.length < minCount && minCount > 0) {
-     // For algorithms that strictly need a certain count (like lastDrawRepeat for 6 numbers)
-     // they should handle this. For others, returning fewer is fine.
-     // For this general helper, we'll return what we have if it's below minCount.
+  if (uniqueNumbers.length < minCount && uniqueNumbers.length > 0) {
+    // If we have some numbers but less than minCount, return what we have (no padding for deterministic algos)
+    // This part is primarily for ensuring the list is capped at maxCount
+  } else if (uniqueNumbers.length === 0 && minCount > 0) {
+    // If algorithm results in no numbers but minCount > 0, behavior depends on specific algo.
+    // For generic helper, we return empty. Specific algos might add fallback.
+    return [];
   }
+
 
   if (uniqueNumbers.length > maxCount) {
     return uniqueNumbers.slice(0, maxCount);
@@ -72,37 +86,38 @@ function ensureUniqueNumbers(numbers: number[], minCount: number = 1, maxCount: 
 
 export function algoHotNumbers(lastTenResults: HistoricalResult[]): TotoCombination {
   if (lastTenResults.length === 0) return []; 
-  const frequencies = getNumberFrequencies(lastTenResults, false); // Only main numbers
+  const frequencies = getNumberFrequencies(lastTenResults, false); 
   const sorted = getSortedNumbersByFrequency(frequencies, 'desc');
-  // Return top N, where N is min(length of sorted hot numbers, 10), but at least 1 if available.
-  const count = Math.min(sorted.filter(n => frequencies[n] > 0).length, 10);
-  return ensureUniqueNumbers(sorted.slice(0, count), 1, 10);
+  const hot = sorted.filter(n => frequencies[n] > 0); // Only numbers that actually appeared
+  return ensureUniqueNumbers(hot, 1, 10);
 }
 
 export function algoColdNumbers(lastTenResults: HistoricalResult[]): TotoCombination {
   if (lastTenResults.length === 0) return [];
   const frequencies = getNumberFrequencies(lastTenResults, false);
   const sorted = getSortedNumbersByFrequency(frequencies, 'asc');
-  // Filter for numbers that actually appeared if we want to avoid 0-frequency numbers being "coldest"
-  // Or, if all numbers are 0-frequency, this will return empty.
+  
+  // Prioritize numbers that appeared at least once but are "coldest" among them
   const appearedNumbers = sorted.filter(n => frequencies[n] > 0);
-  const coldFromAppeared = appearedNumbers.slice(0,10);
+  const coldFromAppeared = appearedNumbers; // Sorted ascending by frequency
 
   if (coldFromAppeared.length > 0) {
       return ensureUniqueNumbers(coldFromAppeared, 1, 10);
   }
-  // If no numbers appeared or all appeared with same low freq, pick from all numbers with 0 frequency
+  // Fallback: if no numbers appeared at all (unlikely with 10 results) or all have 0 frequency
   const zeroFrequencyNumbers = sorted.filter(n => frequencies[n] === 0);
-  return ensureUniqueNumbers(zeroFrequencyNumbers.slice(0,10), 1, 10);
+  return ensureUniqueNumbers(zeroFrequencyNumbers, 1, 10);
 }
 
 export function algoLastDrawRepeat(lastTenResults: HistoricalResult[]): TotoCombination {
   if (lastTenResults.length === 0 || !lastTenResults[0]?.numbers) return [];
+  // Deterministic: always return the 6 main numbers of the last draw
   return ensureUniqueNumbers([...lastTenResults[0].numbers], 6, 6); 
 }
 
 export function algoSecondLastDrawRepeat(lastTenResults: HistoricalResult[]): TotoCombination {
   if (lastTenResults.length < 2 || !lastTenResults[1]?.numbers) return [];
+   // Deterministic: always return the 6 main numbers of the second to last draw
   return ensureUniqueNumbers([...lastTenResults[1].numbers], 6, 6); 
 }
 
@@ -111,10 +126,9 @@ export function algoFrequentEven(lastTenResults: HistoricalResult[]): TotoCombin
   const frequencies = getNumberFrequencies(lastTenResults, false);
   const evenNumbers = Object.entries(frequencies)
     .filter(([numStr]) => parseInt(numStr, 10) % 2 === 0 && frequencies[parseInt(numStr, 10)] > 0)
-    .sort(([, freqA], [, freqB]) => freqB - freqA)
+    .sort(([, freqA], [, freqB]) => freqB - freqA) // Sort by frequency descending
     .map(([numStr]) => parseInt(numStr, 10));
-  const count = Math.min(evenNumbers.length, 10);
-  return ensureUniqueNumbers(evenNumbers.slice(0, count), 1, 10);
+  return ensureUniqueNumbers(evenNumbers, 1, 10);
 }
 
 export function algoFrequentOdd(lastTenResults: HistoricalResult[]): TotoCombination {
@@ -122,10 +136,9 @@ export function algoFrequentOdd(lastTenResults: HistoricalResult[]): TotoCombina
   const frequencies = getNumberFrequencies(lastTenResults, false);
   const oddNumbers = Object.entries(frequencies)
     .filter(([numStr]) => parseInt(numStr, 10) % 2 !== 0 && frequencies[parseInt(numStr, 10)] > 0)
-    .sort(([, freqA], [, freqB]) => freqB - freqA)
+    .sort(([, freqA], [, freqB]) => freqB - freqA) // Sort by frequency descending
     .map(([numStr]) => parseInt(numStr, 10));
-  const count = Math.min(oddNumbers.length, 10);
-  return ensureUniqueNumbers(oddNumbers.slice(0, count), 1, 10);
+  return ensureUniqueNumbers(oddNumbers, 1, 10);
 }
 
 export function algoFrequentSmallZone(lastTenResults: HistoricalResult[]): TotoCombination {
@@ -134,12 +147,11 @@ export function algoFrequentSmallZone(lastTenResults: HistoricalResult[]): TotoC
   const smallZoneNumbers = Object.entries(frequencies)
     .filter(([numStr]) => {
         const num = parseInt(numStr, 10);
-        return num >= 1 && num <= 24 && frequencies[num] > 0;
+        return num >= TOTO_NUMBER_RANGE.min && num <= 24 && frequencies[num] > 0;
     })
-    .sort(([, freqA], [, freqB]) => freqB - freqA)
+    .sort(([, freqA], [, freqB]) => freqB - freqA) // Sort by frequency descending
     .map(([numStr]) => parseInt(numStr, 10));
-  const count = Math.min(smallZoneNumbers.length, 10);
-  return ensureUniqueNumbers(smallZoneNumbers.slice(0, count), 1, 10);
+  return ensureUniqueNumbers(smallZoneNumbers, 1, 10);
 }
 
 export function algoFrequentLargeZone(lastTenResults: HistoricalResult[]): TotoCombination {
@@ -150,10 +162,9 @@ export function algoFrequentLargeZone(lastTenResults: HistoricalResult[]): TotoC
         const num = parseInt(numStr, 10);
         return num >= 25 && num <= TOTO_NUMBER_RANGE.max && frequencies[num] > 0;
     })
-    .sort(([, freqA], [, freqB]) => freqB - freqA)
+    .sort(([, freqA], [, freqB]) => freqB - freqA) // Sort by frequency descending
     .map(([numStr]) => parseInt(numStr, 10));
-  const count = Math.min(largeZoneNumbers.length, 10);
-  return ensureUniqueNumbers(largeZoneNumbers.slice(0, count), 1, 10);
+  return ensureUniqueNumbers(largeZoneNumbers, 1, 10);
 }
 
 export function algoUniquePoolDeterministic(lastTenResults: HistoricalResult[]): TotoCombination {
@@ -167,25 +178,27 @@ export function algoUniquePoolDeterministic(lastTenResults: HistoricalResult[]):
 
   const poolArray = Array.from(uniquePoolSet).sort((a,b) => a - b);
   
-  // Determine count: e.g., half the pool size, capped between 6 and 15, not exceeding 24
+  // Deterministic count: e.g., half the pool size, capped between 1 and 15 (or 24 overall max)
   let countToPick = Math.floor(poolArray.length / 2);
-  countToPick = Math.max(1, Math.min(countToPick, 15)); // Ensure count is between 1-15 (example range)
-  countToPick = Math.min(countToPick, poolArray.length); // Cannot pick more than available
-  countToPick = Math.min(countToPick, 24); // Global max count
+  countToPick = Math.max(1, Math.min(countToPick, 15)); 
+  countToPick = Math.min(countToPick, poolArray.length); 
+  countToPick = Math.min(countToPick, 24); 
 
   return poolArray.slice(0, countToPick);
 }
 
 export function algoLuckyDipDeterministic(lastTenResults: HistoricalResult[]): TotoCombination {
-  if (lastTenResults.length === 0) { // Fallback if no historical data to seed from
-      return getDeterministicSequence(10, new Date().getDate(), (new Date().getMonth()+1));
+  if (lastTenResults.length === 0) { 
+      // Fallback for no historical data: use current date parts as seeds
+      const date = new Date();
+      return getDeterministicSequence(10, date.getDate(), (date.getMonth()+1)* (date.getFullYear()%100) );
   }
-  // Deterministic count based on the number of historical results provided
-  const countToPick = Math.max(1, Math.min(6 + (lastTenResults.length % 10), 24)); // e.g., 6-15 numbers
+  
+  const countToPick = Math.max(1, Math.min(6 + (lastTenResults.length % 15), 24)); // e.g., 6-20 numbers
 
-  // Seeds for deterministic sequence generation
+  // Seeds for deterministic sequence generation, ensuring they are not zero
   const seed1 = lastTenResults.reduce((sum, r) => sum + r.drawNumber, 0) % TOTO_NUMBER_RANGE.max || 1;
-  const seed2 = lastTenResults.reduce((sum, r) => sum + r.additionalNumber, 0) % 10 || 1;
+  const seed2 = lastTenResults.reduce((sum, r) => sum + r.additionalNumber, 0) % 13 || 1; // Use a prime for step
   
   return getDeterministicSequence(countToPick, seed1, seed2);
 }
@@ -196,3 +209,66 @@ export interface NumberPickingTool {
   description: string;
   algorithmFn: (lastTenResults: HistoricalResult[]) => TotoCombination;
 }
+
+export const dynamicTools: NumberPickingTool[] = [
+  {
+    id: "dynamicHotNumbers",
+    name: "动态热门追踪",
+    description: "基于目标期前10期数据，统计最常出现的最多10个正码进行预测 (至少1个，若无则不预测)。结果固定。",
+    algorithmFn: algoHotNumbers,
+  },
+  {
+    id: "dynamicColdNumbers",
+    name: "动态冷码挖掘",
+    description: "基于目标期前10期数据，选择出现次数最少的最多10个正码进行预测 (至少1个，若无则不预测)。结果固定。",
+    algorithmFn: algoColdNumbers,
+  },
+  {
+    id: "dynamicLastDrawRepeat",
+    name: "动态上期延续 (6码)",
+    description: "预测号码直接采用目标期之前一期的6个中奖正码。若数据不足则不预测。结果固定。",
+    algorithmFn: algoLastDrawRepeat,
+  },
+  {
+    id: "dynamicSecondLastDrawRepeat",
+    name: "动态隔期重现 (6码)",
+    description: "预测号码直接采用目标期之前第二期的6个中奖正码。若数据不足则不预测。结果固定。",
+    algorithmFn: algoSecondLastDrawRepeat, 
+  },
+  {
+    id: "dynamicFrequentEven",
+    name: "动态偶数偏好",
+    description: "基于目标期前10期数据，选择出现频率最高的最多10个偶数正码 (至少1个，若无则不预测)。结果固定。",
+    algorithmFn: algoFrequentEven,
+  },
+  {
+    id: "dynamicFrequentOdd",
+    name: "动态奇数偏好",
+    description: "基于目标期前10期数据，选择出现频率最高的最多10个奇数正码 (至少1个，若无则不预测)。结果固定。",
+    algorithmFn: algoFrequentOdd,
+  },
+  {
+    id: "dynamicFrequentSmallZone",
+    name: "动态小号区精选",
+    description: "基于目标期前10期数据，选择1-24号范围内出现频率最高的最多10个号码 (至少1个，若无则不预测)。结果固定。",
+    algorithmFn: algoFrequentSmallZone,
+  },
+  {
+    id: "dynamicFrequentLargeZone",
+    name: "动态大号区精选",
+    description: "基于目标期前10期数据，选择25-49号范围内出现频率最高的最多10个号码 (至少1个，若无则不预测)。结果固定。",
+    algorithmFn: algoFrequentLargeZone,
+  },
+  {
+    id: "dynamicUniquePoolDeterministic",
+    name: "动态综合池精选",
+    description: "汇总目标期前10期所有出现过的号码（含特别号码，去重并排序），从中确定性地选出一组号码 (数量可变，最多15个)。结果固定。",
+    algorithmFn: algoUniquePoolDeterministic,
+  },
+  {
+    id: "dynamicLuckyDipDeterministic",
+    name: "动态幸运序列",
+    description: "基于目标期前10期数据特征，以确定性算法生成一组号码 (数量可变，6-20个)。结果固定。",
+    algorithmFn: algoLuckyDipDeterministic,
+  },
+];
