@@ -5,7 +5,7 @@ import { generateNumberCombinations as genkitGenerateNumberCombinations } from "
 import type { GenerateNumberCombinationsInput, GenerateNumberCombinationsOutput } from "@/ai/flows/generate-number-combinations";
 import type { WeightedCriterion, HistoricalResult } from "./types";
 import { db } from "./firebase"; // Ensure db is correctly initialized
-import { collection, addDoc, serverTimestamp, query, where, getDocs, limit } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, query, where, getDocs, limit, doc, writeBatch, setDoc } from "firebase/firestore";
 
 export async function generateTotoPredictions(
   historicalDataString: string,
@@ -115,5 +115,42 @@ export async function saveToolPrediction(
     console.error("[SAVE_TOOL_PREDICTION] Error saving tool prediction to Firestore:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return { success: false, message: `Failed to save tool prediction: ${errorMessage}` };
+  }
+}
+
+export async function syncHistoricalResultsToFirestore(
+  jsonDataString: string
+): Promise<{ success: boolean; message: string; count?: number }> {
+  if (!db) {
+    console.error("[SYNC_FIRESTORE] Firestore 'db' instance is not initialized.");
+    return { success: false, message: "Firestore 'db' instance is not initialized."};
+  }
+  try {
+    const results: HistoricalResult[] = JSON.parse(jsonDataString);
+    if (!Array.isArray(results)) {
+      return { success: false, message: "Invalid JSON data format. Expected an array." };
+    }
+
+    const batch = writeBatch(db);
+    let count = 0;
+
+    for (const result of results) {
+      // Validate basic structure of each result
+      if (typeof result.drawNumber !== 'number' || !result.date || !Array.isArray(result.numbers)) {
+        console.warn("[SYNC_FIRESTORE] Skipping invalid result object:", result);
+        continue;
+      }
+      const resultDocRef = doc(db, "totoResults", String(result.drawNumber));
+      batch.set(resultDocRef, result, { merge: true }); // Use merge:true to create or overwrite
+      count++;
+    }
+
+    await batch.commit();
+    console.log(`[SYNC_FIRESTORE] Successfully synced ${count} historical results to Firestore.`);
+    return { success: true, message: `成功同步 ${count} 条开奖结果到 Firestore。`, count };
+  } catch (error) {
+    console.error("[SYNC_FIRESTORE] Error syncing historical results to Firestore:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return { success: false, message: `同步到 Firestore 失败: ${errorMessage}` };
   }
 }

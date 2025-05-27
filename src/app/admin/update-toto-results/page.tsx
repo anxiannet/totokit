@@ -9,8 +9,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { MOCK_HISTORICAL_DATA, type HistoricalResult } from "@/lib/types";
 import { z } from "zod";
-import { ArrowLeft, CheckCircle, XCircle, Info } from "lucide-react";
+import { ArrowLeft, CheckCircle, XCircle, Info, UploadCloud, Loader2 } from "lucide-react";
 import Link from "next/link";
+import { syncHistoricalResultsToFirestore } from "@/lib/actions";
+import { useToast } from "@/hooks/use-toast";
 
 // Zod schema for validation
 const HistoricalResultSchema = z.object({
@@ -23,13 +25,16 @@ const HistoricalResultSchema = z.object({
 const HistoricalResultsArraySchema = z.array(HistoricalResultSchema);
 
 export default function AdminUpdateTotoResultsPage() {
+  const { toast } = useToast();
   const [jsonData, setJsonData] = useState("");
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [validationStatus, setValidationStatus] = useState<"success" | "error" | "info" | null>(null);
   const [validatedJsonOutput, setValidatedJsonOutput] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     // Pre-fill textarea with current mock data as a starting point
+    // Or load from src/data/totoResults.json if preferred
     setJsonData(JSON.stringify(MOCK_HISTORICAL_DATA, null, 2));
   }, []);
 
@@ -45,7 +50,7 @@ export default function AdminUpdateTotoResultsPage() {
       if (validationResult.success) {
         const sortedData = [...validationResult.data].sort((a, b) => b.drawNumber - a.drawNumber);
         setValidationStatus("success");
-        setValidationMessage("JSON数据有效！请按照以下步骤更新应用数据。");
+        setValidationMessage("JSON数据有效！请按照以下步骤更新应用数据或同步到Firestore。");
         setValidatedJsonOutput(JSON.stringify(sortedData, null, 2));
       } else {
         setValidationStatus("error");
@@ -57,6 +62,42 @@ export default function AdminUpdateTotoResultsPage() {
       setValidationMessage(`JSON解析错误：${error instanceof Error ? error.message : "未知解析错误"}`);
     }
   };
+
+  const handleSyncToFirestore = async () => {
+    if (!validatedJsonOutput || validationStatus !== "success") {
+      toast({
+        title: "操作失败",
+        description: "请先验证JSON数据。",
+        variant: "destructive",
+      });
+      return;
+    }
+    setIsSyncing(true);
+    try {
+      const result = await syncHistoricalResultsToFirestore(validatedJsonOutput);
+      if (result.success) {
+        toast({
+          title: "同步成功",
+          description: result.message,
+        });
+      } else {
+        toast({
+          title: "同步失败",
+          description: result.message,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "同步出错",
+        description: error instanceof Error ? error.message : "未知错误发生",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
 
   return (
     <div className="container mx-auto px-4 py-8 md:px-6 md:py-12">
@@ -73,7 +114,7 @@ export default function AdminUpdateTotoResultsPage() {
         <CardHeader>
           <CardTitle>管理员：手动更新TOTO开奖结果</CardTitle>
           <CardDescription>
-            在此处粘贴新的完整TOTO开奖结果JSON数组。系统将验证数据并提供更新项目文件的说明。
+            在此处粘贴新的完整TOTO开奖结果JSON数组。系统将验证数据并提供更新项目文件的说明或同步到Firestore数据库。
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -112,7 +153,22 @@ export default function AdminUpdateTotoResultsPage() {
 
           {validatedJsonOutput && validationStatus === "success" && (
             <div className="mt-6 space-y-4 p-4 border rounded-md bg-muted/50">
-              <h3 className="text-md font-semibold">1. 更新 `src/data/totoResults.json` 文件:</h3>
+              <div className="flex flex-col sm:flex-row gap-4">
+                 <Button 
+                    onClick={handleSyncToFirestore} 
+                    disabled={isSyncing}
+                    className="w-full sm:w-auto"
+                  >
+                  {isSyncing ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <UploadCloud className="mr-2 h-4 w-4" />
+                  )}
+                  同步到 Firestore 数据库
+                </Button>
+              </div>
+              <hr className="my-4" />
+              <h3 className="text-md font-semibold">1. (可选) 更新 `src/data/totoResults.json` 文件:</h3>
               <p className="text-sm">复制以下已验证和排序的JSON数据，并用它替换掉 <code>src/data/totoResults.json</code> 文件的全部内容。</p>
               <Textarea
                 value={validatedJsonOutput}
@@ -121,7 +177,7 @@ export default function AdminUpdateTotoResultsPage() {
                 className="font-mono text-xs bg-white dark:bg-background"
               />
               
-              <h3 className="text-md font-semibold mt-4">2. 更新 `src/lib/types.ts` 文件:</h3>
+              <h3 className="text-md font-semibold mt-4">2. (可选) 更新 `src/lib/types.ts` 文件:</h3>
               <p className="text-sm">
                 打开 <code>src/lib/types.ts</code> 文件，并进行如下修改：
               </p>
@@ -132,14 +188,14 @@ export default function AdminUpdateTotoResultsPage() {
 
               <h3 className="text-md font-semibold mt-4">3. 重启应用:</h3>
               <p className="text-sm">
-                为了使这些更改生效，您需要重新启动您的Next.js开发服务器 (通常是停止并重新运行 <code>npm run dev</code>) 或重新部署您的应用。
+                如果您修改了本地文件 (<code>types.ts</code> 或 <code>totoResults.json</code>)，为了使这些更改生效，您需要重新启动您的Next.js开发服务器 (通常是停止并重新运行 <code>npm run dev</code>) 或重新部署您的应用。同步到Firestore的更改会实时生效。
               </p>
             </div>
           )}
           
           <Card className="mt-8">
             <CardHeader>
-              <CardTitle className="text-lg">当前模拟数据参考</CardTitle>
+              <CardTitle className="text-lg">当前模拟数据参考 (来自 src/lib/types.ts)</CardTitle>
               <CardDescription>这是当前硬编码在 <code>src/lib/types.ts</code> 中的 <code>MOCK_HISTORICAL_DATA</code> 内容。</CardDescription>
             </CardHeader>
             <CardContent>
@@ -155,7 +211,7 @@ export default function AdminUpdateTotoResultsPage() {
         </CardContent>
         <CardFooter>
           <p className="text-xs text-muted-foreground">
-            此页面仅用于辅助手动更新数据。应用本身不会自动写入文件系统。
+            此页面用于辅助手动更新本地数据文件或将数据同步到Firestore。
           </p>
         </CardFooter>
       </Card>
