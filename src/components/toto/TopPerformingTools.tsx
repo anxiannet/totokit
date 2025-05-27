@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TrendingUp, Percent, ListChecks, ExternalLink } from "lucide-react";
+import { TrendingUp, ListChecks, ExternalLink } from "lucide-react";
 import type { NumberPickingTool as DynamicNumberPickingTool } from "@/lib/numberPickingAlgos";
 import { NumberPickingToolDisplay } from "./NumberPickingToolDisplay";
 import type { TotoCombination } from '@/lib/types';
@@ -65,8 +65,7 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
                   <div className="flex justify-between items-center mb-3">
                     <h4 className="text-md font-semibold">{tool.name}</h4>
                     <Badge variant="secondary" className="flex items-center gap-1 text-xs sm:text-sm">
-                      <Percent className="h-3 w-3" />
-                      {tool.averageHitRate.toFixed(1)}% 命中率
+                      命中率：{tool.averageHitRate.toFixed(1)}%
                     </Badge>
                   </div>
 
