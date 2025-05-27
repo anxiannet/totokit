@@ -52,7 +52,7 @@ export function PredictionResultsDisplay({ predictions, isLoading }: PredictionR
             <p className="text-muted-foreground">正在生成预测，请稍候...</p>
           </div>
         ) : predictions.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-40 text-center p-4 rounded-lg border border-dashed">
+          <div className="flex flex-col items-center justify-center text-center p-4 rounded-lg border border-dashed"> {/* Removed h-40 */}
             <Info className="h-10 w-10 text-muted-foreground mb-3" />
             {/* Empty state text removed as per request */}
           </div>
@@ -90,3 +90,4 @@ export function PredictionResultsDisplay({ predictions, isLoading }: PredictionR
     </Card>
   );
 }
+
