@@ -2,11 +2,11 @@
 "use client";
 
 import Link from 'next/link';
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"; // Added CardFooter
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TrendingUp, ListChecks, ExternalLink, Info } from "lucide-react"; // Added Info
+import { ListChecks, ExternalLink, Info } from "lucide-react";
 import type { NumberPickingTool as DynamicNumberPickingTool } from "@/lib/numberPickingAlgos";
 import { NumberPickingToolDisplay } from "./NumberPickingToolDisplay";
 import type { TotoCombination } from '@/lib/types';
@@ -23,13 +23,23 @@ interface TopPerformingToolsProps {
   tools: TopToolDisplayInfo[];
 }
 
+// Helper function to chunk an array
+function chunkArray<T>(array: T[], size: number): T[][] {
+  const result: T[][] = [];
+  if (!array) return result;
+  for (let i = 0; i < array.length; i += size) {
+    result.push(array.slice(i, i + size));
+  }
+  return result;
+}
+
+
 export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [isInteracting, setIsInteracting] = useState(false); // To prevent observer updates during programmatic scroll
+  const [isInteracting, setIsInteracting] = useState(false);
 
-  // Initialize refs array
   useEffect(() => {
     itemRefs.current = itemRefs.current.slice(0, tools.length);
   }, [tools.length]);
@@ -42,19 +52,16 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
         block: 'nearest',
         inline: 'start',
       });
-      // Allow observer to take over after scroll animation might complete
-      setTimeout(() => setIsInteracting(false), 600); // Adjust timeout as needed
+      setTimeout(() => setIsInteracting(false), 600); 
     }
   }, []);
 
-  // Effect for tab click
   useEffect(() => {
     scrollToTool(activeIndex);
   }, [activeIndex, scrollToTool]);
 
-  // Effect for IntersectionObserver
   useEffect(() => {
-    if (isInteracting) return; // Don't observe while programmatically scrolling
+    if (isInteracting) return; 
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -70,7 +77,7 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
       },
       {
         root: scrollContainerRef.current,
-        threshold: 0.5, // Trigger when 50% of the item is visible
+        threshold: 0.5, 
       }
     );
 
@@ -83,7 +90,7 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
         if (ref) observer.unobserve(ref);
       });
     };
-  }, [tools, activeIndex, isInteracting]); // Add isInteracting to dependencies
+  }, [tools, activeIndex, isInteracting]);
 
 
   if (!tools || tools.length === 0) {
@@ -91,7 +98,7 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
       <Card className="mt-6 shadow-lg">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-xl font-semibold">
-            <TrendingUp className="h-6 w-6 text-primary" />
+            <Info className="h-6 w-6 text-primary" />
             近期热门工具
           </CardTitle>
         </CardHeader>
@@ -107,11 +114,11 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
     <Card className="mt-6 shadow-lg">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-xl font-semibold">
-          <TrendingUp className="h-6 w-6 text-primary" />
+          <Info className="h-6 w-6 text-primary" /> {/* Changed icon from TrendingUp */}
           近期热门工具
         </CardTitle>
       </CardHeader>
-      <CardContent className="pt-2 pb-4 px-0 sm:px-2 md:px-4"> {/* Adjusted padding */}
+      <CardContent className="pt-2 pb-4 px-0 sm:px-0 md:px-0">
         <Tabs
           value={tools[activeIndex]?.id || tools[0]?.id}
           onValueChange={(value) => {
@@ -122,7 +129,7 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
           }}
           className="w-full"
         >
-          <TabsList className="flex overflow-x-auto whitespace-nowrap no-scrollbar mb-4 h-auto p-1 mx-2 sm:mx-0 rounded-lg bg-muted">
+          <TabsList className="flex overflow-x-auto whitespace-nowrap no-scrollbar mb-4 h-auto p-1 mx-2 sm:mx-4 rounded-lg bg-muted">
             {tools.map((tool, index) => (
               <TabsTrigger
                 key={tool.id}
@@ -140,16 +147,13 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
           
           <div
             ref={scrollContainerRef}
-            className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar px-2 sm:px-0" // Added horizontal padding for cards edge spacing
-            onScroll={() => {
-              // Basic scroll event handling if needed, but IntersectionObserver is preferred for active item detection
-            }}
+            className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar px-0" 
           >
             {tools.map((tool, index) => (
               <div
                 key={tool.id}
                 ref={el => itemRefs.current[index] = el}
-                className="min-w-full snap-start flex-shrink-0 px-2" // Added px-2 for spacing between full-width cards
+                className="min-w-full snap-start flex-shrink-0 px-4" 
               >
                 <div className="border p-4 rounded-lg bg-card shadow-sm min-h-[150px] flex flex-col justify-between">
                   <div>
@@ -165,7 +169,11 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
                     
                     {tool.currentPrediction.length > 0 ? (
                         <div className="mb-3">
-                         <NumberPickingToolDisplay numbers={tool.currentPrediction} />
+                         {chunkArray(tool.currentPrediction, 6).map((chunk, chunkIndex) => (
+                           <div key={chunkIndex} className={chunkIndex > 0 ? "mt-1.5" : ""}> {/* Add margin top for subsequent lines */}
+                             <NumberPickingToolDisplay numbers={chunk} />
+                           </div>
+                         ))}
                         </div>
                     ) : (
                       <p className="text-xs text-muted-foreground italic mb-3">此工具当前未生成号码</p>
