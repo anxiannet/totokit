@@ -15,15 +15,16 @@ import {
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 
-// Props are no longer needed since view switching is handled by navigation or local state
-interface HeaderProps {}
+interface HeaderProps {
+  // No longer needed as view switching is handled by Next.js Router
+}
 
 export function Header({}: HeaderProps) {
   const menuItems = [
     { label: "首页", icon: Home, href: "/" },
     { label: "开奖查询", icon: Gift, href: "/historical-results" },
     { label: "数据分析", icon: ListOrdered, href: "/analytics" },
-    { label: "选号工具", icon: Sparkles, action: () => console.log("选号工具 clicked") },
+    { label: "选号工具", icon: Sparkles, href: "/number-picking-tools" }, // Updated to Link
     { label: "覆盖选号", icon: Layers, action: () => console.log("覆盖选号 clicked") },
     { label: "我的工具箱", icon: Briefcase, action: () => console.log("我的工具箱 clicked") },
   ];
