@@ -102,7 +102,7 @@ export function PredictionConfigurator({ onPredictionsGenerated, onLoadingChange
             ) : (
               <Wand2 className="mr-2 h-4 w-4" />
             )}
-            生成预测号码
+            智能选号
           </Button>
         </CardFooter>
       </form>
