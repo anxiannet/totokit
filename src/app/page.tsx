@@ -109,10 +109,10 @@ export default function TotoForecasterPage() {
       const absoluteLatestTenDraws = allHistoricalData.slice(0, Math.min(allHistoricalData.length, 10));
       const currentPrediction = tool.algorithmFn(absoluteLatestTenDraws);
 
-      return { ...tool, averageHitRate: parseFloat(averageHitRate.toFixed(1)), currentPrediction };
+      return { ...tool, averageHitRate: parseFloat(averageHitRate.toFixed(1)) };
     });
     toolPerformances.sort((a, b) => b.averageHitRate - a.averageHitRate);
-    setTopPerformingTools(toolPerformances.slice(0, 3));
+    setTopPerformingTools(toolPerformances.slice(0, 5)); // Changed from 3 to 5
 
     const latestDraw = MOCK_LATEST_RESULT;
     if (latestDraw && allHistoricalData.length > 10) {
