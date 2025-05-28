@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardFooter } from "@/components/ui/card";
 import { Wand2, Loader2, FileText, AlertCircle } from "lucide-react";
 import type { WeightedCriterion, TotoCombination } from "@/lib/types";
-import { MOCK_HISTORICAL_DATA } from "@/lib/types";
-import { generateTotoPredictions, saveSmartPickResult } from "@/lib/actions";
+import { MOCK_HISTORICAL_DATA, OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types"; // Import OFFICIAL_PREDICTIONS_DRAW_ID
+import { generateTotoPredictions } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from '@/hooks/useAuth';
@@ -18,8 +18,6 @@ interface PredictionConfiguratorProps {
   onLoadingChange: (isLoading: boolean) => void;
   onUsageStatusChange?: (hasUsed: boolean) => void;
 }
-
-const CURRENT_DRAW_ID = "4082"; // Used for localStorage key and Firestore drawId
 
 export function PredictionConfigurator({
   onPredictionsGenerated,
@@ -35,30 +33,29 @@ export function PredictionConfigurator({
 
   useEffect(() => {
     if (isAdmin) {
-      setHasUsedSmartPickThisDraw(false); 
+      setHasUsedSmartPickThisDraw(false);
       if (onUsageStatusChange) {
         console.log("[PredictionConfigurator] Admin detected. Notifying parent: onUsageStatusChange(true) for admin.");
-        onUsageStatusChange(true); 
+        onUsageStatusChange(true);
       }
       return;
     }
 
-    const usageKey = `smartPickUsed_${CURRENT_DRAW_ID}_${user?.uid || 'guest'}`;
+    const usageKey = `smartPickUsed_${OFFICIAL_PREDICTIONS_DRAW_ID}_${user?.uid || 'guest'}`;
     const alreadyUsed = localStorage.getItem(usageKey) === 'true';
     console.log(`[PredictionConfigurator] useEffect: User (UID: ${user?.uid || 'guest'}) usageKey: ${usageKey}, alreadyUsed: ${alreadyUsed}`);
 
     if (alreadyUsed) {
       setHasUsedSmartPickThisDraw(true);
       if (onUsageStatusChange) {
-        console.log("[PredictionConfigurator] Notifying parent: onUsageStatusChange(true) due to localStorage.");
+        console.log("[PredictionConfigurator] Notifying parent: onUsageStatusChange(true) due to localStorage usage check.");
         onUsageStatusChange(true);
       }
     } else {
-      // Ensure this is also set to false if not used, for the "can use once" alert
       setHasUsedSmartPickThisDraw(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, isAdmin]); 
+  }, [user, isAdmin, OFFICIAL_PREDICTIONS_DRAW_ID]);
 
 
   const handleSubmit = async (event: FormEvent) => {
@@ -72,6 +69,11 @@ export function PredictionConfigurator({
       });
       return;
     }
+    if (isAdmin && !user) { // Should not happen if isAdmin is true, but as a safeguard
+        toast({ title: "错误", description: "管理员账户未正确识别，请重新登录。", variant: "destructive" });
+        return;
+    }
+
 
     setIsLoading(true);
     onLoadingChange(true);
@@ -117,38 +119,19 @@ export function PredictionConfigurator({
       }
       onPredictionsGenerated(result.combinations as TotoCombination[]);
 
-      let idToken: string | null = null;
-      if (user) {
-        try {
-          idToken = await user.getIdToken();
-        } catch (tokenError) {
-          console.error("Error fetching ID token:", tokenError);
-          toast({ title: "获取用户凭证失败", description: "无法保存选号结果，请稍后重试或重新登录。", variant: "destructive"});
-        }
+      // Save to localStorage
+      try {
+        const resultsKey = `smartPickResults_${OFFICIAL_PREDICTIONS_DRAW_ID}_${user?.uid || 'guest'}`;
+        localStorage.setItem(resultsKey, JSON.stringify(result.combinations));
+        console.log(`[PredictionConfigurator] Smart pick results saved to localStorage key: ${resultsKey}`);
+      } catch (e) {
+        console.error("Error saving smart pick results to localStorage:", e);
+        toast({ title: "保存本地失败", description: "无法将选号结果保存到本地存储。", variant: "destructive" });
       }
 
-      const smartPickData = {
-        userId: user ? user.uid : null,
-        idToken: idToken,
-        drawId: CURRENT_DRAW_ID,
-        combinations: result.combinations as TotoCombination[],
-      };
-      
-      saveSmartPickResult(smartPickData)
-        .then(saveRes => {
-          if (saveRes.success) {
-            toast({ title: "选号已保存", description: "您的智能选号结果已成功保存到云端。" });
-          } else {
-            toast({ title: "保存失败", description: `无法保存选号结果：${saveRes.message || '未知错误'}`, variant: "destructive"});
-          }
-        })
-        .catch(err => {
-           toast({ title: "保存出错", description: `保存选号结果时发生错误：${err.message || '未知错误'}`, variant: "destructive"});
-        });
-
-      if (!isAdmin) { 
-        const usageKey = `smartPickUsed_${CURRENT_DRAW_ID}_${user?.uid || 'guest'}`;
-        console.log(`[PredictionConfigurator] handleSubmit: Setting localStorage key ${usageKey} to true for non-admin.`);
+      if (!isAdmin) {
+        const usageKey = `smartPickUsed_${OFFICIAL_PREDICTIONS_DRAW_ID}_${user?.uid || 'guest'}`;
+        console.log(`[PredictionConfigurator] handleSubmit: Setting localStorage usage key ${usageKey} to true for non-admin.`);
         localStorage.setItem(usageKey, 'true');
         setHasUsedSmartPickThisDraw(true);
       }
@@ -163,7 +146,7 @@ export function PredictionConfigurator({
             <Button
               type="submit"
               className="flex-1"
-              disabled={isLoading || (!isAdmin && hasUsedSmartPickThisDraw)}
+              disabled={isLoading || (!isAdmin && hasUsedSmartPickThisDraw) || (isAdmin && !user) }
             >
               {isLoading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -181,7 +164,7 @@ export function PredictionConfigurator({
           </div>
         </CardFooter>
       </form>
-      {!isAdmin && hasUsedSmartPickThisDraw && ( 
+      {!isAdmin && hasUsedSmartPickThisDraw && (
         <div className="p-4 pt-0 text-sm">
           <Alert>
             <AlertCircle className="h-4 w-4" />
@@ -192,7 +175,7 @@ export function PredictionConfigurator({
           </Alert>
         </div>
       )}
-       {!isAdmin && !isLoading && !hasUsedSmartPickThisDraw && ( 
+       {!isAdmin && !isLoading && !hasUsedSmartPickThisDraw && (
          <div className="p-4 pt-0 text-sm">
            <Alert variant="default">
              <AlertCircle className="h-4 w-4" />
@@ -203,6 +186,17 @@ export function PredictionConfigurator({
            </Alert>
          </div>
        )}
+        {isAdmin && user && (
+            <div className="p-4 pt-0 text-sm">
+                <Alert variant="default" className="border-blue-500">
+                    <Wand2 className="h-4 w-4 text-blue-500" />
+                    <AlertTitle className="text-blue-700">管理员模式</AlertTitle>
+                    <AlertDescription>
+                        您可以无限制使用智能选号功能。
+                    </AlertDescription>
+                </Alert>
+            </div>
+        )}
     </Card>
   );
 }

@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { PredictionConfigurator } from "@/components/toto/PredictionConfigurator";
 import { PredictionResultsDisplay } from "@/components/toto/PredictionResultsDisplay";
-import type { TotoCombination, HistoricalResult } from "@/lib/types";
+import type { TotoCombination } from "@/lib/types";
 import { CurrentAndLatestDrawInfo } from "@/components/toto/CurrentAndLatestDrawInfo";
 import { TopPerformingTools, type TopToolDisplayInfo } from "@/components/toto/TopPerformingTools";
 import { LastDrawTopTools, type LastDrawToolPerformanceInfo } from "@/components/toto/LastDrawTopTools";
@@ -12,7 +12,6 @@ import { MOCK_HISTORICAL_DATA, MOCK_LATEST_RESULT, OFFICIAL_PREDICTIONS_DRAW_ID 
 import { dynamicTools } from "@/lib/numberPickingAlgos";
 import { calculateHitDetails } from "@/lib/totoUtils";
 import { useAuth } from '@/hooks/useAuth';
-import { getUserSmartPickResults } from '@/lib/actions';
 import { useToast } from "@/hooks/use-toast";
 
 
@@ -25,7 +24,8 @@ export default function TotoForecasterPage() {
   const [topPerformingTools, setTopPerformingTools] = useState<TopToolDisplayInfo[]>([]);
   const [lastDrawTopPerformingTools, setLastDrawTopPerformingTools] = useState<LastDrawToolPerformanceInfo[]>([]);
 
-  const CURRENT_DRAW_ID = OFFICIAL_PREDICTIONS_DRAW_ID;
+  // CURRENT_DRAW_ID is OFFICIAL_PREDICTIONS_DRAW_ID from types.ts
+  // const CURRENT_DRAW_ID = OFFICIAL_PREDICTIONS_DRAW_ID; // Already available via import
 
   const handlePredictionsGenerated = (newPredictions: TotoCombination[]) => {
     setPredictions(newPredictions);
@@ -47,34 +47,39 @@ export default function TotoForecasterPage() {
   };
 
   useEffect(() => {
-    const fetchSavedPicks = async () => {
-      console.log(`[TotoForecasterPage] fetchSavedPicks: Attempting to fetch. User: ${user?.uid}, displayResultsArea: ${displayResultsArea}, !isGenerating: ${!isGeneratingPredictions}, preds.length: ${predictions.length}`);
-      if (user && displayResultsArea && !isGeneratingPredictions && predictions.length === 0) {
-        console.log(`[TotoForecasterPage] fetchSavedPicks: Conditions met. Fetching saved smart picks for user ${user.uid}, draw ${CURRENT_DRAW_ID}`);
-        setIsGeneratingPredictions(true);
+    const loadSavedPicksFromLocalStorage = () => {
+      console.log(`[TotoForecasterPage] loadSavedPicks: Attempting to load from localStorage. User: ${user?.uid}, displayResultsArea: ${displayResultsArea}, !isGenerating: ${!isGeneratingPredictions}, preds.length: ${predictions.length}`);
+      if (displayResultsArea && !isGeneratingPredictions && predictions.length === 0) {
+        const resultsKey = `smartPickResults_${OFFICIAL_PREDICTIONS_DRAW_ID}_${user?.uid || 'guest'}`;
+        console.log(`[TotoForecasterPage] loadSavedPicks: Attempting to load from localStorage key: ${resultsKey}`);
+        setIsGeneratingPredictions(true); // Show loader while checking localStorage
         try {
-          const savedPicks = await getUserSmartPickResults(user.uid, CURRENT_DRAW_ID);
-          console.log(`[TotoForecasterPage] fetchSavedPicks: getUserSmartPickResults returned:`, savedPicks);
-          if (savedPicks && savedPicks.length > 0) {
-            setPredictions(savedPicks);
-            console.log(`[TotoForecasterPage] fetchSavedPicks: setPredictions called with savedPicks.`);
-            toast({ title: "已加载您本期保存的选号" });
+          const savedPicksString = localStorage.getItem(resultsKey);
+          if (savedPicksString) {
+            const savedPicks = JSON.parse(savedPicksString) as TotoCombination[];
+            if (savedPicks && savedPicks.length > 0) {
+              setPredictions(savedPicks);
+              console.log(`[TotoForecasterPage] loadSavedPicks: setPredictions called with localStorage picks.`);
+              toast({ title: "已加载您本期保存的选号 (本地)" });
+            } else {
+              console.log(`[TotoForecasterPage] loadSavedPicks: No valid saved picks found in localStorage or empty array.`);
+            }
           } else {
-            console.log(`[TotoForecasterPage] fetchSavedPicks: No saved picks found or empty array returned.`);
+             console.log(`[TotoForecasterPage] loadSavedPicks: No data found in localStorage for key ${resultsKey}.`);
           }
         } catch (error) {
-          console.error("Error fetching saved smart picks:", error);
-          toast({ title: "加载已保存选号失败", description: error instanceof Error ? error.message : "未知错误", variant: "destructive" });
+          console.error("Error loading saved smart picks from localStorage:", error);
+          toast({ title: "加载本地选号失败", description: error instanceof Error ? error.message : "未知错误", variant: "destructive" });
         } finally {
           setIsGeneratingPredictions(false);
         }
       } else {
-        console.log(`[TotoForecasterPage] fetchSavedPicks: Conditions NOT met for fetching.`);
+         console.log(`[TotoForecasterPage] loadSavedPicks: Conditions NOT met for loading from localStorage.`);
       }
     };
-    fetchSavedPicks();
+    loadSavedPicksFromLocalStorage();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, displayResultsArea, CURRENT_DRAW_ID, toast]);
+  }, [user, displayResultsArea, OFFICIAL_PREDICTIONS_DRAW_ID, toast]); // predictions removed from deps to avoid loop on setPredictions
 
 
   useEffect(() => {
@@ -93,11 +98,10 @@ export default function TotoForecasterPage() {
           if (precedingTenDrawsForTarget.length < 10) return;
 
           let predictedNumbersForTargetDraw: number[] = tool.algorithmFn(precedingTenDrawsForTarget);
-          if (targetDraw.numbers.length > 0) { // Ensure targetDraw has numbers to compare against
+          if (targetDraw.numbers.length > 0) {
             const hitDetails = calculateHitDetails(predictedNumbersForTargetDraw, targetDraw);
-            // Updated hit rate calculation
-            const hitRate = predictedNumbersForTargetDraw.length > 0 
-              ? (hitDetails.mainHitCount / predictedNumbersForTargetDraw.length) * 100 
+            const hitRate = predictedNumbersForTargetDraw.length > 0
+              ? (hitDetails.mainHitCount / predictedNumbersForTargetDraw.length) * 100
               : 0;
             totalHitRate += hitRate;
             drawsAnalyzed++;
@@ -105,14 +109,10 @@ export default function TotoForecasterPage() {
         });
       }
       const averageHitRate = drawsAnalyzed > 0 ? totalHitRate / drawsAnalyzed : 0;
-      // For currentPrediction, use the absolute latest 10 draws from the full historical dataset
-      const absoluteLatestTenDraws = allHistoricalData.slice(0, Math.min(allHistoricalData.length, 10));
-      const currentPrediction = tool.algorithmFn(absoluteLatestTenDraws);
-
       return { ...tool, averageHitRate: parseFloat(averageHitRate.toFixed(1)) };
     });
     toolPerformances.sort((a, b) => b.averageHitRate - a.averageHitRate);
-    setTopPerformingTools(toolPerformances.slice(0, 5)); // Changed from 3 to 5
+    setTopPerformingTools(toolPerformances.slice(0, 5));
 
     const latestDraw = MOCK_LATEST_RESULT;
     if (latestDraw && allHistoricalData.length > 10) {
@@ -122,9 +122,8 @@ export default function TotoForecasterPage() {
             const singleDrawPerformances: LastDrawToolPerformanceInfo[] = dynamicTools.map(tool => {
                 const predictedNumbers = tool.algorithmFn(precedingTenDrawsForLatest);
                 const hitDetails = calculateHitDetails(predictedNumbers, latestDraw);
-                // Updated hit rate calculation
-                const hitRate = predictedNumbers.length > 0 
-                  ? (hitDetails.mainHitCount / predictedNumbers.length) * 100 
+                const hitRate = predictedNumbers.length > 0
+                  ? (hitDetails.mainHitCount / predictedNumbers.length) * 100
                   : 0;
                 return {
                     id: tool.id,

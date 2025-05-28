@@ -1,45 +1,51 @@
+
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
     // TOTO Historical Results
+    // Allow anyone to read historical results.
+    // Only allow writes if the user is authenticated and has an 'isAdmin' custom claim,
+    // OR if the document being written has a userId field matching the specific admin UID.
     match /totoResults/{drawId} {
       allow read: if true;
-      // Allow write if the document being written contains a userId matching the admin's UID
       allow write: if request.resource.data.userId != null && request.resource.data.userId == "mAvLawNGpGdKwPoHuMQyXlKpPNv1";
     }
 
-    // Tool Predictions (One document per tool, containing a map of predictions by draw number)
+    // Tool Predictions (Predictions made by specific tools for historical draws and official draw)
+    // Each document ID is toolId. Contains a map predictionsByDraw keyed by drawNumber.
     // Allow anyone to read these predictions.
-    // Admin (specific UID) can create or update the entire tool's prediction document.
-    // The document itself must contain the admin's UID as 'userId'.
+    // Writes (create/update) are allowed if the document being written has a top-level userId
+    // matching the specific admin UID. This admin UID is responsible for all predictions.
     match /toolPredictions/{toolId} {
       allow read: if true;
       allow create, update: if request.resource.data.userId != null && request.resource.data.userId == "mAvLawNGpGdKwPoHuMQyXlKpPNv1";
-      allow delete: if request.auth != null && request.auth.token.isAdmin == true; // Or specific UID for delete too
+      allow delete: if false; // Or restrict to admin: request.auth != null && request.auth.token.isAdmin == true && request.auth.uid == "mAvLawNGpGdKwPoHuMQyXlKpPNv1";
     }
 
     // User Favorite Tools
+    // Users can only read and write their own favorite tools document.
     match /userToolFavorites/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Smart Pick AI Results
-    match /smartPickResults/{resultId} {
-      allow create: if request.resource.data.userId != null; // Allows create if triggered by an authenticated user who provides their UID
-      allow read: if resource.data.userId != null; // Rely on server action to filter by userId
-      allow update, delete: if false;
-    }
+    // Smart Pick AI Results - Commented out as it's now localStorage based
+    // match /smartPickResults/{resultId} {
+    //   allow create: if request.resource.data.userId != null;
+    //   allow read: if resource.data.userId != null; // Simplified read, server action filters by user
+    //   allow update, delete: if false;
+    // }
 
-    // App Settings (e.g., current draw info)
-    match /appSettings/{docId} {
+    // App Settings (e.g., current draw display info)
+    // Allow anyone to read.
+    // Only allow writes if the document has a userId field matching the specific admin UID.
+    match /appSettings/{settingId} {
       allow read: if true;
-      // Allow write if the document being written contains a userId matching the admin's UID
       allow write: if request.resource.data.userId != null && request.resource.data.userId == "mAvLawNGpGdKwPoHuMQyXlKpPNv1";
     }
 
-    // Default deny all other access
+    // Default deny all other access to prevent unintended access
     match /{document=**} {
       allow read, write: if false;
     }
