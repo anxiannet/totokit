@@ -16,7 +16,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Target, Loader2, Save, AlertCircle, DatabaseZap, TrendingUp, TrendingDown, Info, BarChartBig, Eye, Wand2, PlayCircle } from "lucide-react";
 import type { HistoricalResult, TotoCombination } from "@/lib/types";
-import { OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types";
+import { OFFICIAL_PREDICTIONS_DRAW_ID, MOCK_HISTORICAL_DATA } from "@/lib/types"; // Import MOCK for fallback
 import { NumberPickingToolDisplay } from "@/components/toto/NumberPickingToolDisplay";
 import { FavoriteStarButton } from "@/components/toto/FavoriteStarButton";
 import {
@@ -26,12 +26,12 @@ import {
 } from "@/lib/totoUtils";
 import { zhCN } from "date-fns/locale";
 import {
-  saveToolPrediction,
-  saveMultipleToolPredictions,
+  saveCurrentDrawToolPrediction,
+  saveHistoricalToolPredictions,
   getPredictionForToolAndDraw,
-  calculateHistoricalPerformances,
-  calculateSingleToolPrediction,
-  type ToolPredictionInput,
+  calculateHistoricalPerformances, // Server action
+  calculateSingleToolPrediction, // Server action
+  type HistoricalPredictionInputForTool, // For preparing data to save historical
 } from "@/lib/actions";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -41,6 +41,7 @@ interface SerializableTool {
   id: string;
   name: string;
   description: string;
+  // algorithmFn is NOT passed to client
 }
 
 export interface HistoricalPerformanceDisplayData {
@@ -54,8 +55,8 @@ export interface HistoricalPerformanceDisplayData {
 
 interface ToolDetailPageClientProps {
   tool: SerializableTool;
-  initialSavedPrediction: number[] | null;
-  allHistoricalDataForPerformanceAnalysis: HistoricalResult[];
+  initialSavedPrediction: number[] | null; // Prediction for OFFICIAL_PREDICTIONS_DRAW_ID
+  allHistoricalDataForPerformanceAnalysis: HistoricalResult[]; // All historical data from DB for client-side calculation requests
 }
 
 export function ToolDetailPageClient({
@@ -66,15 +67,18 @@ export function ToolDetailPageClient({
   const { user } = useAuth();
   const { toast } = useToast();
 
+  // State for the prediction saved in DB for OFFICIAL_PREDICTIONS_DRAW_ID
   const [savedPredictionForTargetDraw, setSavedPredictionForTargetDraw] = useState<number[] | null>(initialSavedPrediction);
-  const [isLoadingSavedPrediction, setIsLoadingSavedPrediction] = useState(false);
-  const [isSavingCurrentDraw, setIsSavingCurrentDraw] = useState(false);
+  const [isLoadingSavedPrediction, setIsLoadingSavedPrediction] = useState(false); // For fetching official prediction
 
-  const [displayedHistoricalPerformances, setDisplayedHistoricalPerformances] = useState<HistoricalPerformanceDisplayData[] | null>(null);
-  const [isSavingHistoricalBacktests, setIsSavingHistoricalBacktests] = useState(false);
-
+  // State for the prediction dynamically generated for OFFICIAL_PREDICTIONS_DRAW_ID by admin (before saving)
   const [currentPredictionForSave, setCurrentPredictionForSave] = useState<number[] | null>(null);
-  const [isLoadingAllPredictions, setIsLoadingAllPredictions] = useState(false);
+  // State for dynamically calculated historical performances
+  const [displayedHistoricalPerformances, setDisplayedHistoricalPerformances] = useState<HistoricalPerformanceDisplayData[] | null>(null);
+
+  const [isSavingCurrentDraw, setIsSavingCurrentDraw] = useState(false);
+  const [isSavingHistorical, setIsSavingHistorical] = useState(false);
+  const [isLoadingAllPredictions, setIsLoadingAllPredictions] = useState(false); // Unified loading for "Start Prediction"
 
 
   const isAdmin = user && user.email === "admin@totokit.com";
@@ -87,7 +91,7 @@ export function ToolDetailPageClient({
       setSavedPredictionForTargetDraw(saved);
     } catch (error) {
       console.error(`Error fetching saved prediction for tool ${serializableTool.id}, draw ${OFFICIAL_PREDICTIONS_DRAW_ID}:`, error);
-      setSavedPredictionForTargetDraw(null); // Ensure it's reset on error
+      setSavedPredictionForTargetDraw(null);
       toast({ title: "错误", description: "加载为当期保存的预测失败。", variant: "destructive" });
     } finally {
       setIsLoadingSavedPrediction(false);
@@ -95,9 +99,10 @@ export function ToolDetailPageClient({
   }, [serializableTool, toast]);
 
   useEffect(() => {
-    fetchAndSetSavedOfficialPrediction();
+    // Set initial state from prop, then allow fetching updates if needed (though currently no auto-refresh)
+    setSavedPredictionForTargetDraw(initialSavedPrediction);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serializableTool?.id]);
+  }, [initialSavedPrediction, serializableTool?.id]);
 
 
   const handleGenerateAllPredictions = async () => {
@@ -110,29 +115,29 @@ export function ToolDetailPageClient({
     setDisplayedHistoricalPerformances(null);
 
     try {
-      const latestTenHistoricalData = allHistoricalDataForPerformanceAnalysis.slice(0, 10);
+      const latestTenHistoricalDataForCurrentPred = allHistoricalDataForPerformanceAnalysis.slice(0, 10);
       
-      const [currentPred, historicalPerf] = await Promise.all([
-        calculateSingleToolPrediction(serializableTool.id, latestTenHistoricalData),
+      const [currentPredResult, historicalPerfResult] = await Promise.all([
+        calculateSingleToolPrediction(serializableTool.id, latestTenHistoricalDataForCurrentPred),
         calculateHistoricalPerformances(serializableTool.id, allHistoricalDataForPerformanceAnalysis)
       ]);
 
-      if (currentPred) {
-        setCurrentPredictionForSave(currentPred);
+      if (currentPredResult) {
+        setCurrentPredictionForSave(currentPredResult);
       } else {
-        toast({ title: "生成当期预测失败", description: "无法生成当前预测号码。", variant: "destructive" });
+        toast({ title: "生成当期预测失败", description: `工具 ${serializableTool.name} 无法生成当前预测号码。`, variant: "destructive" });
       }
 
-      if (historicalPerf && historicalPerf.length > 0) {
-        setDisplayedHistoricalPerformances(historicalPerf);
+      if (historicalPerfResult && historicalPerfResult.length > 0) {
+        setDisplayedHistoricalPerformances(historicalPerfResult);
       } else if (allHistoricalDataForPerformanceAnalysis.length > 0) {
-        toast({ title: "无历史表现数据", description: "无法计算历史表现，可能是历史数据不足或工具未生成预测。", variant: "default"});
-        setDisplayedHistoricalPerformances([]); // Set to empty array to indicate calculation was attempted
+        toast({ title: "无历史表现数据", description: `无法计算 ${serializableTool.name} 的历史表现，可能是历史数据不足或工具未生成预测。`, variant: "default"});
+        setDisplayedHistoricalPerformances([]);
       } else {
          toast({ title: "无历史数据", description: "数据库中没有历史开奖数据可供分析。", variant: "default"});
          setDisplayedHistoricalPerformances([]);
       }
-      toast({ title: "成功", description: "已完成全面预测生成！" });
+      toast({ title: "成功", description: `已为工具 ${serializableTool.name} 完成全面预测生成！` });
 
     } catch (error: any) {
       toast({ title: "预测生成出错", description: error.message || "生成预测时发生错误。", variant: "destructive" });
@@ -153,20 +158,17 @@ export function ToolDetailPageClient({
     }
     setIsSavingCurrentDraw(true);
     try {
-      const predictionData: ToolPredictionInput = {
-        toolId: serializableTool.id,
-        toolName: serializableTool.name,
-        targetDrawNumber: OFFICIAL_PREDICTIONS_DRAW_ID,
-        targetDrawDate: "PENDING_DRAW",
-        predictedNumbers: currentPredictionForSave,
-        userId: user.uid,
-      };
-      const result = await saveToolPrediction(predictionData);
+      const result = await saveCurrentDrawToolPrediction(
+        serializableTool.id,
+        serializableTool.name,
+        currentPredictionForSave,
+        user.uid
+      );
 
       if (result.success) {
-        toast({ title: "成功", description: result.message || `预测已为第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期保存/更新。` });
+        toast({ title: "成功", description: result.message || `预测已为期号 ${OFFICIAL_PREDICTIONS_DRAW_ID} 保存/更新。` });
         fetchAndSetSavedOfficialPrediction(); // Refresh the displayed saved prediction
-        setCurrentPredictionForSave(null); // Clear generated numbers after saving if desired
+        setCurrentPredictionForSave(null); // Clear generated numbers after saving
       } else {
         toast({ title: "保存失败", description: result.message || "无法保存预测。", variant: "destructive" });
       }
@@ -182,19 +184,21 @@ export function ToolDetailPageClient({
       toast({ title: "错误", description: "没有可保存的历史回测数据，或权限不足。", variant: "destructive" });
       return;
     }
-    setIsSavingHistoricalBacktests(true);
+    setIsSavingHistorical(true);
     try {
-      const predictionsToSave: ToolPredictionInput[] = displayedHistoricalPerformances.map(performance => ({
-        toolId: serializableTool.id,
-        toolName: serializableTool.name,
+      const predictionsToSave: HistoricalPredictionInputForTool[] = displayedHistoricalPerformances.map(performance => ({
         targetDrawNumber: performance.targetDraw.drawNumber,
         targetDrawDate: performance.targetDraw.date,
         predictedNumbers: performance.predictedNumbersForTargetDraw,
-        userId: user.uid,
       }));
 
       if (predictionsToSave.length > 0) {
-        const result = await saveMultipleToolPredictions(predictionsToSave, user.uid);
+        const result = await saveHistoricalToolPredictions(
+            serializableTool.id,
+            serializableTool.name,
+            predictionsToSave,
+            user.uid
+        );
         if (result.success) {
           toast({ title: "成功", description: result.message || `已成功保存/更新 ${result.savedCount || 0} 条历史回测预测。` });
         } else {
@@ -203,12 +207,14 @@ export function ToolDetailPageClient({
       } else {
         toast({ title: "无数据", description: "没有符合条件的可保存的历史回测预测数据。", variant: "default" });
       }
-    } catch (error: any) {
+    } catch (error: any)
+       {
       toast({ title: "保存出错", description: error.message || "批量保存历史回测预测时发生错误。", variant: "destructive" });
     } finally {
-      setIsSavingHistoricalBacktests(false);
+      setIsSavingHistorical(false);
     }
   };
+
 
   const OfficialDrawDisplay = ({ draw }: { draw: HistoricalResult }) => (
     <div className="flex flex-wrap gap-1.5 items-center">
@@ -251,7 +257,7 @@ export function ToolDetailPageClient({
           <CardDescription>{serializableTool.description}</CardDescription>
         </CardHeader>
         <CardContent>
-          {/* Section for Current Draw Prediction (OFFICIAL_PREDICTIONS_DRAW_ID) */}
+          {/* Section for Current/Official Draw Prediction (OFFICIAL_PREDICTIONS_DRAW_ID) */}
           <div className="mb-6 pb-6 border-b">
             <h4 className="text-md font-semibold mb-2 flex items-center gap-1.5">
               <Target className="h-5 w-5 text-primary" />
@@ -267,26 +273,18 @@ export function ToolDetailPageClient({
                 <p className="text-xs text-muted-foreground mb-1">已保存的预测 (来自数据库):</p>
                 <NumberPickingToolDisplay numbers={savedPredictionForTargetDraw} />
               </>
-            ) : !isAdmin ? (
-               <Alert variant="default" className="mt-3">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>提示</AlertTitle>
-                  <AlertDescription>
-                    期号 {OFFICIAL_PREDICTIONS_DRAW_ID} 的预测号码尚未由管理员生成。
-                  </AlertDescription>
-                </Alert>
-            ) : null }
+            ) : null}
 
-            {isAdmin && (!savedPredictionForTargetDraw || savedPredictionForTargetDraw.length === 0) && !currentPredictionForSave && (
+            {isAdmin && (!savedPredictionForTargetDraw || savedPredictionForTargetDraw.length === 0) && !currentPredictionForSave && !isLoadingAllPredictions && (
               <Button onClick={handleGenerateAllPredictions} disabled={isLoadingAllPredictions} className="w-full mt-3">
-                {isLoadingAllPredictions ? ( <Loader2 className="mr-2 h-4 w-4 animate-spin" /> ) : ( <PlayCircle className="mr-2 h-4 w-4" /> )}
+                <PlayCircle className="mr-2 h-4 w-4" />
                 开始全面预测 (当期及历史回测)
               </Button>
             )}
             
             {isAdmin && currentPredictionForSave && currentPredictionForSave.length > 0 && (
               <div className="mt-4 p-3 border rounded-md bg-muted/30">
-                 <p className="text-xs text-muted-foreground mb-1">新生成的当期预测 (可保存):</p>
+                 <p className="text-xs text-muted-foreground mb-1">新生成的期号 {OFFICIAL_PREDICTIONS_DRAW_ID} 预测 (可保存):</p>
                 <NumberPickingToolDisplay numbers={currentPredictionForSave} />
                 <Button onClick={handleSaveCurrentDrawPrediction} disabled={isSavingCurrentDraw || isLoadingAllPredictions || !user?.uid} className="w-full mt-3">
                   {isSavingCurrentDraw ? ( <Loader2 className="mr-2 h-4 w-4 animate-spin" /> ) : ( <Save className="mr-2 h-4 w-4" /> )}
@@ -294,157 +292,162 @@ export function ToolDetailPageClient({
                 </Button>
               </div>
             )}
-             {/* Show this if prediction already saved and admin wants to regenerate/update */}
-            {isAdmin && savedPredictionForTargetDraw && savedPredictionForTargetDraw.length > 0 && (
+            {isAdmin && savedPredictionForTargetDraw && savedPredictionForTargetDraw.length > 0 && !isLoadingAllPredictions && (
                  <Button onClick={handleGenerateAllPredictions} disabled={isLoadingAllPredictions} className="w-full mt-3">
-                    {isLoadingAllPredictions ? ( <Loader2 className="mr-2 h-4 w-4 animate-spin" /> ) : ( <PlayCircle className="mr-2 h-4 w-4" /> )}
-                    重新生成全面预测 (覆盖已保存的当期预测)
+                    <PlayCircle className="mr-2 h-4 w-4" />
+                    重新生成全面预测 (将覆盖已保存的当期预测)
                 </Button>
+            )}
+            {!isAdmin && (!savedPredictionForTargetDraw || savedPredictionForTargetDraw.length === 0) && !isLoadingSavedPrediction && (
+                 <Alert variant="default" className="mt-3">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>提示</AlertTitle>
+                    <AlertDescription>
+                      期号 {OFFICIAL_PREDICTIONS_DRAW_ID} 的预测号码尚未由管理员生成。
+                    </AlertDescription>
+                  </Alert>
             )}
           </div>
 
-          {/* Section for Historical Performance */}
-          <div className="pt-0">
-            {isLoadingAllPredictions && (
+          {/* Loading state for "Start Prediction" */}
+          {isLoadingAllPredictions && (
               <div className="flex flex-col items-center justify-center h-40">
                 <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
                 <p className="text-muted-foreground">正在生成全面预测数据...</p>
               </div>
-            )}
+          )}
 
-            {displayedHistoricalPerformances && displayedHistoricalPerformances.length > 0 && !isLoadingAllPredictions && (
-              <>
+          {/* Section for Historical Performance (only if data exists) */}
+          {displayedHistoricalPerformances && !isLoadingAllPredictions && (
+            <div className="pt-0">
                 <h4 className="text-md font-semibold mb-3 flex items-center gap-1.5">
                   <BarChartBig className="h-5 w-5 text-primary" />
                   历史开奖动态预测表现 (最近10期):
                 </h4>
-                <ScrollArea className="h-[calc(100vh-650px)] sm:h-[calc(100vh-600px)] rounded-md border p-3 space-y-4 bg-background/50">
-                  {displayedHistoricalPerformances.map((performance) => {
-                    if (!performance) return null;
-                    const { targetDraw, predictedNumbersForTargetDraw, hitDetails, hitRate, hasAnyHit, predictionBasisDraws } = performance;
-                    return (
-                      <div
-                        key={`${serializableTool.id}-${targetDraw.drawNumber}`}
-                        className={`p-3 border rounded-lg ${
-                          hasAnyHit
-                            ? "border-green-500/60 bg-green-500/10"
-                            : "border-border bg-card"
-                        }`}
-                      >
-                        <div className="flex justify-between items-center mb-1.5">
-                          <p className="text-xs font-medium">
-                            目标期号:{" "}
-                            <span className="font-semibold text-primary">
-                              {targetDraw.drawNumber}
-                            </span>{" "}
-                            ({formatDateToLocale(targetDraw.date, zhCN)})
-                          </p>
-                          {predictedNumbersForTargetDraw.length > 0 &&
-                            (hasAnyHit ? (
-                              <TrendingUp className="h-4 w-4 text-green-600" />
+                {displayedHistoricalPerformances.length > 0 ? (
+                    <ScrollArea className="h-[calc(100vh-650px)] sm:h-[calc(100vh-600px)] rounded-md border p-3 space-y-4 bg-background/50">
+                    {displayedHistoricalPerformances.map((performance) => {
+                        if (!performance) return null;
+                        const { targetDraw, predictedNumbersForTargetDraw, hitDetails, hitRate, hasAnyHit, predictionBasisDraws } = performance;
+                        return (
+                        <div
+                            key={`${serializableTool.id}-${targetDraw.drawNumber}`}
+                            className={`p-3 border rounded-lg ${
+                            hasAnyHit
+                                ? "border-green-500/60 bg-green-500/10"
+                                : "border-border bg-card"
+                            }`}
+                        >
+                            <div className="flex justify-between items-center mb-1.5">
+                            <p className="text-xs font-medium">
+                                目标期号:{" "}
+                                <span className="font-semibold text-primary">
+                                {targetDraw.drawNumber}
+                                </span>{" "}
+                                ({formatDateToLocale(targetDraw.date, zhCN)})
+                            </p>
+                            {predictedNumbersForTargetDraw.length > 0 &&
+                                (hasAnyHit ? (
+                                <TrendingUp className="h-4 w-4 text-green-600" />
+                                ) : (
+                                <TrendingDown className="h-4 w-4 text-red-500/80" />
+                                ))}
+                            </div>
+                            {predictionBasisDraws && (
+                                <p className="text-xs text-muted-foreground italic mb-1">
+                                    {predictionBasisDraws}
+                                </p>
+                            )}
+                            <div className="mb-1.5">
+                            <p className="text-xs text-muted-foreground mb-0.5">
+                                当期开奖号码:
+                            </p>
+                            <OfficialDrawDisplay draw={targetDraw} />
+                            </div>
+                            <div className="mb-1.5">
+                            <p className="text-xs text-muted-foreground mb-0.5">
+                                工具针对本期预测号码 ({predictedNumbersForTargetDraw.length}{" "}
+                                个):
+                            </p>
+                            {predictedNumbersForTargetDraw.length > 0 ? (
+                                <NumberPickingToolDisplay
+                                numbers={predictedNumbersForTargetDraw}
+                                historicalResultForHighlight={targetDraw}
+                                />
                             ) : (
-                              <TrendingDown className="h-4 w-4 text-red-500/80" />
-                            ))}
-                        </div>
-                         {predictionBasisDraws && (
-                              <p className="text-xs text-muted-foreground italic mb-1">
-                                  {predictionBasisDraws}
-                              </p>
-                          )}
-                        <div className="mb-1.5">
-                          <p className="text-xs text-muted-foreground mb-0.5">
-                            当期开奖号码:
-                          </p>
-                          <OfficialDrawDisplay draw={targetDraw} />
-                        </div>
-                        <div className="mb-1.5">
-                          <p className="text-xs text-muted-foreground mb-0.5">
-                            工具针对本期预测号码 ({predictedNumbersForTargetDraw.length}{" "}
-                            个):
-                          </p>
-                          {predictedNumbersForTargetDraw.length > 0 ? (
-                            <NumberPickingToolDisplay
-                              numbers={predictedNumbersForTargetDraw}
-                              historicalResultForHighlight={targetDraw}
-                            />
-                          ) : (
-                            <p className="text-xs text-muted-foreground italic">
-                              数据不足或算法未生成预测
-                            </p>
-                          )}
-                        </div>
-                        {predictedNumbersForTargetDraw.length > 0 && (
-                          <div className="text-xs space-y-0.5 text-foreground/90">
-                            <p>
-                              命中正码:{" "}
-                              <span className="font-semibold">
-                                {hitDetails.mainHitCount}
-                              </span>{" "}
-                              个
-                              {hitDetails.matchedMainNumbers.length > 0
-                                ? ` (${hitDetails.matchedMainNumbers.join(", ")})`
-                                : ""}
-                            </p>
-                            <p>
-                              特别号码 ({targetDraw.additionalNumber}):{" "}
-                              {hitDetails.matchedAdditionalNumberDetails.matched ? (
-                                <span className="font-semibold text-yellow-600">
-                                  命中
+                                <p className="text-xs text-muted-foreground italic">
+                                数据不足或算法未生成预测
+                                </p>
+                            )}
+                            </div>
+                            {predictedNumbersForTargetDraw.length > 0 && (
+                            <div className="text-xs space-y-0.5 text-foreground/90">
+                                <p>
+                                命中正码:{" "}
+                                <span className="font-semibold">
+                                    {hitDetails.mainHitCount}
+                                </span>{" "}
+                                个
+                                {hitDetails.matchedMainNumbers.length > 0
+                                    ? ` (${hitDetails.matchedMainNumbers.join(", ")})`
+                                    : ""}
+                                </p>
+                                <p>
+                                特别号码 ({targetDraw.additionalNumber}):{" "}
+                                {hitDetails.matchedAdditionalNumberDetails.matched ? (
+                                    <span className="font-semibold text-yellow-600">
+                                    命中
+                                    </span>
+                                ) : (
+                                    <span className="text-muted-foreground">
+                                    未命中
+                                    </span>
+                                )}
+                                </p>
+                                <p>
+                                正码命中率 (对比工具预测数量):{" "}
+                                <span className="font-semibold">
+                                    {hitRate.toFixed(1)}%
                                 </span>
-                              ) : (
-                                <span className="text-muted-foreground">
-                                  未命中
-                                </span>
-                              )}
-                            </p>
-                            <p>
-                              正码命中率 (对比工具预测数量):{" "}
-                              <span className="font-semibold">
-                                {hitRate.toFixed(1)}%
-                              </span>
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </ScrollArea>
-              </>
-            )}
-            {displayedHistoricalPerformances && displayedHistoricalPerformances.length === 0 && !isLoadingAllPredictions && (
-                 <Alert variant="default" className="mt-3">
-                    <Info className="h-4 w-4" />
-                    <AlertTitle>无历史表现数据</AlertTitle>
-                    <AlertDescription>
-                      未能计算历史表现，可能是数据库中开奖数据不足或工具未生成预测。
-                    </AlertDescription>
-                </Alert>
-            )}
-            
-            {isAdmin && displayedHistoricalPerformances && displayedHistoricalPerformances.length > 0 && !isLoadingAllPredictions &&(
-              <div className="mt-6 pb-6 border-t pt-4">
-                <h4 className="text-md font-semibold mb-2 flex items-center gap-1.5">
-                  <DatabaseZap className="h-5 w-5 text-blue-600" />
-                  管理员操作: 历史回测数据
-                </h4>
-                <Button onClick={handleSaveHistoricalBacktests} disabled={isSavingHistoricalBacktests || !user?.uid } className="w-full">
-                  {isSavingHistoricalBacktests ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Save className="mr-2 h-4 w-4" />
-                  )}
-                  保存全部历史回测预测到数据库
-                </Button>
-                <p className="text-xs text-muted-foreground mt-2">
-                  此操作会将当前显示的 {displayedHistoricalPerformances ? displayedHistoricalPerformances.length : 0} 条历史回测预测结果保存到数据库。
-                </p>
-              </div>
-            )}
-          </div>
+                                </p>
+                            </div>
+                            )}
+                        </div>
+                        );
+                    })}
+                    </ScrollArea>
+                ) : (
+                    <Alert variant="default" className="mt-3">
+                        <Info className="h-4 w-4" />
+                        <AlertTitle>无历史表现数据</AlertTitle>
+                        <AlertDescription>
+                        未能计算历史表现，可能是数据库中开奖数据不足或工具未生成预测。
+                        </AlertDescription>
+                    </Alert>
+                )}
+                {isAdmin && displayedHistoricalPerformances && displayedHistoricalPerformances.length > 0 && (
+                <div className="mt-6 pb-6 border-t pt-4">
+                    <h4 className="text-md font-semibold mb-2 flex items-center gap-1.5">
+                    <DatabaseZap className="h-5 w-5 text-blue-600" />
+                    管理员操作: 历史回测数据
+                    </h4>
+                    <Button onClick={handleSaveHistoricalBacktests} disabled={isSavingHistorical || !user?.uid } className="w-full">
+                    {isSavingHistorical ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                        <Save className="mr-2 h-4 w-4" />
+                    )}
+                    保存全部历史回测预测到数据库
+                    </Button>
+                    <p className="text-xs text-muted-foreground mt-2">
+                    此操作会将当前显示的 {displayedHistoricalPerformances ? displayedHistoricalPerformances.length : 0} 条历史回测预测结果保存到数据库。
+                    </p>
+                </div>
+                )}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
   );
 }
-
-    

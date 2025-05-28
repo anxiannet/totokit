@@ -5,15 +5,13 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Info } from "lucide-react";
 import type { HistoricalResult } from "@/lib/types";
+import { OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types";
 import { dynamicTools } from "@/lib/numberPickingAlgos";
 import { 
   getPredictionForToolAndDraw, 
   getAllHistoricalResultsFromFirestore,
-  // saveMultipleToolPredictions, // This is now handled client-side if admin clicks save
-  // calculateHistoricalPerformances // This is now a server action called by client
 } from "@/lib/actions";
-import { ToolDetailPageClient, type HistoricalPerformanceDisplayData } from "@/components/toto/ToolDetailPageClient";
-import { OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types"; // Import the constant
+import { ToolDetailPageClient } from "@/components/toto/ToolDetailPageClient";
 
 
 export async function generateStaticParams() {
@@ -50,16 +48,14 @@ export default async function SingleNumberToolPage({
     );
   }
 
-  // Fetch all historical data from Firestore for display and analysis
-  // This is passed to the client component, which can then pass it to the
-  // calculateHistoricalPerformances server action if the user requests it.
+  // Fetch all historical data from Firestore for performance analysis and for generating current prediction
   const allHistoricalDataFromDb = await getAllHistoricalResultsFromFirestore();
   
   // Fetch the prediction saved by admin for the OFFICIAL_PREDICTIONS_DRAW_ID
   const initialSavedPrediction = await getPredictionForToolAndDraw(tool.id, OFFICIAL_PREDICTIONS_DRAW_ID);
   
   // dynamicallyGeneratedCurrentPrediction is no longer pre-calculated here.
-  // It will be calculated on demand by the client component via a server action if needed.
+  // It will be calculated on demand by the client component via a server action if needed by admin.
 
   const serializableTool = {
     id: tool.id,
@@ -73,9 +69,7 @@ export default async function SingleNumberToolPage({
     <ToolDetailPageClient
       tool={serializableTool}
       initialSavedPrediction={initialSavedPrediction}
-      // dynamicallyGeneratedCurrentPrediction will be fetched on demand via calculateSingleToolPrediction action
       allHistoricalDataForPerformanceAnalysis={allHistoricalDataFromDb} 
     />
   );
 }
-

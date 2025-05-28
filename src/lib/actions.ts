@@ -8,12 +8,38 @@ import { OFFICIAL_PREDICTIONS_DRAW_ID } from "./types";
 import { db, auth as firebaseClientAuthInstance } from "./firebase";
 import {
   collection, addDoc, serverTimestamp, query, where,
-  getDocs, limit, doc, writeBatch, runTransaction,
-  arrayUnion, arrayRemove, getDoc, setDoc, orderBy, Timestamp
+  getDocs, limit, doc, setDoc, // Removed writeBatch, runTransaction as they are not directly used now for single doc updates
+  getDoc, // Added getDoc
+  updateDoc, // Added updateDoc for map field updates
+  orderBy, Timestamp, FieldValue // Keep FieldValue if used by serverTimestamp implicitly
 } from "firebase/firestore";
 import { dynamicTools } from "./numberPickingAlgos";
 import { calculateHitDetails } from "./totoUtils";
 import type { HistoricalPerformanceDisplayData } from "@/components/toto/ToolDetailPageClient";
+
+
+// --- Interfaces for new tool prediction data structure ---
+interface PredictionDetail {
+  targetDrawDate?: string;
+  predictedNumbers: number[];
+  savedAt: FieldValue; // serverTimestamp()
+}
+
+export interface ToolPredictionsDocument {
+  toolId: string;
+  toolName: string;
+  predictionsByDraw: Record<string, PredictionDetail>; // Key is drawNumber (string)
+  lastUpdatedAt: FieldValue;
+  userId?: string; // UID of the admin who last updated this document
+}
+
+// Interface for data prepared by client, used in saveHistoricalToolPredictions
+export interface HistoricalPredictionInputForTool {
+  targetDrawNumber: string | number;
+  targetDrawDate?: string;
+  predictedNumbers: number[];
+}
+
 
 export async function generateTotoPredictions(
   historicalDataString: string,
@@ -75,125 +101,178 @@ export async function generateTotoPredictions(
   }
 }
 
-export interface ToolPredictionInput {
-  toolId: string;
-  toolName: string;
-  targetDrawNumber: number | string;
-  targetDrawDate?: string;
-  predictedNumbers: number[];
-  userId?: string;
-}
 
-export async function saveToolPrediction(
-  data: ToolPredictionInput
-): Promise<{ success: boolean; message: string; predictionId?: string }> {
-  console.log("[SAVE_TOOL_PREDICTION] Attempting to save prediction:", JSON.stringify(data, null, 2));
+// Saves/Updates the prediction for the current official draw (e.g., "4082")
+export async function saveCurrentDrawToolPrediction(
+  toolId: string,
+  toolName: string,
+  predictedNumbers: number[],
+  adminUserId: string | null
+): Promise<{ success: boolean; message: string }> {
+  const targetDrawNumber = OFFICIAL_PREDICTIONS_DRAW_ID;
+  console.log(`[SAVE_CURRENT_DRAW_TOOL_PREDICTION] toolId: ${toolId}, toolName: ${toolName}, draw: ${targetDrawNumber}, adminUserId: ${adminUserId}`);
   if (!db) {
-    console.error("[SAVE_TOOL_PREDICTION_ERROR] Firestore 'db' instance is not initialized.");
     return { success: false, message: "Firestore 'db' instance is not initialized." };
   }
+  if (!adminUserId) {
+    return { success: false, message: "Admin User ID is required to save tool prediction." };
+  }
+
+  const toolDocRef = doc(db, "toolPredictions", toolId);
+  const drawKey = String(targetDrawNumber);
+
   try {
-    const toolPredictionsCol = collection(db, "toolPredictions");
-    // Use a consistent doc ID format: toolId_targetDrawNumber
-    const docId = `${data.toolId}_${data.targetDrawNumber}`;
-    const predictionDocRef = doc(toolPredictionsCol, docId);
-
-    const dataToSave: any = {
-      toolId: data.toolId,
-      toolName: data.toolName,
-      targetDrawNumber: data.targetDrawNumber,
-      predictedNumbers: data.predictedNumbers,
-      updatedAt: serverTimestamp(),
+    const newPredictionDetail: PredictionDetail = {
+      predictedNumbers,
+      targetDrawDate: "PENDING_DRAW", // Placeholder for current/future draw
+      savedAt: serverTimestamp(),
     };
-    if (data.targetDrawDate) {
-      dataToSave.targetDrawDate = data.targetDrawDate;
+
+    // Fetch the existing document to merge predictionsByDraw map correctly
+    const docSnap = await getDoc(toolDocRef);
+    let existingPredictionsByDraw: Record<string, PredictionDetail> = {};
+    if (docSnap.exists()) {
+      existingPredictionsByDraw = (docSnap.data() as ToolPredictionsDocument).predictionsByDraw || {};
     }
-    if (data.userId) { // Include userId if provided
-      dataToSave.userId = data.userId;
-    }
+    
+    const updatedPredictionsByDraw = {
+      ...existingPredictionsByDraw,
+      [drawKey]: newPredictionDetail,
+    };
 
-    // Check if document exists to set createdAt only for new documents
-    const docSnap = await getDoc(predictionDocRef);
-    if (!docSnap.exists()) {
-      dataToSave.createdAt = serverTimestamp();
-    }
+    const docDataToSet: ToolPredictionsDocument = {
+      toolId: toolId,
+      toolName: toolName,
+      predictionsByDraw: updatedPredictionsByDraw,
+      userId: adminUserId,
+      lastUpdatedAt: serverTimestamp(),
+    };
 
-    await setDoc(predictionDocRef, dataToSave, { merge: true });
+    await setDoc(toolDocRef, docDataToSet, { merge: true }); // mergeFields for specific fields if only updating map
 
-    console.log(`[SAVE_TOOL_PREDICTION_SUCCESS] Tool prediction saved/updated successfully with ID: ${predictionDocRef.id} for tool: ${data.toolId}, draw: ${data.targetDrawNumber}`);
-    return { success: true, message: "工具预测已保存/更新。", predictionId: predictionDocRef.id };
-
-  } catch (error) {
-    console.error("[SAVE_TOOL_PREDICTION_ERROR] Error saving tool prediction to Firestore:", error);
-    const errorMessage = error instanceof Error ? error.message : "未知错误";
-    return { success: false, message: `保存工具预测失败: ${errorMessage}` };
+    return { success: true, message: `工具 ${toolName} 对期号 ${targetDrawNumber} 的预测已保存/更新。` };
+  } catch (error: any) {
+    console.error(`[SAVE_CURRENT_DRAW_TOOL_PREDICTION_ERROR] Error for tool ${toolId}, draw ${targetDrawNumber}:`, error);
+    return { success: false, message: `保存预测失败: ${error.message || "未知错误"}` };
   }
 }
 
-export async function saveMultipleToolPredictions(
-  predictions: ToolPredictionInput[],
-  userId?: string // Added userId as an optional parameter
-): Promise<{ success: boolean; message: string; savedCount?: number, errorCount?: number }> {
-  console.log(`[SAVE_MULTIPLE_TOOL_PREDICTIONS] Attempting to save ${predictions.length} predictions. Attributed to userId: ${userId || 'N/A'}`);
+// Saves multiple historical back-test predictions for a single tool
+export async function saveHistoricalToolPredictions(
+  toolId: string,
+  toolName: string,
+  historicalPredictions: Array<HistoricalPredictionInputForTool>,
+  adminUserId: string | null
+): Promise<{ success: boolean; message: string; savedCount?: number }> {
+  console.log(`[SAVE_HISTORICAL_TOOL_PREDICTIONS] toolId: ${toolId}, toolName: ${toolName}, count: ${historicalPredictions.length}, adminUserId: ${adminUserId}`);
   if (!db) {
-    console.error("[SAVE_MULTIPLE_TOOL_PREDICTIONS_ERROR] Firestore 'db' instance is not initialized.");
     return { success: false, message: "Firestore 'db' instance is not initialized." };
   }
-  if (predictions.length === 0) {
-    return { success: true, message: "没有需要保存的预测。", savedCount: 0 };
+  if (!adminUserId) {
+    return { success: false, message: "Admin User ID is required to save historical predictions." };
+  }
+  if (historicalPredictions.length === 0) {
+    return { success: true, message: "没有需要保存的历史预测。", savedCount: 0 };
   }
 
-  const batch = writeBatch(db);
-  let savedCount = 0;
-
-  const docIdsToFetch = predictions.map(p => `${p.toolId}_${p.targetDrawNumber}`);
-  // Avoid fetching if no predictions, or if db is not defined (already checked but good practice)
-  const existingDocsSnapshots = (db && docIdsToFetch.length > 0) ? await Promise.all(docIdsToFetch.map(id => getDoc(doc(db, "toolPredictions", id)))) : [];
-  const existingDocsMap = new Map(existingDocsSnapshots.map(snap => [snap.id, snap.exists()]));
-
-
-  predictions.forEach((data) => {
-    const toolPredictionsCol = collection(db, "toolPredictions");
-    const docId = `${data.toolId}_${data.targetDrawNumber}`;
-    const predictionDocRef = doc(toolPredictionsCol, docId);
-
-    const dataToSave: any = {
-      toolId: data.toolId,
-      toolName: data.toolName,
-      targetDrawNumber: data.targetDrawNumber,
-      predictedNumbers: data.predictedNumbers,
-      updatedAt: serverTimestamp(),
-    };
-    if (data.targetDrawDate) {
-      dataToSave.targetDrawDate = data.targetDrawDate;
-    }
-    if (userId) { // Add userId if provided
-      dataToSave.userId = userId;
-    }
-
-    if (!existingDocsMap.get(docId)) {
-      dataToSave.createdAt = serverTimestamp();
-    }
-
-    batch.set(predictionDocRef, dataToSave, { merge: true });
-    savedCount++;
-  });
+  const toolDocRef = doc(db, "toolPredictions", toolId);
 
   try {
-    await batch.commit();
-    console.log(`[SAVE_MULTIPLE_TOOL_PREDICTIONS_SUCCESS] Successfully saved/updated ${savedCount} tool predictions. Attributed to userId: ${userId || 'N/A'}`);
-    return { success: true, message: `成功批量保存/更新 ${savedCount} 条工具预测。`, savedCount };
+    const docSnap = await getDoc(toolDocRef);
+    let existingPredictionsByDraw: Record<string, PredictionDetail> = {};
+    if (docSnap.exists()) {
+      existingPredictionsByDraw = (docSnap.data() as ToolPredictionsDocument).predictionsByDraw || {};
+    }
+
+    historicalPredictions.forEach(pred => {
+      const drawKey = String(pred.targetDrawNumber);
+      existingPredictionsByDraw[drawKey] = {
+        predictedNumbers: pred.predictedNumbers,
+        targetDrawDate: pred.targetDrawDate,
+        savedAt: serverTimestamp(),
+      };
+    });
+    
+    const docDataToSet: ToolPredictionsDocument = {
+        toolId: toolId,
+        toolName: toolName,
+        predictionsByDraw: existingPredictionsByDraw,
+        userId: adminUserId,
+        lastUpdatedAt: serverTimestamp(),
+    };
+
+    await setDoc(toolDocRef, docDataToSet, { merge: true });
+
+
+    return { success: true, message: `工具 ${toolName} 的 ${historicalPredictions.length} 条历史预测已保存/更新。`, savedCount: historicalPredictions.length };
+  } catch (error: any) {
+    console.error(`[SAVE_HISTORICAL_TOOL_PREDICTIONS_ERROR] Error for tool ${toolId}:`, error);
+    return { success: false, message: `批量保存历史预测失败: ${error.message || "未知错误"}` };
+  }
+}
+
+
+// Fetches the prediction for a specific tool and target draw number.
+export async function getPredictionForToolAndDraw(
+  toolId: string,
+  targetDrawNumber: string | number
+): Promise<number[] | null> {
+  if (!db) {
+    console.error("[GET_PREDICTION_FOR_TOOL_DRAW_ERROR] Firestore 'db' instance is not initialized.");
+    return null;
+  }
+  const toolDocRef = doc(db, "toolPredictions", toolId);
+  const drawKey = String(targetDrawNumber);
+
+  try {
+    const docSnap = await getDoc(toolDocRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data() as ToolPredictionsDocument;
+      if (data.predictionsByDraw && data.predictionsByDraw[drawKey]) {
+        return data.predictionsByDraw[drawKey].predictedNumbers;
+      }
+    }
+    // console.log(`[GET_PREDICTION_FOR_TOOL_DRAW_INFO] No prediction found for tool ${toolId}, draw ${drawKey}.`);
+    return null;
   } catch (error) {
-    console.error("[SAVE_MULTIPLE_TOOL_PREDICTIONS_ERROR] Error committing batch for tool predictions:", error);
-    const errorMessage = error instanceof Error ? error.message : "未知错误";
-    return { success: false, message: `批量保存工具预测失败: ${errorMessage}`, errorCount: predictions.length };
+    console.error(`[GET_PREDICTION_FOR_TOOL_DRAW_ERROR] Error fetching prediction for tool ${toolId}, draw ${drawKey}:`, error);
+    return null;
+  }
+}
+
+// Fetches all tools' predictions for a specific target draw number.
+export async function getPredictionsForDraw(
+  targetDrawNumber: string | number
+): Promise<Record<string, number[]>> { // Returns map of toolId to predictedNumbers
+  if (!db) {
+    console.error("[GET_PREDICTIONS_FOR_DRAW_ERROR] Firestore 'db' instance is not initialized.");
+    return {};
+  }
+
+  const predictionsMap: Record<string, number[]> = {};
+  const toolPredictionsColRef = collection(db, "toolPredictions");
+  const drawKey = String(targetDrawNumber);
+
+  try {
+    const querySnapshot = await getDocs(toolPredictionsColRef); // Fetch all documents in toolPredictions
+    querySnapshot.forEach((docSnap) => {
+      const data = docSnap.data() as ToolPredictionsDocument;
+      if (data.toolId && data.predictionsByDraw && data.predictionsByDraw[drawKey]) {
+        predictionsMap[data.toolId] = data.predictionsByDraw[drawKey].predictedNumbers;
+      }
+    });
+    // console.log(`[GET_PREDICTIONS_FOR_DRAW_INFO] Processed predictions for draw ${drawKey}. Found in ${Object.keys(predictionsMap).length} tools.`);
+    return predictionsMap;
+  } catch (error) {
+    console.error(`[GET_PREDICTIONS_FOR_DRAW_ERROR] Error fetching predictions for draw ${drawKey}:`, error);
+    return {};
   }
 }
 
 
 export interface SmartPickResultInput {
   userId: string | null;
-  idToken: string | null; // Added idToken
+  idToken: string | null;
   drawId: string;
   combinations: TotoCombination[];
 }
@@ -217,7 +296,7 @@ export async function saveSmartPickResult(
     const transformedCombinations = data.combinations.map(combo => ({ numbers: combo }));
 
     const dataToSave = {
-      userId: data.userId,
+      userId: data.userId, // This should be the UID from the client, or null for guests
       drawId: data.drawId,
       combinations: transformedCombinations,
       createdAt: serverTimestamp(),
@@ -280,7 +359,7 @@ export async function syncHistoricalResultsToFirestore(
         continue;
       }
       const resultDocRef = doc(db, "totoResults", String(result.drawNumber));
-      const dataToSet = { ...result, userId: adminUserId };
+      const dataToSet = { ...result, userId: adminUserId }; // Add admin's UID
       batch.set(resultDocRef, dataToSet, { merge: true });
       count++;
     }
@@ -308,7 +387,7 @@ export async function syncHistoricalResultsToFirestore(
 export async function updateCurrentDrawDisplayInfo(
   currentDrawDateTime: string,
   currentJackpot: string,
-  adminUserId: string | null
+  adminUserId: string | null // Changed from plainTextInfo
 ): Promise<{ success: boolean; message?: string }> {
   if (!db) {
     return { success: false, message: "Firestore 'db' instance is not initialized." };
@@ -327,7 +406,7 @@ export async function updateCurrentDrawDisplayInfo(
     await setDoc(docRef, {
       currentDrawDateTime,
       currentJackpot,
-      userId: adminUserId, // Changed from updatedBy to userId to match rule
+      userId: adminUserId, // Ensure this field is 'userId' to match rule
       updatedAt: serverTimestamp(),
     }, { merge: true });
     console.log(`[UPDATE_DRAW_INFO_SUCCESS] Current draw info updated by admin ${adminUserId}.`);
@@ -404,7 +483,8 @@ export async function toggleFavoriteTool(
 
   try {
     let isCurrentlyFavorited = false;
-    await runTransaction(db, async (transaction) => {
+    // Firestore transaction to safely update the array
+    await db.runTransaction(async (transaction) => {
       const userFavDoc = await transaction.get(userFavDocRef);
       let currentFavorites: string[] = [];
       if (userFavDoc.exists() && userFavDoc.data()?.favoriteToolIds) {
@@ -412,14 +492,16 @@ export async function toggleFavoriteTool(
       }
 
       if (currentFavorites.includes(toolId)) {
-        transaction.set(userFavDocRef, {
-          favoriteToolIds: arrayRemove(toolId),
+        // Remove from favorites
+        transaction.update(userFavDocRef, {
+          favoriteToolIds: currentFavorites.filter(id => id !== toolId),
           updatedAt: serverTimestamp()
-        }, { merge: true });
+        });
         isCurrentlyFavorited = false;
       } else {
-        transaction.set(userFavDocRef, {
-          favoriteToolIds: arrayUnion(toolId),
+        // Add to favorites
+        transaction.set(userFavDocRef, { // Use set with merge if doc might not exist
+          favoriteToolIds: [...currentFavorites, toolId],
           updatedAt: serverTimestamp()
         }, { merge: true });
         isCurrentlyFavorited = true;
@@ -515,67 +597,6 @@ export async function getAllHistoricalResultsFromFirestore(): Promise<Historical
   }
 }
 
-export async function getPredictionForToolAndDraw(
-  toolId: string,
-  targetDrawNumber: string | number
-): Promise<number[] | null> {
-  if (!db) {
-    console.error("[GET_PREDICTION_FOR_TOOL_DRAW_ERROR] Firestore 'db' instance is not initialized.");
-    return null;
-  }
-  const docId = `${toolId}_${targetDrawNumber}`;
-  const predictionDocRef = doc(db, "toolPredictions", docId);
-
-  try {
-    const docSnap = await getDoc(predictionDocRef);
-    if (docSnap.exists()) {
-      const data = docSnap.data();
-      if (data && Array.isArray(data.predictedNumbers)) {
-        return data.predictedNumbers as number[];
-      }
-      console.warn(`[GET_PREDICTION_FOR_TOOL_DRAW_WARN] Document ${docId} exists but 'predictedNumbers' is missing or not an array.`);
-      return null;
-    }
-    console.log(`[GET_PREDICTION_FOR_TOOL_DRAW_INFO] No prediction found for tool ${toolId}, draw ${targetDrawNumber} (docId: ${docId}).`);
-    return null;
-  } catch (error) {
-    console.error(`[GET_PREDICTION_FOR_TOOL_DRAW_ERROR] Error fetching prediction for tool ${toolId}, draw ${targetDrawNumber}:`, error);
-    return null;
-  }
-}
-
-export async function getPredictionsForDraw(
-  targetDrawNumber: string | number
-): Promise<Record<string, number[]>> {
-  if (!db) {
-    console.error("[GET_PREDICTIONS_FOR_DRAW_ERROR] Firestore 'db' instance is not initialized.");
-    return {};
-  }
-
-  const predictionsMap: Record<string, number[]> = {};
-  const predictionsCol = collection(db, "toolPredictions");
-  const q = query(predictionsCol, where("targetDrawNumber", "==", targetDrawNumber));
-
-
-  try {
-    const querySnapshot = await getDocs(q);
-    querySnapshot.forEach((docSnap) => {
-      const data = docSnap.data();
-      if (data.toolId && data.predictedNumbers && Array.isArray(data.predictedNumbers)) {
-        predictionsMap[data.toolId] = data.predictedNumbers as number[];
-      } else {
-        console.warn(`[GET_PREDICTIONS_FOR_DRAW_WARN] Document ${docSnap.id} for draw ${targetDrawNumber} has invalid structure.`);
-      }
-    });
-    console.log(`[GET_PREDICTIONS_FOR_DRAW_INFO] Fetched ${Object.keys(predictionsMap).length} predictions for draw ${targetDrawNumber}.`);
-    return predictionsMap;
-  } catch (error) {
-    console.error(`[GET_PREDICTIONS_FOR_DRAW_ERROR] Error fetching predictions for draw ${targetDrawNumber}:`, error);
-    return {};
-  }
-}
-
-
 export async function calculateHistoricalPerformances(
   toolId: string,
   allHistoricalData: HistoricalResult[]
@@ -613,7 +634,7 @@ export async function calculateHistoricalPerformances(
     }
 
     let predictedNumbersForTargetDraw: number[] = [];
-    if (precedingTenDraws.length > 0) {
+    if (precedingTenDraws.length > 0 || tool.algorithmFn.length === 0) { // Allow algos that don't need history
         predictedNumbersForTargetDraw = tool.algorithmFn(precedingTenDraws);
     }
 
@@ -647,11 +668,16 @@ export async function calculateSingleToolPrediction(
     console.error(`[CALCULATE_SINGLE_TOOL_PREDICTION_ERROR] Tool with id ${toolId} not found.`);
     return null;
   }
-  if (!latestTenHistoricalData || latestTenHistoricalData.length === 0) {
-     console.warn(`[CALCULATE_SINGLE_TOOL_PREDICTION_WARN] No historical data provided for tool ${toolId}.`);
-     // Return empty array or a default prediction if preferred for this case
-     return tool.algorithmFn([]); // Allow algorithm to handle empty input if designed to
-  }
+  
+  // Allow algorithms that don't strictly need historical data (e.g., pure random)
+  // They might have `algorithmFn(lastTenResults: HistoricalResult[] = [])`
+  // Or, if an algorithm truly requires historical data and it's empty, it should handle returning [] itself.
+  // For safety, we pass what we have.
+  // if (!latestTenHistoricalData || latestTenHistoricalData.length === 0) {
+  //    console.warn(`[CALCULATE_SINGLE_TOOL_PREDICTION_WARN] No historical data provided for tool ${toolId}.`);
+  //    // Return empty array or a default prediction if preferred for this case
+  //    return tool.algorithmFn([]); // Allow algorithm to handle empty input if designed to
+  // }
 
   try {
     const predictedNumbers = tool.algorithmFn(latestTenHistoricalData);
