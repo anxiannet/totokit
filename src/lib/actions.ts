@@ -4,8 +4,12 @@
 import { generateNumberCombinations as genkitGenerateNumberCombinations } from "@/ai/flows/generate-number-combinations";
 import type { GenerateNumberCombinationsInput, GenerateNumberCombinationsOutput } from "@/ai/flows/generate-number-combinations";
 import type { WeightedCriterion, HistoricalResult, TotoCombination } from "./types";
-import { db, auth as firebaseClientAuthInstance } from "./firebase"; 
-import { collection, addDoc, serverTimestamp, query, where, getDocs, limit, doc, writeBatch, runTransaction, arrayUnion, arrayRemove, getDoc, setDoc } from "firebase/firestore";
+import { db, auth as firebaseClientAuthInstance } from "./firebase";
+import {
+  collection, addDoc, serverTimestamp, query, where,
+  getDocs, limit, doc, writeBatch, runTransaction,
+  arrayUnion, arrayRemove, getDoc, setDoc
+} from "firebase/firestore";
 
 
 export async function generateTotoPredictions(
@@ -30,9 +34,9 @@ export async function generateTotoPredictions(
         weightedCriteria[c.name.trim()] = c.weight;
       }
     });
-    
+
     if (Object.keys(weightedCriteria).length === 0) {
-        weightedCriteria['generalBalance'] = 0.5; 
+        weightedCriteria['generalBalance'] = 0.5;
     }
 
     const input: GenerateNumberCombinationsInput = {
@@ -44,22 +48,22 @@ export async function generateTotoPredictions(
     };
 
     const result = await genkitGenerateNumberCombinations(input);
-    
+
     if (!result || !result.combinations) {
         return { error: "AI did not return valid combinations." };
     }
 
-    const validCombinations = result.combinations.filter(combo => 
+    const validCombinations = result.combinations.filter(combo =>
       Array.isArray(combo) &&
-      combo.length > 0 && 
+      combo.length > 0 &&
       combo.every(num => typeof num === 'number' && num >= 1 && num <= 49) &&
-      new Set(combo).size === combo.length 
+      new Set(combo).size === combo.length
     );
 
     if (validCombinations.length === 0 && result.combinations.length > 0) {
         return { error: "AI returned malformed combinations. Please try adjusting parameters." };
     }
-    
+
     return { combinations: validCombinations };
 
   } catch (error) {
@@ -127,7 +131,7 @@ export async function syncHistoricalResultsToFirestore(
   }
 
   if (!adminUserId) {
-    console.error("[SYNC_FIRESTORE] Admin user ID not provided. Sync aborted.");
+    console.error("[SYNC_FIRESTORE] Admin user ID not provided for syncHistoricalResultsToFirestore. Sync aborted.");
     return { success: false, message: "管理员未登录或UID无效，无法同步。" };
   }
   console.log(`[SYNC_FIRESTORE] Admin user ID: ${adminUserId} initiated sync.`);
@@ -147,8 +151,8 @@ export async function syncHistoricalResultsToFirestore(
         continue;
       }
       const resultDocRef = doc(db, "totoResults", String(result.drawNumber));
-      const dataToSet = { ...result, userId: adminUserId }; // Add adminUserId to each document
-      batch.set(resultDocRef, dataToSet, { merge: true }); 
+      const dataToSet = { ...result, userId: adminUserId }; // Ensure userId is added
+      batch.set(resultDocRef, dataToSet, { merge: true });
       count++;
     }
 
@@ -175,7 +179,7 @@ export async function syncHistoricalResultsToFirestore(
 
 export interface SmartPickResultInput {
   userId: string | null;
-  idToken: string | null; 
+  idToken: string | null;
   drawId: string;
   combinations: TotoCombination[];
 }
@@ -187,27 +191,26 @@ export async function saveSmartPickResult(
     console.error("[SAVE_SMART_PICK] Firestore 'db' instance is not initialized.");
     return { success: false, message: "Firestore 'db' instance is not initialized." };
   }
-  
-  const currentUserInAction = firebaseClientAuthInstance.currentUser;
-  const actionAuthUid = currentUserInAction ? currentUserInAction.uid : null;
+
+  const actionAuthUid = firebaseClientAuthInstance.currentUser ? firebaseClientAuthInstance.currentUser.uid : null;
 
   console.log(`[SAVE_SMART_PICK] Attempting to save smart pick.`);
-  console.log(`[SAVE_SMART_PICK] Input userId from client: ${data.userId}`);
+  console.log(`[SAVE_SMART_PICK] Input userId from client (data.userId): ${data.userId}`);
   console.log(`[SAVE_SMART_PICK] Input ID Token (present): ${!!data.idToken}`);
   console.log(`[SAVE_SMART_PICK] Firebase SDK auth.currentUser.uid inside action: ${actionAuthUid}`);
-  
+
   try {
     const transformedCombinations = data.combinations.map(combo => ({ numbers: combo }));
     const dataToSave = {
-      userId: data.userId, 
+      userId: data.userId,
       drawId: data.drawId,
       combinations: transformedCombinations,
       createdAt: serverTimestamp(),
     };
-    
+
     console.log(`[SAVE_SMART_PICK] Data being written to Firestore:`, JSON.stringify(dataToSave, null, 2));
     console.log(`[SAVE_SMART_PICK] Target collection: smartPickResults`);
-    
+
     const docRef = await addDoc(collection(db, "smartPickResults"), dataToSave);
     console.log(`[SAVE_SMART_PICK] Smart pick result saved successfully with ID: ${docRef.id} for draw ${data.drawId}, user: ${data.userId || 'anonymous'}`);
     return { success: true, message: "智能选号结果已保存。", docId: docRef.id };
@@ -216,7 +219,7 @@ export async function saveSmartPickResult(
     let errorMessage = "保存智能选号结果失败: ";
     if (error instanceof Error) {
       errorMessage += error.message;
-       const firebaseError = error as any; 
+       const firebaseError = error as any;
        if (firebaseError.code === 'permission-denied' || firebaseError.code === 7 || firebaseError.code === 'PERMISSION_DENIED') {
         errorMessage += ` (Firestore权限不足。尝试保存的userId: ${data.userId}. 服务器端SDK识别的用户UID: ${actionAuthUid}. 请确认Firestore安全规则已正确部署，并且客户端已重新登录以刷新权限。)`;
       }
@@ -235,6 +238,7 @@ export async function updateCurrentDrawDisplayInfo(
     return { success: false, message: "Firestore 'db' instance is not initialized." };
   }
   if (!adminUserId) {
+     console.error("[UPDATE_DRAW_INFO] Admin user ID not provided. Update aborted.");
     return { success: false, message: "管理员未登录，无法更新。" };
   }
 
@@ -254,12 +258,13 @@ export async function updateCurrentDrawDisplayInfo(
     await setDoc(docRef, {
       currentDrawDateTime,
       currentJackpot,
-      updatedBy: adminUserId,
+      userId: adminUserId, // Changed from updatedBy to userId to match rule
       updatedAt: serverTimestamp(),
     }, { merge: true });
+    console.log(`[UPDATE_DRAW_INFO] Current draw info updated by admin ${adminUserId}.`);
     return { success: true, message: "本期开奖信息已更新。" };
   } catch (error) {
-    console.error("Error updating current draw display info:", error);
+    console.error("[UPDATE_DRAW_INFO] Error updating current draw display info:", error);
     const errorMessage = error instanceof Error ? error.message : "未知错误";
     return { success: false, message: `更新失败: ${errorMessage}` };
   }
@@ -286,4 +291,80 @@ export async function getCurrentDrawDisplayInfo(): Promise<{ currentDrawDateTime
     return null;
   }
 }
-    
+
+
+export interface UserFavoriteTool {
+  userId: string;
+  toolId: string;
+  toolName?: string; // Optional: for easier display if needed
+  favoritedAt: any; // Firestore serverTimestamp
+}
+
+export async function getUserFavoriteTools(userId: string): Promise<string[]> {
+  if (!userId) return [];
+  if (!db) {
+    console.error("[GET_FAVORITES] Firestore 'db' instance is not initialized.");
+    return [];
+  }
+  try {
+    const userFavDocRef = doc(db, "userToolFavorites", userId);
+    const docSnap = await getDoc(userFavDocRef);
+    if (docSnap.exists() && docSnap.data()?.favoriteToolIds) {
+      return docSnap.data()?.favoriteToolIds as string[];
+    }
+    return [];
+  } catch (error) {
+    console.error("Error fetching user favorite tools:", error);
+    return [];
+  }
+}
+
+export async function toggleFavoriteTool(
+  userId: string,
+  toolId: string,
+  toolName?: string // Optional
+): Promise<{ success: boolean; favorited: boolean; message?: string }> {
+  if (!userId) {
+    return { success: false, favorited: false, message: "用户未登录。" };
+  }
+  if (!db) {
+    console.error("[TOGGLE_FAVORITE] Firestore 'db' instance is not initialized.");
+    return { success: false, favorited: false, message: "数据库服务未初始化。" };
+  }
+
+  const userFavDocRef = doc(db, "userToolFavorites", userId);
+
+  try {
+    let isCurrentlyFavorited = false;
+    await runTransaction(db, async (transaction) => {
+      const userFavDoc = await transaction.get(userFavDocRef);
+      let currentFavorites: string[] = [];
+      if (userFavDoc.exists() && userFavDoc.data()?.favoriteToolIds) {
+        currentFavorites = userFavDoc.data()?.favoriteToolIds as string[];
+      }
+
+      if (currentFavorites.includes(toolId)) {
+        // Already favorited, so remove it
+        transaction.set(userFavDocRef, {
+          favoriteToolIds: arrayRemove(toolId),
+          updatedAt: serverTimestamp() // Keep track of last update
+        }, { merge: true });
+        isCurrentlyFavorited = false;
+      } else {
+        // Not favorited, so add it
+        transaction.set(userFavDocRef, {
+          favoriteToolIds: arrayUnion(toolId),
+          // Optionally store toolName or other metadata if the doc is new or you want to update it
+          // ...(toolName && !userFavDoc.exists() && { toolsInfo: { [toolId]: toolName } }),
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+        isCurrentlyFavorited = true;
+      }
+    });
+    return { success: true, favorited: isCurrentlyFavorited };
+  } catch (error) {
+    console.error("Error toggling favorite tool:", error);
+    const errorMessage = error instanceof Error ? error.message : "未知错误";
+    return { success: false, favorited: false, message: `操作失败: ${errorMessage}` };
+  }
+}

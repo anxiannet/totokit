@@ -4,26 +4,30 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // App Settings - Current Draw Information
+    // Allow anyone to read.
+    // Only allow writes if the document's userId field matches the specific admin UID.
+    match /appSettings/currentDrawInfo {
+      allow read: if true;
+      allow write: if request.resource.data.userId != null && request.resource.data.userId == "mAvLawNGpGdKwPoHuMQyXlKpPNv1";
+    }
+
     // TOTO Historical Results
     // Allow anyone to read historical results.
-    // Write access controlled by the server action which should verify admin.
+    // Only allow writes if the document's userId field matches the specific admin UID.
     match /totoResults/{drawId} {
       allow read: if true;
-      // This rule assumes the 'userId' field will be populated by the admin's UID
-      // during the server action `syncHistoricalResultsToFirestore`.
-      // And that server action itself verifies the caller is an admin.
-      allow write: if request.resource.data.userId != null;
+      allow write: if request.resource.data.userId != null && request.resource.data.userId == "mAvLawNGpGdKwPoHuMQyXlKpPNv1";
     }
 
     // Tool Predictions (Predictions made by specific tools for historical draws)
-    // Allow anyone to read these predictions.
-    // Create operations are allowed (e.g., by server components/actions).
-    // Update/delete are restricted or can be admin-only.
+    // System can create these. Review for production.
+    // For now, allow create by anyone (assuming server action is trusted source).
+    // Read can be public.
     match /toolPredictions/{predictionId} {
       allow read: if true;
-      allow create: if true; // Allows server actions/components to save predictions.
-                             // Review for production; consider if specific auth is needed.
-      allow update, delete: if request.auth != null && request.auth.token.isAdmin == true;
+      allow create: if true; // System/Server Action can create these.
+      allow update, delete: if false; // Or set to admin only: request.auth != null && request.auth.token.isAdmin == true;
     }
 
     // User Favorite Tools
@@ -33,24 +37,12 @@ service cloud.firestore {
     }
 
     // Smart Pick AI Results
-    // Allow authenticated users to create their own smart pick results.
-    // Allow users to read their own saved smart picks.
+    // Allow authenticated users to create their own smart pick results if the doc's userId matches their auth.uid.
     match /smartPickResults/{resultId} {
       allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
       allow read: if request.auth != null && resource.data.userId == request.auth.uid;
-      allow update, delete: if false; // Or more specific rules if needed
+      allow update, delete: if false;
     }
-
-    // App Settings (like current draw display info)
-    // Allow anyone to read.
-    // Only allow admin to write (verified by `updatedBy` field and admin claim).
-    match /appSettings/currentDrawInfo {
-      allow read: if true;
-      allow write: if request.auth != null && 
-                     request.auth.token.isAdmin == true &&
-                     request.resource.data.updatedBy == request.auth.uid;
-    }
-
 
     // Default deny all other access to prevent unintended access
     match /{document=**} {
