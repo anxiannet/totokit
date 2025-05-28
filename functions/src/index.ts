@@ -156,9 +156,7 @@ export const syncTotoResultsCallable = functions.https.onCall(
     try {
       await batch.commit();
       console.log(
-        `syncTotoResultsCallable: Successfully synced/updated ` +
-        `${syncedCount} historical results to Firestore by admin user ` +
-        `${context.auth.uid}.`
+        `syncTotoResultsCallable: Successfully synced/updated ${syncedCount} historical results to Firestore by admin user ${context.auth.uid}.`
       );
       return {
         success: true,
