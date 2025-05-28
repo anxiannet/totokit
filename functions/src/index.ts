@@ -116,7 +116,9 @@ export const syncTotoResultsCallable = functions.https.onCall(
         "syncTotoResultsCallable: Error parsing or validating JSON data.",
         error
       );
-      const errorMessage = (error instanceof Error) ? error.message : "Unknown parsing/validation error";
+      const errorMessage = (error instanceof Error) ?
+        error.message :
+        "Unknown parsing/validation error";
       throw new functions.https.HttpsError(
         "invalid-argument",
         `Invalid JSON data provided: ${errorMessage}`
@@ -165,7 +167,9 @@ export const syncTotoResultsCallable = functions.https.onCall(
         "syncTotoResultsCallable: Error committing batch to Firestore.",
         error
       );
-      const firestoreErrorMessage = (error instanceof Error) ? error.message : "Unknown Firestore error";
+      const firestoreErrorMessage = (error instanceof Error) ?
+        error.message :
+        "Unknown Firestore error";
       throw new functions.https.HttpsError(
         "internal",
         `Failed to sync data to Firestore: ${firestoreErrorMessage}`
