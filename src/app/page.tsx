@@ -4,10 +4,10 @@
 import { useState, useEffect } from 'react';
 import { PredictionConfigurator } from "@/components/toto/PredictionConfigurator";
 import { PredictionResultsDisplay } from "@/components/toto/PredictionResultsDisplay";
-import type { TotoCombination, HistoricalResult } from "@/lib/types"; // Ensure HistoricalResult is imported
+import type { TotoCombination, HistoricalResult } from "@/lib/types";
 import { CurrentAndLatestDrawInfo } from "@/components/toto/CurrentAndLatestDrawInfo";
 import { TopPerformingTools, type TopToolDisplayInfo } from "@/components/toto/TopPerformingTools";
-import { LastDrawTopTools, type LastDrawToolPerformanceInfo } from "@/components/toto/LastDrawTopTools"; // New import
+import { LastDrawTopTools, type LastDrawToolPerformanceInfo } from "@/components/toto/LastDrawTopTools";
 import { MOCK_HISTORICAL_DATA, MOCK_LATEST_RESULT, OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types";
 import { dynamicTools } from "@/lib/numberPickingAlgos";
 import { calculateHitDetails } from "@/lib/totoUtils";
@@ -23,9 +23,9 @@ export default function TotoForecasterPage() {
   const [isGeneratingPredictions, setIsGeneratingPredictions] = useState<boolean>(false);
   const [displayResultsArea, setDisplayResultsArea] = useState<boolean>(false);
   const [topPerformingTools, setTopPerformingTools] = useState<TopToolDisplayInfo[]>([]);
-  const [lastDrawTopPerformingTools, setLastDrawTopPerformingTools] = useState<LastDrawToolPerformanceInfo[]>([]); // New state
+  const [lastDrawTopPerformingTools, setLastDrawTopPerformingTools] = useState<LastDrawToolPerformanceInfo[]>([]);
 
-  const CURRENT_DRAW_ID = OFFICIAL_PREDICTIONS_DRAW_ID; // Use the constant for consistency
+  const CURRENT_DRAW_ID = OFFICIAL_PREDICTIONS_DRAW_ID;
 
   const handlePredictionsGenerated = (newPredictions: TotoCombination[]) => {
     setPredictions(newPredictions);
@@ -74,15 +74,13 @@ export default function TotoForecasterPage() {
     };
     fetchSavedPicks();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, displayResultsArea, CURRENT_DRAW_ID, toast]); // Added CURRENT_DRAW_ID and toast to dependency array
+  }, [user, displayResultsArea, CURRENT_DRAW_ID, toast]);
 
 
   useEffect(() => {
-    // Calculate top performing tools over last 10 draws (existing logic)
     const allHistoricalData = MOCK_HISTORICAL_DATA;
     const numOverallRecentDraws = 10;
     const overallRecentTenDraws = allHistoricalData.slice(0, Math.min(allHistoricalData.length, numOverallRecentDraws));
-    const absoluteLatestTenDrawsForCurrentPred = allHistoricalData.slice(0, Math.min(allHistoricalData.length, 10));
 
     const toolPerformances: TopToolDisplayInfo[] = dynamicTools.map(tool => {
       let totalHitRate = 0;
@@ -95,39 +93,39 @@ export default function TotoForecasterPage() {
           if (precedingTenDrawsForTarget.length < 10) return;
 
           let predictedNumbersForTargetDraw: number[] = tool.algorithmFn(precedingTenDrawsForTarget);
-          if (predictedNumbersForTargetDraw.length > 0 && targetDraw.numbers.length > 0) {
+          if (targetDraw.numbers.length > 0) { // Ensure targetDraw has numbers to compare against
             const hitDetails = calculateHitDetails(predictedNumbersForTargetDraw, targetDraw);
-            // Use Math.min(predictedNumbersForTargetDraw.length, 6) as denominator for hit rate
-            const denominator = Math.min(predictedNumbersForTargetDraw.length, 6);
-            const hitRate = denominator > 0 ? (hitDetails.mainHitCount / denominator) * 100 : 0;
+            // Updated hit rate calculation
+            const hitRate = predictedNumbersForTargetDraw.length > 0 
+              ? (hitDetails.mainHitCount / predictedNumbersForTargetDraw.length) * 100 
+              : 0;
             totalHitRate += hitRate;
             drawsAnalyzed++;
           }
         });
       }
       const averageHitRate = drawsAnalyzed > 0 ? totalHitRate / drawsAnalyzed : 0;
-      return { ...tool, averageHitRate: parseFloat(averageHitRate.toFixed(1)) };
+      // For currentPrediction, use the absolute latest 10 draws from the full historical dataset
+      const absoluteLatestTenDraws = allHistoricalData.slice(0, Math.min(allHistoricalData.length, 10));
+      const currentPrediction = tool.algorithmFn(absoluteLatestTenDraws);
+
+      return { ...tool, averageHitRate: parseFloat(averageHitRate.toFixed(1)), currentPrediction };
     });
     toolPerformances.sort((a, b) => b.averageHitRate - a.averageHitRate);
     setTopPerformingTools(toolPerformances.slice(0, 3));
 
-
-    // New logic: Calculate top tools for the single latest draw
     const latestDraw = MOCK_LATEST_RESULT;
-    if (latestDraw && allHistoricalData.length > 10) { // Need at least 10 previous draws for prediction base
-        // Data for predicting the MOCK_LATEST_RESULT: draws from index 1 to 10 (assuming data is sorted desc by draw number)
+    if (latestDraw && allHistoricalData.length > 10) {
         const precedingTenDrawsForLatest = allHistoricalData.slice(1, 11);
 
         if (precedingTenDrawsForLatest.length === 10) {
             const singleDrawPerformances: LastDrawToolPerformanceInfo[] = dynamicTools.map(tool => {
                 const predictedNumbers = tool.algorithmFn(precedingTenDrawsForLatest);
                 const hitDetails = calculateHitDetails(predictedNumbers, latestDraw);
-                let hitRate = 0;
-                if (predictedNumbers.length > 0) {
-                    // Using Math.min(predictedNumbers.length, 6) for hit rate calculation against 6 winning numbers
-                    const denominator = Math.min(predictedNumbers.length, 6);
-                    hitRate = denominator > 0 ? (hitDetails.mainHitCount / denominator) * 100 : 0;
-                }
+                // Updated hit rate calculation
+                const hitRate = predictedNumbers.length > 0 
+                  ? (hitDetails.mainHitCount / predictedNumbers.length) * 100 
+                  : 0;
                 return {
                     id: tool.id,
                     name: tool.name,
