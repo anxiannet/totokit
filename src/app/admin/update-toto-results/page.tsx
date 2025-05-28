@@ -7,9 +7,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { MOCK_HISTORICAL_DATA, type HistoricalResult } from "@/lib/types";
+import type { HistoricalResult } from "@/lib/types"; // Assuming MOCK_HISTORICAL_DATA is no longer needed here
 import { z } from "zod";
-import { ArrowLeft, CheckCircle, XCircle, Info, Loader2, ShieldAlert, RefreshCw, CloudUpload, FileText, PlusCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle, XCircle, Info, Loader2, ShieldAlert, RefreshCw, CloudUpload, FileText } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -51,13 +51,10 @@ function parseDateFromText(dateStr: string): string {
 export default function AdminUpdateTotoResultsPage() {
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
-  // jsonData will now primarily be driven by plainTextData merging
-  const [jsonData, setJsonData] = useState(JSON.stringify(MOCK_HISTORICAL_DATA, null, 2));
   const [plainTextData, setPlainTextData] = useState("");
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [validationStatus, setValidationStatus] = useState<"success" | "error" | "info" | null>(null);
-  const [validatedJsonOutput, setValidatedJsonOutput] = useState<string | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false); // Combined loading state
   const [isCheckingAdmin, setIsCheckingAdmin] = useState(true);
   const [isAdminByEmail, setIsAdminByEmail] = useState(false);
   const [adminClaimStatus, setAdminClaimStatus] = useState<AdminClaimStatus>("loading");
@@ -73,7 +70,6 @@ export default function AdminUpdateTotoResultsPage() {
     setIsCheckingClaim(true);
     try {
       const idTokenResult = await user.getIdTokenResult(forceRefresh);
-      console.log("ID Token Claims:", idTokenResult.claims);
       if (idTokenResult.claims.isAdmin === true) {
         setAdminClaimStatus("verified");
         toast({
@@ -116,140 +112,28 @@ export default function AdminUpdateTotoResultsPage() {
   }, [user, authLoading]);
 
 
-  const handleValidateJsonData = () => {
+  const handleParseTextAndSyncToFirestore = async () => {
     setValidationMessage(null);
     setValidationStatus(null);
-    setValidatedJsonOutput(null);
+    setIsProcessing(true);
 
-    try {
-      const parsedData = JSON.parse(jsonData);
-      const validationResult = HistoricalResultsArraySchema.safeParse(parsedData);
-
-      if (validationResult.success) {
-        const sortedData = [...validationResult.data].sort((a, b) => b.drawNumber - a.drawNumber);
-        setValidationStatus("success");
-        setValidationMessage("JSON数据有效！现在您可以通过服务器操作将其同步到 Firestore。");
-        setValidatedJsonOutput(JSON.stringify(sortedData, null, 2));
-        // jsonData is already up-to-date from merging or direct edit if we re-introduce it
-      } else {
-        setValidationStatus("error");
-        const errorIssues = validationResult.error.issues.map(issue => `路径 '${issue.path.join('.') || 'root'}': ${issue.message}`).join("\\n");
-        setValidationMessage(`JSON数据无效：\\n${errorIssues}`);
-      }
-    } catch (error) {
-      setValidationStatus("error");
-      setValidationMessage(`JSON解析错误：${error instanceof Error ? error.message : "未知解析错误"}`);
-    }
-  };
-
-  const parseAndMergePlainTextResults = () => {
     if (!plainTextData.trim()) {
       toast({ title: "无文本数据", description: "请输入要解析的文本结果。", variant: "default" });
+      setValidationStatus("info");
+      setValidationMessage("请输入要解析的纯文本结果。");
+      setIsProcessing(false);
       return;
     }
 
-    const entries = plainTextData.trim().split(/\n\s*\n/);
-    const newResults: HistoricalResult[] = [];
-    let errors: string[] = [];
-
-    entries.forEach((entry, index) => {
-      const lines = entry.trim().split('\n').map(line => line.trim());
-      if (lines.length < 5) {
-        errors.push(`记录 ${index + 1}: 格式不完整，至少需要5行。`);
-        return;
-      }
-
-      try {
-        const firstLineParts = lines[0].split('\t');
-        if (firstLineParts.length < 2) {
-          errors.push(`记录 ${index + 1}: 第一行格式错误，无法分离日期和期号。`);
-          return;
-        }
-        const dateText = firstLineParts[0];
-        const drawNoText = firstLineParts[1].replace('Draw No.', '').trim();
-
-        const date = parseDateFromText(dateText);
-        if (!date) {
-          errors.push(`记录 ${index + 1}: 日期 "${dateText}" 解析失败。`);
-          return;
-        }
-        const drawNumber = parseInt(drawNoText, 10);
-        if (isNaN(drawNumber)) {
-          errors.push(`记录 ${index + 1}: 期号 "${drawNoText}" 解析失败。`);
-          return;
-        }
-
-        const numbers = lines[2].split(/\s+/).map(n => parseInt(n, 10)).filter(n => !isNaN(n));
-        if (numbers.length !== 6) {
-          errors.push(`记录 ${index + 1}: 中奖号码必须是6个数字。找到: ${numbers.join(', ')}`);
-          return;
-        }
-
-        const additionalNumber = parseInt(lines[4], 10);
-        if (isNaN(additionalNumber)) {
-          errors.push(`记录 ${index + 1}: 特别号码 "${lines[4]}" 解析失败。`);
-          return;
-        }
-
-        const historicalResult: HistoricalResult = { drawNumber, date, numbers, additionalNumber };
-
-        const validation = HistoricalResultSchema.safeParse(historicalResult);
-        if (!validation.success) {
-            errors.push(`记录 ${index + 1} (期号 ${drawNumber}): 验证失败 - ${validation.error.issues.map(i => i.message).join(', ')}`);
-            return;
-        }
-        newResults.push(validation.data);
-
-      } catch (e) {
-        errors.push(`记录 ${index + 1}: 解析时发生意外错误 - ${e instanceof Error ? e.message : String(e)}`);
-      }
-    });
-
-    if (errors.length > 0) {
-      toast({
-        title: "文本解析错误",
-        description: `发现 ${errors.length} 个错误：\n- ${errors.join('\n- ')}`,
-        variant: "destructive",
-        duration: 10000,
-      });
-      return;
-    }
-
-    if (newResults.length === 0) {
-      toast({ title: "无有效结果", description: "未能从文本中解析出任何有效结果。", variant: "default" });
-      return;
-    }
-
-    let currentJsonDataArray: HistoricalResult[] = [];
-    try {
-      currentJsonDataArray = JSON.parse(jsonData);
-      if (!Array.isArray(currentJsonDataArray)) currentJsonDataArray = [];
-    } catch (e) {
-      console.warn("Current jsonData is invalid or empty, starting merge with empty array.");
-      currentJsonDataArray = MOCK_HISTORICAL_DATA; // Fallback to mock if current is bad/empty
-    }
-
-    const mergedDataMap = new Map<number, HistoricalResult>();
-    currentJsonDataArray.forEach(res => mergedDataMap.set(res.drawNumber, res));
-    newResults.forEach(res => mergedDataMap.set(res.drawNumber, res));
-
-    const mergedArray = Array.from(mergedDataMap.values()).sort((a, b) => b.drawNumber - a.drawNumber);
-
-    const newJsonDataString = JSON.stringify(mergedArray, null, 2);
-    setJsonData(newJsonDataString); // Update internal JSON representation
-    setPlainTextData("");
-    handleValidateJsonData(); // Validate the newly merged data
-    toast({ title: "解析并合并成功", description: `成功解析并合并 ${newResults.length} 条记录。请验证下方更新的JSON数据。` });
-  };
-
-
-  const handleSyncDirectlyToFirestore = async () => {
-    if (!validatedJsonOutput || adminClaimStatus !== "verified") {
+    if (adminClaimStatus !== "verified") {
        toast({
-        title: "操作无法执行",
-        description: "需要有效的JSON数据和已验证的管理员权限才能同步。",
+        title: "权限不足",
+        description: "需要已验证的管理员权限才能同步数据。",
         variant: "destructive",
       });
+      setValidationStatus("error");
+      setValidationMessage("权限不足：需要已验证的管理员权限才能同步数据。");
+      setIsProcessing(false);
       return;
     }
     if (!user || !user.uid) {
@@ -258,34 +142,124 @@ export default function AdminUpdateTotoResultsPage() {
         description: "管理员UID未找到，无法执行同步操作。",
         variant: "destructive",
       });
+      setValidationStatus("error");
+      setValidationMessage("用户未登录：管理员UID未找到，无法执行同步操作。");
+      setIsProcessing(false);
       return;
     }
-    setIsSyncing(true);
+
+    // 1. Parse Plain Text
+    const entries = plainTextData.trim().split(/\n\s*\n/);
+    const parsedResults: HistoricalResult[] = [];
+    let parsingErrors: string[] = [];
+
+    entries.forEach((entry, index) => {
+      const lines = entry.trim().split('\n').map(line => line.trim());
+      if (lines.length < 5) {
+        parsingErrors.push(`记录 ${index + 1}: 格式不完整，至少需要5行。`);
+        return;
+      }
+      try {
+        const firstLineParts = lines[0].split('\t');
+        if (firstLineParts.length < 2) {
+          parsingErrors.push(`记录 ${index + 1}: 第一行格式错误，无法分离日期和期号。`);
+          return;
+        }
+        const dateText = firstLineParts[0];
+        const drawNoText = firstLineParts[1].replace('Draw No.', '').trim();
+
+        const date = parseDateFromText(dateText);
+        if (!date) {
+          parsingErrors.push(`记录 ${index + 1}: 日期 "${dateText}" 解析失败。`);
+          return;
+        }
+        const drawNumber = parseInt(drawNoText, 10);
+        if (isNaN(drawNumber)) {
+          parsingErrors.push(`记录 ${index + 1}: 期号 "${drawNoText}" 解析失败。`);
+          return;
+        }
+        const numbers = lines[2].split(/\s+/).map(n => parseInt(n, 10)).filter(n => !isNaN(n));
+        if (numbers.length !== 6) {
+          parsingErrors.push(`记录 ${index + 1}: 中奖号码必须是6个数字。找到: ${numbers.join(', ')}`);
+          return;
+        }
+        const additionalNumber = parseInt(lines[4], 10);
+        if (isNaN(additionalNumber)) {
+          parsingErrors.push(`记录 ${index + 1}: 特别号码 "${lines[4]}" 解析失败。`);
+          return;
+        }
+        parsedResults.push({ drawNumber, date, numbers, additionalNumber });
+      } catch (e) {
+        parsingErrors.push(`记录 ${index + 1}: 解析时发生意外错误 - ${e instanceof Error ? e.message : String(e)}`);
+      }
+    });
+
+    if (parsingErrors.length > 0) {
+      const errorMsg = `文本解析错误：\n- ${parsingErrors.join('\n- ')}`;
+      toast({ title: "文本解析失败", description: errorMsg, variant: "destructive", duration: 10000 });
+      setValidationStatus("error");
+      setValidationMessage(errorMsg);
+      setIsProcessing(false);
+      return;
+    }
+    if (parsedResults.length === 0) {
+      toast({ title: "无有效结果", description: "未能从文本中解析出任何有效结果。", variant: "default" });
+      setValidationStatus("info");
+      setValidationMessage("未能从文本中解析出任何有效结果。");
+      setIsProcessing(false);
+      return;
+    }
+
+    // 2. Validate Parsed Data
+    const validationResult = HistoricalResultsArraySchema.safeParse(parsedResults);
+    if (!validationResult.success) {
+      const errorIssues = validationResult.error.issues.map(issue => `路径 '${issue.path.join('.') || 'root'}': ${issue.message}`).join("\\n");
+      const errorMsg = `解析的数据无效：\\n${errorIssues}`;
+      toast({ title: "数据验证失败", description: errorMsg, variant: "destructive", duration: 10000 });
+      setValidationStatus("error");
+      setValidationMessage(errorMsg);
+      setIsProcessing(false);
+      return;
+    }
+
+    // 3. Sync to Firestore
+    const validatedData = validationResult.data;
+    const sortedData = [...validatedData].sort((a, b) => b.drawNumber - a.drawNumber);
+    const jsonDataToSync = JSON.stringify(sortedData, null, 2);
+
     try {
-      const result = await syncHistoricalResultsToFirestore(validatedJsonOutput, user.uid);
-      if (result.success) {
+      const syncResult = await syncHistoricalResultsToFirestore(jsonDataToSync, user.uid);
+      if (syncResult.success) {
         toast({
-          title: "同步成功 (服务器操作)",
-          description: result.message || `成功同步 ${result.count || 0} 条记录。`,
+          title: "同步成功",
+          description: syncResult.message || `成功同步 ${syncResult.count || 0} 条记录。`,
         });
+        setValidationStatus("success");
+        setValidationMessage(syncResult.message || `成功同步 ${syncResult.count || 0} 条记录到 Firestore。`);
+        setPlainTextData(""); // Clear plain text area on success
       } else {
         toast({
-          title: "同步失败 (服务器操作)",
-          description: result.message || "服务器操作报告同步失败。",
+          title: "同步失败",
+          description: syncResult.message || "服务器报告同步失败。",
           variant: "destructive",
         });
+        setValidationStatus("error");
+        setValidationMessage(`同步失败: ${syncResult.message || "未知错误"}`);
       }
     } catch (error: any) {
       console.error("Error calling syncHistoricalResultsToFirestore server action:", error);
-       toast({
-        title: "同步出错 (服务器操作)",
+      toast({
+        title: "同步出错",
         description: error.message || "调用服务器操作时发生未知错误。",
         variant: "destructive",
       });
+      setValidationStatus("error");
+      setValidationMessage(`同步出错: ${error.message || "未知错误"}`);
     } finally {
-      setIsSyncing(false);
+      setIsProcessing(false);
     }
   };
+
 
   if (isCheckingAdmin || authLoading) {
     return (
@@ -371,7 +345,7 @@ export default function AdminUpdateTotoResultsPage() {
             ) : null }
              {(adminClaimStatus === "not_found" || adminClaimStatus === "error") && (
                 <p className="text-xs text-muted-foreground mt-2">
-                  注意：管理员声明验证与需要特定声明（如 Cloud Function 中的 `context.auth.token.isAdmin == true` 或 Firestore 规则中的 `request.auth.token.isAdmin == true`）的操作相关。服务器操作也可能依赖此进行权限检查。
+                  注意：管理员声明验证与需要特定声明（如 Firestore 规则中的 `request.auth.token.isAdmin == true`）的操作相关。
                 </p>
             )}
           </CardContent>
@@ -380,16 +354,16 @@ export default function AdminUpdateTotoResultsPage() {
 
       <Card className="w-full">
         <CardHeader>
-          <CardTitle>管理员：手动更新TOTO开奖结果</CardTitle>
+          <CardTitle>管理员：更新TOTO开奖结果</CardTitle>
           <CardDescription>
-            您可以在下方粘贴**纯文本格式**的新开奖结果。系统将解析数据、合并，然后您可以验证合并后的数据并将其同步到 Firestore。
+            在下方粘贴**纯文本格式**的开奖结果。系统将解析、验证数据，然后直接将其同步到 Firestore。
+            确保文本中的每一条记录都包含5行：日期和期号（制表符分隔），"Winning Numbers"，中奖号码（空格分隔），"Additional Number"，特别号码。多条记录用空行分隔。
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-
           <div>
             <Label htmlFor="plainTextData" className="text-lg font-semibold flex items-center gap-2">
-              <FileText className="h-5 w-5"/> 添加纯文本格式结果
+              <FileText className="h-5 w-5"/> 粘贴纯文本结果
             </Label>
             <Textarea
               id="plainTextData"
@@ -399,19 +373,28 @@ export default function AdminUpdateTotoResultsPage() {
               rows={10}
               className="mt-2 font-mono text-sm"
             />
-            <p className="mt-1 text-xs text-muted-foreground">
-              每条记录5行，按顺序为：日期和期号 (制表符分隔)，"Winning Numbers"，中奖号码 (空格分隔)，"Additional Number"，特别号码。多条记录用空行分隔。
-            </p>
-            <Button onClick={parseAndMergePlainTextResults} className="w-full mt-3" variant="outline">
-              <PlusCircle className="mr-2 h-4 w-4" /> 从文本解析并添加到当前数据
-            </Button>
           </div>
 
           <Separator />
 
-          <Button onClick={handleValidateJsonData} className="w-full">
-            验证当前数据 (合并后)
+          <Button 
+            onClick={handleParseTextAndSyncToFirestore} 
+            className="w-full"
+            disabled={isProcessing || adminClaimStatus !== 'verified'}
+          >
+            {isProcessing ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <CloudUpload className="mr-2 h-4 w-4" />
+            )}
+            解析文本并同步到 Firestore
           </Button>
+          {(adminClaimStatus !== 'verified') && (
+            <p className="text-xs text-red-600 text-center -mt-4">
+              需要已验证的管理员权限才能同步。
+            </p>
+          )}
+
 
           {validationMessage && (
             <Alert variant={validationStatus === "success" ? "default" : validationStatus === "error" ? "destructive": "default"} className="mt-4">
@@ -419,7 +402,7 @@ export default function AdminUpdateTotoResultsPage() {
               {validationStatus === "error" && <XCircle className="h-5 w-5" />}
               {validationStatus === "info" && <Info className="h-5 w-5" />}
               <AlertTitle>
-                {validationStatus === "success" ? "验证成功" : validationStatus === "error" ? "验证失败" : "提示"}
+                {validationStatus === "success" ? "操作成功" : validationStatus === "error" ? "操作失败" : "提示"}
               </AlertTitle>
               <AlertDescription className="whitespace-pre-wrap">
                 {validationMessage}
@@ -427,32 +410,10 @@ export default function AdminUpdateTotoResultsPage() {
             </Alert>
           )}
 
-          {validatedJsonOutput && validationStatus === "success" && (
-            <div className="mt-6 space-y-4 p-4 border rounded-md bg-muted/50">
-              <Button
-                onClick={handleSyncDirectlyToFirestore}
-                disabled={isSyncing || adminClaimStatus !== 'verified'}
-                className="w-full"
-              >
-                {isSyncing ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <CloudUpload className="mr-2 h-4 w-4" />
-                )}
-                同步到 Firestore (服务器操作)
-              </Button>
-              {(adminClaimStatus !== 'verified') && (
-                <p className="text-xs text-red-600 text-center mt-2">
-                  需要已验证的管理员权限才能通过服务器操作同步到 Firestore。
-                </p>
-              )}
-            </div>
-          )}
-
         </CardContent>
         <CardFooter>
           <p className="text-xs text-muted-foreground text-center w-full">
-            此页面用于辅助手动更新开奖结果数据并同步到 Firestore。
+            此页面用于通过纯文本输入，辅助手动更新开奖结果数据并同步到 Firestore。
           </p>
         </CardFooter>
       </Card>
