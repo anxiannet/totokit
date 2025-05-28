@@ -35,15 +35,14 @@ export function PredictionConfigurator({
 
   useEffect(() => {
     if (isAdmin) {
-      setHasUsedSmartPickThisDraw(false); // Admins are never considered to have "used" their pick
+      setHasUsedSmartPickThisDraw(false); 
       if (onUsageStatusChange) {
-        console.log("[PredictionConfigurator] Admin detected. Notifying parent: onUsageStatusChange(true) to always show results area potential for admin.");
-        onUsageStatusChange(true); // Admins might always want to see the area if they've used it
+        console.log("[PredictionConfigurator] Admin detected. Notifying parent: onUsageStatusChange(true) for admin.");
+        onUsageStatusChange(true); 
       }
       return;
     }
 
-    // For non-admins, check usage for this specific user or a guest session
     const usageKey = `smartPickUsed_${CURRENT_DRAW_ID}_${user?.uid || 'guest'}`;
     const alreadyUsed = localStorage.getItem(usageKey) === 'true';
     console.log(`[PredictionConfigurator] useEffect: User (UID: ${user?.uid || 'guest'}) usageKey: ${usageKey}, alreadyUsed: ${alreadyUsed}`);
@@ -54,15 +53,18 @@ export function PredictionConfigurator({
         console.log("[PredictionConfigurator] Notifying parent: onUsageStatusChange(true) due to localStorage.");
         onUsageStatusChange(true);
       }
+    } else {
+      // Ensure this is also set to false if not used, for the "can use once" alert
+      setHasUsedSmartPickThisDraw(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, isAdmin]); // Re-run if user logs in/out or isAdmin status changes
+  }, [user, isAdmin]); 
 
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
 
-    if (hasUsedSmartPickThisDraw && !isAdmin) {
+    if (!isAdmin && hasUsedSmartPickThisDraw) {
       toast({
         title: "已使用",
         description: "您已使用本期免费智能选号。",
@@ -71,11 +73,9 @@ export function PredictionConfigurator({
       return;
     }
 
-
     setIsLoading(true);
     onLoadingChange(true);
     if (onUsageStatusChange) {
-      // Always ensure the results area can be shown when generation starts
       console.log("[PredictionConfigurator] handleSubmit: Notifying parent: onUsageStatusChange(true) due to starting generation.");
       onUsageStatusChange(true);
     }
@@ -129,7 +129,7 @@ export function PredictionConfigurator({
 
       const smartPickData = {
         userId: user ? user.uid : null,
-        idToken: idToken, // Pass the ID token
+        idToken: idToken,
         drawId: CURRENT_DRAW_ID,
         combinations: result.combinations as TotoCombination[],
       };
@@ -163,7 +163,7 @@ export function PredictionConfigurator({
             <Button
               type="submit"
               className="flex-1"
-              disabled={isLoading || (hasUsedSmartPickThisDraw && !isAdmin)}
+              disabled={isLoading || (!isAdmin && hasUsedSmartPickThisDraw)}
             >
               {isLoading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -181,7 +181,7 @@ export function PredictionConfigurator({
           </div>
         </CardFooter>
       </form>
-      {hasUsedSmartPickThisDraw && !isAdmin && ( 
+      {!isAdmin && hasUsedSmartPickThisDraw && ( 
         <div className="p-4 pt-0 text-sm">
           <Alert>
             <AlertCircle className="h-4 w-4" />
