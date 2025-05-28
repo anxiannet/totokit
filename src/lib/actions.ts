@@ -8,7 +8,7 @@ import { db, auth as firebaseClientAuthInstance } from "./firebase"; // Ensure a
 import {
   collection, addDoc, serverTimestamp, query, where,
   getDocs, limit, doc, writeBatch, runTransaction,
-  arrayUnion, arrayRemove, getDoc, setDoc, orderBy
+  arrayUnion, arrayRemove, getDoc, setDoc, orderBy, Timestamp
 } from "firebase/firestore";
 
 
@@ -122,7 +122,7 @@ export async function saveToolPrediction(
 
 export interface SmartPickResultInput {
   userId: string | null;
-  idToken: string | null; // ID token for potential server-side verification if needed
+  idToken: string | null;
   drawId: string;
   combinations: TotoCombination[];
 }
@@ -140,7 +140,6 @@ export async function saveSmartPickResult(
   console.log(`[SAVE_SMART_PICK] Attempting to save smart pick.`);
   console.log(`[SAVE_SMART_PICK] Input userId (data.userId): ${data.userId}`);
   console.log(`[SAVE_SMART_PICK] Firebase SDK auth.currentUser.uid inside action: ${clientAuthUid}`);
-  console.log(`[SAVE_SMART_PICK] Input ID Token (present): ${!!data.idToken}`);
 
 
   try {
@@ -148,7 +147,7 @@ export async function saveSmartPickResult(
     const transformedCombinations = data.combinations.map(combo => ({ numbers: combo }));
 
     const dataToSave = {
-      userId: data.userId,
+      userId: data.userId, // This is what request.resource.data.userId in rules refers to
       drawId: data.drawId,
       combinations: transformedCombinations,
       createdAt: serverTimestamp(),
@@ -156,6 +155,8 @@ export async function saveSmartPickResult(
 
     console.log(`[SAVE_SMART_PICK] Data being written to Firestore:`, JSON.stringify(dataToSave, null, 2));
     console.log(`[SAVE_SMART_PICK] Target collection: smartPickResults`);
+    console.log(`[SAVE_SMART_PICK] User ID to save: ${dataToSave.userId}, ID Token received: ${!!data.idToken}`);
+
 
     const docRef = await addDoc(collection(db, "smartPickResults"), dataToSave);
     console.log(`[SAVE_SMART_PICK] Smart pick result saved successfully with ID: ${docRef.id} for draw ${data.drawId}, user: ${data.userId || 'anonymous'}`);
@@ -163,7 +164,7 @@ export async function saveSmartPickResult(
   } catch (error: any) {
     console.error("[SAVE_SMART_PICK] Error saving smart pick result to Firestore:", error);
     let errorMessage = "保存智能选号结果失败: ";
-    if (error instanceof Error) {
+     if (error instanceof Error) {
       errorMessage += error.message;
       const firebaseError = error as any;
       if (firebaseError.code === 'permission-denied' || firebaseError.code === 7 || firebaseError.code === 'PERMISSION_DENIED') {
@@ -179,7 +180,7 @@ export async function saveSmartPickResult(
 
 export async function syncHistoricalResultsToFirestore(
   jsonDataString: string,
-  adminUserId: string | null // Expecting admin's UID
+  adminUserId: string | null
 ): Promise<{ success: boolean; message: string; count?: number }> {
   console.log("[SYNC_FIRESTORE] Attempting to sync historical results to Firestore.");
   if (!db) {
@@ -208,7 +209,6 @@ export async function syncHistoricalResultsToFirestore(
         continue;
       }
       const resultDocRef = doc(db, "totoResults", String(result.drawNumber));
-      // Add the adminUserId as the userId field in each document
       const dataToSet = { ...result, userId: adminUserId }; 
       batch.set(resultDocRef, dataToSet, { merge: true });
       count++;
@@ -295,7 +295,7 @@ export interface UserFavoriteTool {
   userId: string;
   toolId: string;
   toolName?: string;
-  favoritedAt: any;
+  favoritedAt: typeof Timestamp; // Correct type for Firestore timestamp
 }
 
 export async function getUserFavoriteTools(userId: string): Promise<string[]> {
@@ -320,7 +320,7 @@ export async function getUserFavoriteTools(userId: string): Promise<string[]> {
 export async function toggleFavoriteTool(
   userId: string,
   toolId: string,
-  toolName?: string // Optional toolName for better toast messages
+  toolName?: string 
 ): Promise<{ success: boolean; favorited: boolean; message?: string }> {
   if (!userId) {
     return { success: false, favorited: false, message: "用户未登录。" };
@@ -342,14 +342,12 @@ export async function toggleFavoriteTool(
       }
 
       if (currentFavorites.includes(toolId)) {
-        // Already favorited, so remove it
         transaction.set(userFavDocRef, { 
           favoriteToolIds: arrayRemove(toolId),
           updatedAt: serverTimestamp() 
         }, { merge: true });
         isCurrentlyFavorited = false;
       } else {
-        // Not favorited, so add it
         transaction.set(userFavDocRef, { 
           favoriteToolIds: arrayUnion(toolId),
           updatedAt: serverTimestamp()
@@ -393,7 +391,6 @@ export async function getUserSmartPickResults(userId: string, drawId: string): P
     }
 
     const docData = querySnapshot.docs[0].data();
-    // Transform combinations back from Array<{ numbers: number[] }> to Array<number[]>
     if (docData.combinations && Array.isArray(docData.combinations)) {
       const combinations: TotoCombination[] = docData.combinations.map(
         (comboObj: any) => comboObj.numbers || []
@@ -406,5 +403,42 @@ export async function getUserSmartPickResults(userId: string, drawId: string): P
   } catch (error) {
     console.error(`[GET_USER_SMART_PICKS] Error fetching smart pick results for userId: ${userId}, drawId: ${drawId}:`, error);
     return null;
+  }
+}
+
+export async function getAllHistoricalResultsFromFirestore(): Promise<HistoricalResult[]> {
+  if (!db) {
+    console.error("[GET_ALL_HISTORICAL] Firestore 'db' instance is not initialized.");
+    return [];
+  }
+  try {
+    const resultsCol = collection(db, "totoResults");
+    const q = query(resultsCol, orderBy("drawNumber", "desc"));
+    const querySnapshot = await getDocs(q);
+    const results: HistoricalResult[] = [];
+    querySnapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+      // Basic validation to ensure the data conforms to HistoricalResult
+      if (
+        typeof data.drawNumber === 'number' &&
+        typeof data.date === 'string' &&
+        Array.isArray(data.numbers) &&
+        typeof data.additionalNumber === 'number'
+      ) {
+        results.push({
+          drawNumber: data.drawNumber,
+          date: data.date,
+          numbers: data.numbers,
+          additionalNumber: data.additionalNumber,
+        } as HistoricalResult);
+      } else {
+        console.warn("[GET_ALL_HISTORICAL] Skipping document with invalid data structure:", docSnap.id, data);
+      }
+    });
+    console.log(`[GET_ALL_HISTORICAL] Fetched ${results.length} results from Firestore.`);
+    return results;
+  } catch (error) {
+    console.error("[GET_ALL_HISTORICAL] Error fetching historical results from Firestore:", error);
+    return [];
   }
 }

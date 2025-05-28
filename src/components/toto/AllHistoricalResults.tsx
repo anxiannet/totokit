@@ -4,14 +4,63 @@
 import type { HistoricalResult } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CalendarDays, ListOrdered } from "lucide-react";
+import { CalendarDays, ListOrdered, AlertTriangle, Loader2 } from "lucide-react";
 import { getBallColor, formatDateToLocale } from "@/lib/totoUtils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { zhCN } from "date-fns/locale";
-import { MOCK_HISTORICAL_DATA } from "@/lib/types";
+import { useQuery } from "@tanstack/react-query";
+import { getAllHistoricalResultsFromFirestore } from "@/lib/actions";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export function AllHistoricalResults() {
-  const results: HistoricalResult[] = MOCK_HISTORICAL_DATA;
+  const { 
+    data: results, 
+    isLoading, 
+    error 
+  } = useQuery<HistoricalResult[], Error>({
+    queryKey: ["allHistoricalResults"],
+    queryFn: getAllHistoricalResultsFromFirestore,
+  });
+
+  if (isLoading) {
+    return (
+      <Card className="w-full">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ListOrdered className="h-6 w-6 text-primary" />
+            全部开奖结果
+          </CardTitle>
+          <CardDescription>
+            正在从数据库加载开奖结果...
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex items-center justify-center h-60">
+          <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card className="w-full">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ListOrdered className="h-6 w-6 text-primary" />
+            全部开奖结果
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              加载开奖结果失败：{error.message}
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="w-full">
@@ -23,7 +72,7 @@ export function AllHistoricalResults() {
           </CardTitle>
         </div>
         <CardDescription>
-          过往TOTO开奖结果列表（使用模拟数据）。
+          过往TOTO开奖结果列表（来自数据库）。
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -61,12 +110,12 @@ export function AllHistoricalResults() {
             </div>
           </ScrollArea>
         ) : (
-          <p className="text-muted-foreground text-center">没有历史数据可显示。</p>
+          <p className="text-muted-foreground text-center py-10">数据库中没有历史数据可显示。</p>
         )}
       </CardContent>
       <CardFooter>
         <p className="text-xs text-muted-foreground text-center w-full">
-          {results ? `共显示 ${results.length} 期历史结果 (模拟数据)。` : "正在统计结果数量..."}
+          {results ? `共显示 ${results.length} 期历史结果 (来自数据库)。` : "正在统计结果数量..."}
         </p>
       </CardFooter>
     </Card>
