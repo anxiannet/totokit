@@ -1,17 +1,25 @@
-
 "use server";
 
 import { generateNumberCombinations as genkitGenerateNumberCombinations } from "@/ai/flows/generate-number-combinations";
 import type { GenerateNumberCombinationsInput, GenerateNumberCombinationsOutput } from "@/ai/flows/generate-number-combinations";
-import type { WeightedCriterion, TotoCombination, HistoricalResult, ToolPredictionInput, PredictionDetail, ToolPredictionsDocument, HistoricalPerformanceDisplayData } from "./types";
-import { OFFICIAL_PREDICTIONS_DRAW_ID } from "./types";
+import type { WeightedCriterion, TotoCombination, HistoricalResult, ToolPredictionInput, PredictionDetail, ToolPredictionsDocument, HistoricalPerformanceDisplayData, SmartPickResultInput } from "./types";
+import { OFFICIAL_PREDICTIONS_DRAW_ID, TOTO_NUMBER_RANGE } from "./types";
 import { db, auth as firebaseClientAuthInstance } from "./firebase"; // Renamed authInstance to firebaseClientAuthInstance for clarity
 import {
   collection,
-  getDocs, limit, doc, setDoc,
+  getDocs,
+  limit,
+  doc,
+  setDoc,
   getDoc,
   updateDoc,
-  orderBy, Timestamp, FieldValue, writeBatch
+  query, // Added query here
+  orderBy,
+  serverTimestamp,
+  type Timestamp,
+  type FieldValue,
+  writeBatch,
+  where
 } from "firebase/firestore";
 import { dynamicTools } from "./numberPickingAlgos";
 import { calculateHitDetails as utilCalculateHitDetails, type HitDetails } from "./totoUtils";
@@ -73,12 +81,13 @@ export async function syncHistoricalResultsToFirestore(
 export interface CurrentDrawInfo {
   currentDrawDateTime: string;
   currentJackpot: string;
-  userId?: string;
+  userId?: string; // User who updated this
   updatedAt?: FieldValue;
 }
 
 export async function updateCurrentDrawDisplayInfo(
-  data: { currentDrawDateTime: string; currentJackpot: string },
+  currentDrawDateTime: string,
+  currentJackpot: string,
   adminUserId: string | null
 ): Promise<{ success: boolean; message?: string }> {
   if (!db) {
@@ -87,15 +96,15 @@ export async function updateCurrentDrawDisplayInfo(
   if (!adminUserId) {
     return { success: false, message: "管理员未登录或UID无效，无法更新。" };
   }
-  if (!data.currentDrawDateTime || !data.currentJackpot) {
+  if (!currentDrawDateTime || !currentJackpot) {
     return { success: false, message: "开奖日期/时间或头奖金额不能为空。" };
   }
   try {
     const docRef = doc(db, "appSettings", "currentDrawInfo");
     await setDoc(docRef, {
-      currentDrawDateTime: data.currentDrawDateTime,
-      currentJackpot: data.currentJackpot,
-      userId: adminUserId, // Changed from updatedBy to userId for consistency with rules
+      currentDrawDateTime: currentDrawDateTime,
+      currentJackpot: currentJackpot,
+      userId: adminUserId,
       updatedAt: serverTimestamp(),
     }, { merge: true });
     return { success: true, message: "本期开奖信息已更新。" };
@@ -116,7 +125,7 @@ export async function getCurrentDrawDisplayInfo(): Promise<CurrentDrawInfo | nul
       return {
         currentDrawDateTime: data.currentDrawDateTime || "",
         currentJackpot: data.currentJackpot || "",
-        userId: data.userId, // Include userId if present
+        userId: data.userId,
       };
     }
     return null;
@@ -188,6 +197,7 @@ export async function toggleFavoriteTool(
   }
 }
 
+
 // --- Fetching All Historical Results (for client-side use in components) ---
 export async function getAllHistoricalResultsFromFirestore(): Promise<HistoricalResult[]> {
   if (!db) {
@@ -244,31 +254,24 @@ export async function saveCurrentDrawToolPrediction(
   try {
     const newPredictionDetail: PredictionDetail = {
       predictedNumbers: data.predictedNumbers,
-      targetDrawDate: data.targetDrawDate || "PENDING_DRAW", // Default if not provided
+      targetDrawDate: data.targetDrawDate || "PENDING_DRAW",
       savedAt: serverTimestamp(),
-      userId: data.userId, // Admin who saved this specific prediction
+      userId: data.userId,
     };
-
-    // Using updateDoc with dot notation for nested map update
-    // This requires the document toolPredictions/{toolId} to exist.
-    // If it might not exist, we'd need a get() then set() or a transaction.
-    // For simplicity, assuming the admin workflow might create the doc if it's the first time.
-    // More robust: get doc, if not exists, set with initial structure, then update.
-    // Or use set with merge:true but carefully construct the payload.
 
     const docSnap = await getDoc(toolDocRef);
     const updatePayload: Record<string, any> = {
-      toolName: data.toolName, // Keep toolName at the top level
-      userId: data.userId, // Admin who last updated this tool's document
+      toolId: data.toolId,
+      toolName: data.toolName,
+      userId: data.userId,
       lastUpdatedAt: serverTimestamp(),
-      [`predictionsByDraw.${drawKey}`]: newPredictionDetail // Dot notation to update specific map entry
+      [`predictionsByDraw.${drawKey}`]: newPredictionDetail
     };
 
 
     if (docSnap.exists()) {
       await updateDoc(toolDocRef, updatePayload);
     } else {
-      // Document doesn't exist, create it with the first prediction
       const initialDocData: ToolPredictionsDocument = {
         toolId: data.toolId,
         toolName: data.toolName,
@@ -348,12 +351,12 @@ export async function saveHistoricalToolPredictions(
         userId: adminUserId, // Admin who performed this bulk update
         lastUpdatedAt: serverTimestamp(),
     };
-    console.log(`[SAVE_HISTORICAL_TOOL_PREDICTIONS] Preparing to set document with ${Object.keys(finalPredictionsByDraw).length} total predictions in map. Admin: ${adminUserId}`);
+    console.log(`[SAVE_HISTORICAL_TOOL_PREDICTIONS] Preparing to set document with ${Object.keys(finalPredictionsByDraw).length} total predictions in map for admin: ${adminUserId}. Sample draw key for update: ${Object.keys(predictionsMapUpdates)[0]}`);
 
 
-    await setDoc(toolDocRef, docDataToSet, { merge: true }); // Using merge:true to be safe if creating new
+    await setDoc(toolDocRef, docDataToSet, { merge: true }); 
 
-    const savedCount = Object.keys(predictionsMapUpdates).length; // Number of predictions processed in this batch
+    const savedCount = Object.keys(predictionsMapUpdates).length; 
     console.log(`[SAVE_HISTORICAL_TOOL_PREDICTIONS] Successfully saved/updated ${savedCount} historical predictions for tool ${toolId}. Total predictions in map: ${Object.keys(finalPredictionsByDraw).length}.`);
     return {
       success: true,
@@ -396,13 +399,17 @@ export async function getPredictionForToolAndDraw(
 // Fetches all predictions from all tools for a specific target draw number.
 export async function getPredictionsForDraw(
   targetDrawNumber: string | number
-): Promise<Record<string, number[]>> {
+): Promise<Record<string, number[]>> { // toolId -> predictedNumbers[]
   if (!db) return {};
   const predictionsMap: Record<string, number[]> = {};
   const toolPredictionsColRef = collection(db, "toolPredictions");
   const drawKey = String(targetDrawNumber);
 
   try {
+    // Instead of querying by draw number (which is nested in a map),
+    // we fetch all tool documents and filter client-side (in the server action).
+    // This is less efficient if you have many tools, but simpler for the current data model.
+    // For better performance with many tools, a different data model or denormalization might be needed.
     const querySnapshot = await getDocs(toolPredictionsColRef);
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data() as ToolPredictionsDocument;
@@ -417,7 +424,7 @@ export async function getPredictionsForDraw(
   }
 }
 
-// Fetches all saved historical predictions for a given tool.
+// Fetches all saved historical predictions for a given tool (entire predictionsByDraw map).
 export async function getSavedHistoricalPredictionsForTool(
   toolId: string
 ): Promise<Record<string, PredictionDetail> | null> {
@@ -431,7 +438,7 @@ export async function getSavedHistoricalPredictionsForTool(
     if (docSnap.exists()) {
       const data = docSnap.data() as ToolPredictionsDocument;
       console.log(`[GET_SAVED_HISTORICAL] Found saved predictions for tool ${toolId}:`, Object.keys(data.predictionsByDraw || {}).length, "entries.");
-      return data.predictionsByDraw || {}; // Return the map or an empty object if null
+      return data.predictionsByDraw || {};
     }
     console.log(`[GET_SAVED_HISTORICAL] No saved predictions document found for tool ${toolId}.`);
     return null;
@@ -440,6 +447,7 @@ export async function getSavedHistoricalPredictionsForTool(
     return null;
   }
 }
+
 
 
 // --- Tool Algorithm Calculations (Server Actions) ---
@@ -460,20 +468,16 @@ export async function calculateHistoricalPerformances(
 
   for (let i = 0; i < allHistoricalData.length; i++) {
     const targetDraw = allHistoricalData[i];
-    // Ensure targetDraw and its numbers are valid
     if (!targetDraw || !targetDraw.numbers || typeof targetDraw.additionalNumber === 'undefined') {
         console.warn(`[CALC_HIST_PERF_WARN] Skipping invalid targetDraw at index ${i}:`, targetDraw);
         continue;
     }
 
-    // Preceding 10 draws are from index i+1 to i+10
     const precedingTenDraws = allHistoricalData.slice(i + 1, i + 1 + 10);
 
     if (precedingTenDraws.length < 10) {
-      // Not enough preceding data for a prediction based on 10 draws for this targetDraw.
-      // This means we can't back-test the very oldest 9 draws in the dataset.
-      console.log(`[CALC_HIST_PERF] Not enough preceding data for targetDraw ${targetDraw.drawNumber}. Needed 10, got ${precedingTenDraws.length}.`);
-      continue; // Skip this targetDraw
+      console.log(`[CALC_HIST_PERF] Not enough preceding data for targetDraw ${targetDraw.drawNumber}. Needed 10, got ${precedingTenDraws.length}. Skipping further back-testing for this tool.`);
+      break; // Stop if not enough preceding data for the current target
     }
 
     let predictionBasisDraws: string | null = null;
@@ -503,7 +507,7 @@ export async function calculateHistoricalPerformances(
       hitRate: parseFloat(hitRate.toFixed(1)),
       hasAnyHit,
       predictionBasisDraws,
-      isSavedPrediction: false, // This is a calculated performance, not directly from DB in this context
+      isSavedPrediction: false, 
     });
   }
   console.log(`[CALC_HIST_PERF] Finished. Generated ${performances.length} performance entries for tool ${toolId}.`);
@@ -522,11 +526,9 @@ export async function calculateSingleToolPrediction(
   }
   if (!latestTenHistoricalData || latestTenHistoricalData.length === 0) {
      console.warn(`[CALC_SINGLE_PRED_WARN] No historical data provided for tool ${toolId}. Cannot generate prediction.`);
-     return []; // Return empty array as per tool algo expectations
+     return []; 
   }
-  // Tools expect up to 10 draws, so if fewer are provided, they should handle it.
-  // No specific warning here if less than 10, as algos are designed for flexibility.
-
+  
   try {
     return tool.algorithmFn(latestTenHistoricalData);
   } catch (error) {
@@ -547,7 +549,7 @@ export async function generateTotoPredictions(
   try {
     const parseNumbers = (input: string): number[] => {
       if (!input.trim()) return [];
-      return input.split(',').map(n => parseInt(n.trim(), 10)).filter(n => !isNaN(n));
+      return input.split(',').map(n => parseInt(n.trim(), 10)).filter(n => !isNaN(n) && n >= TOTO_NUMBER_RANGE.min && n <= TOTO_NUMBER_RANGE.max);
     };
 
     const luckyNumbers = parseNumbers(luckyNumbersInput);
@@ -581,7 +583,7 @@ export async function generateTotoPredictions(
     const validCombinations = result.combinations.filter(combo =>
       Array.isArray(combo) &&
       combo.length > 0 &&
-      combo.every(num => typeof num === 'number' && num >= 1 && num <= 49) &&
+      combo.every(num => typeof num === 'number' && num >= TOTO_NUMBER_RANGE.min && num <= TOTO_NUMBER_RANGE.max) &&
       new Set(combo).size === combo.length
     );
 
@@ -592,7 +594,27 @@ export async function generateTotoPredictions(
 
     return { combinations: validCombinations as TotoCombination[] };
   } catch (error) {
-    console.error("Error in generateTotoPredictions Genkit call:", error);
-    return { error: error instanceof Error ? error.message : "An unknown error occurred during prediction." };
+    console.error("[GENERATE_TOTO_PREDICTIONS_ERROR] Error in Genkit call or processing:", error);
+    let errorMessage = "An unknown error occurred during AI prediction.";
+    if (error instanceof Error) {
+        errorMessage = error.message;
+    } else if (typeof error === 'string') {
+        errorMessage = error;
+    }
+    
+    // Check for common Genkit/API key related errors
+    if (errorMessage.includes("API key not valid") || errorMessage.includes("PERMISSION_DENIED")) {
+        errorMessage = "AI Prediction failed: API key is invalid or missing. Please check server configuration. Detail: " + errorMessage;
+    } else if (errorMessage.includes("quota")) {
+        errorMessage = "AI Prediction failed: API quota exceeded. Please check your API plan. Detail: " + errorMessage;
+    }
+
+    return { error: errorMessage };
   }
 }
+
+// --- Smart Pick Results (Local Storage, not Firestore) ---
+// The actions for saving/getting smart picks from Firestore have been removed
+// as per the requirement to use localStorage.
+// If they need to be re-added, the Firestore rules for `smartPickResults` would also need to be considered.
+// For now, the collection `smartPickResults` and its rules are effectively unused for Smart Picks.
