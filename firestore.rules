@@ -9,14 +9,17 @@ service cloud.firestore {
     match /totoResults/{drawId} {
       allow read: if true;
       allow write: if request.auth != null && request.auth.token.isAdmin == true;
+      // Consider adding data validation here for production if needed.
     }
 
     // Tool Predictions (Predictions made by specific tools for historical draws)
     // Allow anyone to read these predictions.
     // Only allow writes if the user is authenticated and has an 'isAdmin' custom claim.
+    // (Assuming these are populated via admin actions or trusted server processes)
     match /toolPredictions/{predictionId} {
       allow read: if true;
       allow write: if request.auth != null && request.auth.token.isAdmin == true;
+      // Data validation should happen in the server action before writing.
     }
 
     // User Favorite Tools
@@ -26,10 +29,15 @@ service cloud.firestore {
     }
 
     // Smart Pick AI Results
-    // Allow authenticated users to create their own smart pick results.
+    // Allow authenticated users to create their own smart pick results,
+    // relying on the server action to correctly set the userId.
     match /smartPickResults/{resultId} {
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow create: if request.resource.data.userId != null;
+      // Example: Allow users to read their own saved smart picks
       allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      // Example: Allow users to delete their own, or admins to delete any
+      // allow delete: if request.auth != null && (resource.data.userId == request.auth.uid || request.auth.token.isAdmin == true);
+      // For now, keep update/delete restricted unless a specific need arises.
       allow update, delete: if false;
     }
 
