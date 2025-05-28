@@ -3,7 +3,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useCallback, useEffect, use } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -27,9 +27,9 @@ import {
 import { zhCN } from "date-fns/locale";
 import {
   saveToolPrediction,
-  getPredictionForToolAndDraw, // Still needed for initial fetch
   saveMultipleToolPredictions,
-  calculateHistoricalPerformances, // New server action
+  calculateHistoricalPerformances,
+  getPredictionForToolAndDraw,
   type ToolPredictionInput,
 } from "@/lib/actions";
 import { useAuth } from "@/hooks/useAuth";
@@ -66,7 +66,6 @@ export function ToolDetailPageClient({
 }: ToolDetailPageClientProps) {
   const { user } = useAuth();
   const { toast } = useToast();
-  const resolvedParams = use(useState({ toolId: serializableTool.id }))[0]; // Workaround if params were from use()
 
   const [savedPredictionForTargetDraw, setSavedPredictionForTargetDraw] = useState<number[] | null>(initialSavedPrediction);
   const [isLoadingSavedPrediction, setIsLoadingSavedPrediction] = useState(false); // For fetching official pred
@@ -87,7 +86,7 @@ export function ToolDetailPageClient({
       setSavedPredictionForTargetDraw(saved);
     } catch (error) {
       console.error(`Error fetching saved prediction for tool ${serializableTool.id}, draw ${OFFICIAL_PREDICTIONS_DRAW_ID}:`, error);
-      setSavedPredictionForTargetDraw(null);
+      setSavedPredictionForTargetDraw(null); // Reset if error
       toast({ title: "错误", description: "加载为当期保存的预测失败。", variant: "destructive" });
     } finally {
       setIsLoadingSavedPrediction(false);
@@ -123,7 +122,7 @@ export function ToolDetailPageClient({
 
       if (result.success) {
         toast({ title: "成功", description: result.message || `预测已为第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期保存/更新。` });
-        fetchAndSetSavedOfficialPrediction(); 
+        fetchAndSetSavedOfficialPrediction(); // Re-fetch to display the saved data
       } else {
         toast({ title: "保存失败", description: result.message || "无法保存预测。", variant: "destructive" });
       }
@@ -143,7 +142,7 @@ export function ToolDetailPageClient({
       if (performances.length === 0 && allHistoricalDataForPerformanceAnalysis.length > 0) {
         toast({ title: "提示", description: "无法计算历史表现，可能是历史数据不足10期。", variant: "default"});
       } else if (allHistoricalDataForPerformanceAnalysis.length === 0) {
-        toast({ title: "无数据", description: "数据库中没有历史开奖数据可供分析。", variant: "default"});
+         toast({ title: "无数据", description: "数据库中没有历史开奖数据可供分析。", variant: "default"});
       }
     } catch (error: any) {
       toast({ title: "错误", description: `加载历史表现数据失败: ${error.message || "未知错误"}`, variant: "destructive" });
@@ -209,24 +208,22 @@ export function ToolDetailPageClient({
   let displayNumbersForCurrentDrawSection: number[] = [];
   let currentDrawSectionTitle = `第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期预测号码:`;
   let showAdminSaveCurrentDrawButton = false;
-  let currentPredictionSourceIsDynamic = false;
-
-
+  
   if (isLoadingSavedPrediction) {
     // Loader shown below
   } else if (savedPredictionForTargetDraw && savedPredictionForTargetDraw.length > 0) {
     displayNumbersForCurrentDrawSection = savedPredictionForTargetDraw;
     currentDrawSectionTitle = `第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期预测号码 (来自数据库):`;
-    if (isAdmin) {
+    if (isAdmin) { // Admin can update existing prediction
       showAdminSaveCurrentDrawButton = true; 
     }
-  } else { 
+  } else { // No saved prediction found for OFFICIAL_PREDICTIONS_DRAW_ID
     if (isAdmin) {
       displayNumbersForCurrentDrawSection = dynamicallyGeneratedCurrentPrediction;
       currentDrawSectionTitle = `为第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期动态生成号码 (可保存):`;
       showAdminSaveCurrentDrawButton = true;
-      currentPredictionSourceIsDynamic = true;
     }
+    // For non-admins, if no saved prediction, displayNumbersForCurrentDrawSection remains empty
   }
 
   return (
@@ -246,7 +243,7 @@ export function ToolDetailPageClient({
             <CardTitle className="flex items-center gap-2 text-xl">
               {serializableTool.name}
             </CardTitle>
-            <FavoriteStarButton toolId={serializableTool.id} toolName={serializableTool.name} />
+            { user && <FavoriteStarButton toolId={serializableTool.id} toolName={serializableTool.name} />}
           </div>
           <CardDescription>{serializableTool.description}</CardDescription>
         </CardHeader>
@@ -266,20 +263,20 @@ export function ToolDetailPageClient({
               <NumberPickingToolDisplay numbers={displayNumbersForCurrentDrawSection} />
             ) : (
               <p className="text-sm text-muted-foreground italic">
-                {isAdmin && !showAdminSaveCurrentDrawButton
+                {isAdmin && !showAdminSaveCurrentDrawButton // This case implies admin view but dynamic gen also yielded no numbers
                   ? "当前动态算法未生成号码。"
                   : `第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期预测号码尚未由管理员生成或保存。`}
               </p>
             )}
 
-            {isAdmin && showAdminSaveCurrentDrawButton && (currentPredictionSourceIsDynamic ? dynamicallyGeneratedCurrentPrediction.length > 0 : true) && (
+            {isAdmin && showAdminSaveCurrentDrawButton && (dynamicallyGeneratedCurrentPrediction.length > 0 || (savedPredictionForTargetDraw && savedPredictionForTargetDraw.length > 0)) && (
               <Button onClick={handleSaveCurrentDrawPrediction} disabled={isSavingCurrentDraw || !user?.uid} className="w-full mt-3">
                 {isSavingCurrentDraw ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
                   <Save className="mr-2 h-4 w-4" />
                 )}
-                {savedPredictionForTargetDraw && savedPredictionForTargetDraw.length > 0 && !currentPredictionSourceIsDynamic ? `更新` : `保存`}第 {OFFICIAL_PREDICTIONS_DRAW_ID} 期预测
+                {savedPredictionForTargetDraw && savedPredictionForTargetDraw.length > 0 ? `更新` : `保存`}第 {OFFICIAL_PREDICTIONS_DRAW_ID} 期预测
               </Button>
             )}
              {!isAdmin && !isLoadingSavedPrediction && (!savedPredictionForTargetDraw || savedPredictionForTargetDraw.length === 0) && (
@@ -425,7 +422,16 @@ export function ToolDetailPageClient({
                 )}
               </>
             )}
-            {displayedHistoricalPerformances && displayedHistoricalPerformances.length === 0 && !isLoadingHistoricalPerformance && (
+            {displayedHistoricalPerformances === null && !isLoadingHistoricalPerformance && allHistoricalDataForPerformanceAnalysis && allHistoricalDataForPerformanceAnalysis.length === 0 && (
+                 <Alert variant="default" className="mt-3">
+                    <Info className="h-4 w-4" />
+                    <AlertTitle>无历史数据</AlertTitle>
+                    <AlertDescription>
+                        数据库中没有历史开奖数据可供分析。请先通过管理员页面同步。
+                    </AlertDescription>
+                </Alert>
+            )}
+            {displayedHistoricalPerformances && displayedHistoricalPerformances.length === 0 && !isLoadingHistoricalPerformance && allHistoricalDataForPerformanceAnalysis && allHistoricalDataForPerformanceAnalysis.length > 0 && (
                 <Alert variant="default" className="mt-3">
                     <Info className="h-4 w-4" />
                     <AlertTitle>无历史表现数据</AlertTitle>
@@ -440,6 +446,3 @@ export function ToolDetailPageClient({
     </div>
   );
 }
-
-
-    
