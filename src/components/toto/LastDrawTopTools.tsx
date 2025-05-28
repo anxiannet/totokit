@@ -160,6 +160,7 @@ export function LastDrawTopTools({ tools, latestDrawNumber }: LastDrawTopToolsPr
                       </div>
                     ))}
                   </div>
+                   {/* Removed hit details display block
                    {tool.hitDetailsForLastDraw && (
                     <div className="text-xs space-y-0.5 text-foreground/90 mt-1">
                       <p>
@@ -182,6 +183,7 @@ export function LastDrawTopTools({ tools, latestDrawNumber }: LastDrawTopToolsPr
                       </p>
                     </div>
                   )}
+                  */}
                 </div>
                 <Button asChild variant="outline" size="sm" className="w-full mt-3 text-xs sm:text-sm">
                   <Link href={`/number-picking-tools/${tool.id}`}>
