@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Target, Loader2, AlertCircle, DatabaseZap, ListOrdered, Save, PlayCircle, Info } from "lucide-react";
+import { ArrowLeft, Target, Loader2, AlertCircle, DatabaseZap, ListOrdered, Save, PlayCircle, Info, TrendingUp, TrendingDown } from "lucide-react";
 import type { HistoricalResult, TotoCombination } from "@/lib/types";
 import { OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types";
 import { NumberPickingToolDisplay } from "@/components/toto/NumberPickingToolDisplay";
@@ -30,6 +30,7 @@ import {
   calculateSingleToolPrediction,
   calculateHistoricalPerformances,
   type ToolPredictionInput,
+  getPredictionForToolAndDraw,
 } from "@/lib/actions";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -65,12 +66,11 @@ export function ToolDetailPageClient({
   const { toast } = useToast();
 
   const [savedPredictionForTargetDraw, setSavedPredictionForTargetDraw] = useState<number[] | null>(initialSavedPrediction);
-  const [isLoadingSavedPrediction, setIsLoadingSavedPrediction] = useState(false); // For fetching official pred (not currently used for fetching, but for button state)
+  const [isLoadingSavedPrediction, setIsLoadingSavedPrediction] = useState(false);
 
   const [currentPredictionForSave, setCurrentPredictionForSave] = useState<number[] | null>(null);
   const [displayedHistoricalPerformances, setDisplayedHistoricalPerformances] = useState<HistoricalPerformanceDisplayData[] | null>(null);
   const [isLoadingAllPredictions, setIsLoadingAllPredictions] = useState(false);
-
 
   const isAdmin = user && user.email === "admin@totokit.com";
 
@@ -81,11 +81,10 @@ export function ToolDetailPageClient({
     }
     setIsLoadingAllPredictions(true);
     setCurrentPredictionForSave(null);
-    setDisplayedHistoricalPerformances(null);
+    setDisplayedHistoricalPerformances(null); // Clear previous historical performance
+    toast({ title: "处理中", description: `正在为工具 ${serializableTool.name} 生成当期及历史回测预测...` });
 
     try {
-      toast({ title: "处理中", description: `正在为工具 ${serializableTool.name} 生成当期及历史回测预测...` });
-      
       const latestTenHistoricalDataForCurrentPred = allHistoricalDataForPerformanceAnalysis.slice(0, 10);
 
       const [currentPredResult, historicalPerfResult] = await Promise.all([
@@ -93,7 +92,6 @@ export function ToolDetailPageClient({
         calculateHistoricalPerformances(serializableTool.id, allHistoricalDataForPerformanceAnalysis)
       ]);
 
-      // Update display states immediately after generation
       if (currentPredResult) {
         setCurrentPredictionForSave(currentPredResult);
       } else {
@@ -103,13 +101,12 @@ export function ToolDetailPageClient({
       if (historicalPerfResult) {
         setDisplayedHistoricalPerformances(historicalPerfResult);
       } else {
-         // This case should ideally not happen if calculateHistoricalPerformances always returns an array
-        setDisplayedHistoricalPerformances([]); 
+        setDisplayedHistoricalPerformances([]);
       }
-      
+
       toast({ title: "生成完毕", description: `已为工具 ${serializableTool.name} 完成全面预测生成，正在尝试保存...` });
 
-      // Now attempt to save
+      // Auto-save logic
       let currentSaveSuccess = false;
       let historicalSaveSuccess = false;
       const adminUserId = user.uid;
@@ -133,7 +130,7 @@ export function ToolDetailPageClient({
             toast({ title: "当期预测保存失败", description: saveCurrentResult.message || "无法保存当期预测。", variant: "destructive" });
           }
         } catch (error: any) {
-           toast({ title: "当期预测保存出错", description: error.message || "保存当期预测时发生错误。", variant: "destructive" });
+          toast({ title: "当期预测保存出错", description: error.message || "保存当期预测时发生错误。", variant: "destructive" });
         }
       }
 
@@ -149,7 +146,7 @@ export function ToolDetailPageClient({
 
         if (predictionsToSaveForDb.length > 0) {
           try {
-            const saveHistoricalResult = await saveHistoricalToolPredictions(predictionsToSaveForDb, adminUserId);
+            const saveHistoricalResult = await saveHistoricalToolPredictions(serializableTool.id, serializableTool.name, predictionsToSaveForDb, adminUserId);
             if (saveHistoricalResult.success) {
               toast({ title: "历史回测已保存", description: saveHistoricalResult.message || `已成功保存/更新 ${saveHistoricalResult.savedCount || 0} 条历史回测预测。` });
               historicalSaveSuccess = true;
@@ -172,10 +169,30 @@ export function ToolDetailPageClient({
 
     } catch (error: any) {
       toast({ title: "预测生成或保存出错", description: error.message || "处理预测时发生未知错误。", variant: "destructive" });
+      setCurrentPredictionForSave(null); // Reset on error
+      setDisplayedHistoricalPerformances(null); // Reset on error
     } finally {
       setIsLoadingAllPredictions(false);
     }
   };
+
+
+  // Effect to fetch already saved prediction for the OFFICIAL_PREDICTIONS_DRAW_ID
+  useEffect(() => {
+    const fetchInitial = async () => {
+      setIsLoadingSavedPrediction(true);
+      try {
+        const prediction = await getPredictionForToolAndDraw(serializableTool.id, OFFICIAL_PREDICTIONS_DRAW_ID);
+        setSavedPredictionForTargetDraw(prediction);
+      } catch (error) {
+        console.error("Error fetching initial saved prediction:", error);
+        toast({ title: "加载已保存预测失败", description: "无法获取此工具为当期保存的预测号码。", variant: "destructive"});
+      } finally {
+        setIsLoadingSavedPrediction(false);
+      }
+    };
+    fetchInitial();
+  }, [serializableTool.id, toast]);
 
 
   const OfficialDrawDisplay = ({ draw }: { draw: HistoricalResult }) => (
@@ -246,31 +263,34 @@ export function ToolDetailPageClient({
               <Target className="h-5 w-5 text-primary" />
               期号 {OFFICIAL_PREDICTIONS_DRAW_ID} 预测号码:
             </h4>
-            {isLoadingAllPredictions && !savedPredictionForTargetDraw && !currentPredictionForSave && (
-                <div className="flex items-center space-x-2 mt-1">
+            {isLoadingSavedPrediction && (
+                 <div className="flex items-center space-x-2 mt-1">
                     <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">等待生成...</p>
+                    <p className="text-sm text-muted-foreground">加载已保存预测...</p>
                 </div>
             )}
-            {savedPredictionForTargetDraw && savedPredictionForTargetDraw.length > 0 && (
+            {!isLoadingSavedPrediction && savedPredictionForTargetDraw && savedPredictionForTargetDraw.length > 0 && (
               <>
                 <p className="text-xs text-muted-foreground mb-1">已保存的预测 (来自数据库):</p>
                 <NumberPickingToolDisplay numbers={savedPredictionForTargetDraw} />
               </>
             )}
-            {currentPredictionForSave && currentPredictionForSave.length > 0 && !savedPredictionForTargetDraw &&(
-              <>
-                <p className="text-xs text-muted-foreground mb-1">新生成的预测 (点击上方按钮后已自动尝试保存):</p>
-                <NumberPickingToolDisplay numbers={currentPredictionForSave} />
-              </>
+             {!isLoadingSavedPrediction && currentPredictionForSave && currentPredictionForSave.length > 0 && (
+                <div className={savedPredictionForTargetDraw ? "mt-3" : ""}>
+                    <p className="text-xs text-muted-foreground mb-1">
+                        {savedPredictionForTargetDraw ? "新生成的预测 (已自动尝试保存):" : "新生成的预测 (已自动尝试保存，此前无已存预测):"}
+                    </p>
+                    <NumberPickingToolDisplay numbers={currentPredictionForSave} />
+                </div>
             )}
-            {!isLoadingAllPredictions && !savedPredictionForTargetDraw && !currentPredictionForSave && (
+
+            {!isLoadingSavedPrediction && !savedPredictionForTargetDraw && !currentPredictionForSave && !isLoadingAllPredictions && (
                  <Alert variant="default" className="mt-3">
                     <AlertCircle className="h-4 w-4" />
                     <AlertTitle>提示</AlertTitle>
                     <AlertDescription>
-                    期号 {OFFICIAL_PREDICTIONS_DRAW_ID} 的预测号码尚未生成或保存。
-                    {isAdmin && " 请点击上方的“开始全面预测”按钮生成并保存。"}
+                      期号 {OFFICIAL_PREDICTIONS_DRAW_ID} 的预测号码尚未保存或生成。
+                      {isAdmin && " 请点击上方的“开始全面预测”按钮。"}
                     </AlertDescription>
               </Alert>
             )}
@@ -283,14 +303,14 @@ export function ToolDetailPageClient({
                   <ListOrdered className="h-5 w-5 text-primary" />
                   历史开奖动态预测表现:
                 </h4>
-                {isLoadingAllPredictions && !displayedHistoricalPerformances && (
+                {isLoadingAllPredictions && displayedHistoricalPerformances === null && ( // Show loader only if performances are not yet set
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                    <p className="ml-2 text-muted-foreground">正在加载历史表现数据...</p>
+                    <p className="ml-2 text-muted-foreground">加载历史表现数据...</p>
                   </div>
                 )}
                 {displayedHistoricalPerformances && displayedHistoricalPerformances.length > 0 && (
-                    <ScrollArea className="h-[500px] rounded-md border p-3 space-y-4 bg-background/50">
+                  <ScrollArea className="h-[500px] rounded-md border p-3 space-y-4 bg-background/50">
                     {displayedHistoricalPerformances.map((performance) => {
                         if (!performance) return null;
                         const { targetDraw, predictedNumbersForTargetDraw, hitDetails, hitRate, hasAnyHit, predictionBasisDraws } = performance;
@@ -387,7 +407,8 @@ export function ToolDetailPageClient({
                         <Info className="h-4 w-4" />
                         <AlertTitle>无历史表现数据</AlertTitle>
                         <AlertDescription>
-                        未能计算历史表现，可能是数据库中开奖数据不足 (少于11期) 或工具未生成预测。
+                          未能计算历史表现，可能是数据库中开奖数据不足 (少于11期) 或工具未生成预测。
+                          {isAdmin && " 请确保数据库中至少有11期历史开奖数据，然后点击上方的“开始全面预测”按钮。"}
                         </AlertDescription>
                     </Alert>
                    )
