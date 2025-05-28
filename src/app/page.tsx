@@ -20,12 +20,11 @@ export default function TotoForecasterPage() {
   const { toast } = useToast();
   const [predictions, setPredictions] = useState<TotoCombination[]>([]);
   const [isGeneratingPredictions, setIsGeneratingPredictions] = useState<boolean>(false);
-  const [displayResultsArea, setDisplayResultsArea] = useState<boolean>(false);
+  const [displayResultsArea, setDisplayResultsArea] = useState<boolean>(false); // Controls visibility of the results area
   const [topPerformingTools, setTopPerformingTools] = useState<TopToolDisplayInfo[]>([]);
   const [lastDrawTopPerformingTools, setLastDrawTopPerformingTools] = useState<LastDrawToolPerformanceInfo[]>([]);
 
-  // CURRENT_DRAW_ID is OFFICIAL_PREDICTIONS_DRAW_ID from types.ts
-  // const CURRENT_DRAW_ID = OFFICIAL_PREDICTIONS_DRAW_ID; // Already available via import
+  const CURRENT_DRAW_ID = OFFICIAL_PREDICTIONS_DRAW_ID;
 
   const handlePredictionsGenerated = (newPredictions: TotoCombination[]) => {
     setPredictions(newPredictions);
@@ -34,23 +33,28 @@ export default function TotoForecasterPage() {
   const handleLoadingChange = (isLoading: boolean) => {
     setIsGeneratingPredictions(isLoading);
     if (isLoading) {
-      setDisplayResultsArea(true);
+      setDisplayResultsArea(true); // Always show results area when loading starts
     }
   };
 
-  const handleUsageStatusChange = (hasUsed: boolean) => {
-    console.log(`[TotoForecasterPage] handleUsageStatusChange called with hasUsed: ${hasUsed}`);
-    if (hasUsed) {
+  const handleUsageStatusChange = (hasUsedOrShouldShow: boolean) => {
+    console.log(`[TotoForecasterPage] handleUsageStatusChange called with hasUsedOrShouldShow: ${hasUsedOrShouldShow}`);
+    if (hasUsedOrShouldShow) {
       setDisplayResultsArea(true);
       console.log(`[TotoForecasterPage] displayResultsArea set to true by handleUsageStatusChange.`);
+    } else {
+      // This case might be less common now if admin always shows and non-admin shows if marker is set
+      setDisplayResultsArea(false);
+      console.log(`[TotoForecasterPage] displayResultsArea set to false by handleUsageStatusChange.`);
     }
   };
 
   useEffect(() => {
     const loadSavedPicksFromLocalStorage = () => {
-      console.log(`[TotoForecasterPage] loadSavedPicks: Attempting to load from localStorage. User: ${user?.uid}, displayResultsArea: ${displayResultsArea}, !isGenerating: ${!isGeneratingPredictions}, preds.length: ${predictions.length}`);
+      console.log(`[TotoForecasterPage] loadSavedPicks: Attempting to load. user: ${user?.uid}, displayResultsArea: ${displayResultsArea}, !isGenerating: ${!isGeneratingPredictions}, preds.length: ${predictions.length}`);
+      // Only try to load if results area should be shown, not currently generating, and no predictions currently in state.
       if (displayResultsArea && !isGeneratingPredictions && predictions.length === 0) {
-        const resultsKey = `smartPickResults_${OFFICIAL_PREDICTIONS_DRAW_ID}_${user?.uid || 'guest'}`;
+        const resultsKey = `smartPickResults_${CURRENT_DRAW_ID}_${user?.uid || 'guest'}`;
         console.log(`[TotoForecasterPage] loadSavedPicks: Attempting to load from localStorage key: ${resultsKey}`);
         setIsGeneratingPredictions(true); // Show loader while checking localStorage
         try {
@@ -79,7 +83,7 @@ export default function TotoForecasterPage() {
     };
     loadSavedPicksFromLocalStorage();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, displayResultsArea, OFFICIAL_PREDICTIONS_DRAW_ID, toast]); // predictions removed from deps to avoid loop on setPredictions
+  }, [user, displayResultsArea, CURRENT_DRAW_ID, toast, predictions.length, isGeneratingPredictions]);
 
 
   useEffect(() => {
@@ -98,11 +102,9 @@ export default function TotoForecasterPage() {
           if (precedingTenDrawsForTarget.length < 10) return;
 
           let predictedNumbersForTargetDraw: number[] = tool.algorithmFn(precedingTenDrawsForTarget);
-          if (targetDraw.numbers.length > 0) {
+          if (targetDraw.numbers.length > 0 && predictedNumbersForTargetDraw.length > 0) { // Ensure predictedNumbersForTargetDraw is not empty
             const hitDetails = calculateHitDetails(predictedNumbersForTargetDraw, targetDraw);
-            const hitRate = predictedNumbersForTargetDraw.length > 0
-              ? (hitDetails.mainHitCount / predictedNumbersForTargetDraw.length) * 100
-              : 0;
+            const hitRate = (hitDetails.mainHitCount / predictedNumbersForTargetDraw.length) * 100;
             totalHitRate += hitRate;
             drawsAnalyzed++;
           }
@@ -122,6 +124,7 @@ export default function TotoForecasterPage() {
             const singleDrawPerformances: LastDrawToolPerformanceInfo[] = dynamicTools.map(tool => {
                 const predictedNumbers = tool.algorithmFn(precedingTenDrawsForLatest);
                 const hitDetails = calculateHitDetails(predictedNumbers, latestDraw);
+                // Ensure predictedNumbers.length > 0 to avoid division by zero
                 const hitRate = predictedNumbers.length > 0
                   ? (hitDetails.mainHitCount / predictedNumbers.length) * 100
                   : 0;
@@ -174,3 +177,4 @@ export default function TotoForecasterPage() {
     </div>
   );
 }
+

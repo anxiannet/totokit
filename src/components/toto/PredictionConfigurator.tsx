@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardFooter } from "@/components/ui/card";
 import { Wand2, Loader2, FileText, AlertCircle } from "lucide-react";
 import type { WeightedCriterion, TotoCombination } from "@/lib/types";
-import { MOCK_HISTORICAL_DATA, OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types"; // Import OFFICIAL_PREDICTIONS_DRAW_ID
+import { MOCK_HISTORICAL_DATA, OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types";
 import { generateTotoPredictions } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -27,53 +27,83 @@ export function PredictionConfigurator({
   const { toast } = useToast();
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  // hasUsedSmartPickThisDraw now means: "valid saved results exist in localStorage for this draw for non-admin"
   const [hasUsedSmartPickThisDraw, setHasUsedSmartPickThisDraw] = useState<boolean>(false);
 
   const isAdmin = user && user.email === "admin@totokit.com";
+  const CURRENT_DRAW_ID = OFFICIAL_PREDICTIONS_DRAW_ID; // Using the constant
 
   useEffect(() => {
     if (isAdmin) {
-      setHasUsedSmartPickThisDraw(false);
+      setHasUsedSmartPickThisDraw(false); // Admin can always generate
       if (onUsageStatusChange) {
         console.log("[PredictionConfigurator] Admin detected. Notifying parent: onUsageStatusChange(true) for admin.");
-        onUsageStatusChange(true);
+        onUsageStatusChange(true); // Admin always sees results area
       }
       return;
     }
 
-    const usageKey = `smartPickUsed_${OFFICIAL_PREDICTIONS_DRAW_ID}_${user?.uid || 'guest'}`;
-    const alreadyUsed = localStorage.getItem(usageKey) === 'true';
-    console.log(`[PredictionConfigurator] useEffect: User (UID: ${user?.uid || 'guest'}) usageKey: ${usageKey}, alreadyUsed: ${alreadyUsed}`);
+    // For non-admins: check if valid results are already in localStorage
+    const resultsKey = `smartPickResults_${CURRENT_DRAW_ID}_${user?.uid || 'guest'}`;
+    const usageMarkerKey = `smartPickUsed_${CURRENT_DRAW_ID}_${user?.uid || 'guest'}`;
+    let validSavedPicksExist = false;
+    const savedPicksString = localStorage.getItem(resultsKey);
 
-    if (alreadyUsed) {
-      setHasUsedSmartPickThisDraw(true);
-      if (onUsageStatusChange) {
-        console.log("[PredictionConfigurator] Notifying parent: onUsageStatusChange(true) due to localStorage usage check.");
-        onUsageStatusChange(true);
+    if (savedPicksString) {
+      try {
+        const savedPicks = JSON.parse(savedPicksString) as TotoCombination[];
+        if (Array.isArray(savedPicks) && savedPicks.length > 0) {
+          validSavedPicksExist = true;
+        }
+      } catch (e) {
+        console.warn("Error parsing saved picks from localStorage on init:", e);
       }
+    }
+
+    if (validSavedPicksExist) {
+      setHasUsedSmartPickThisDraw(true); // Valid results exist, so "used"
+      console.log(`[PredictionConfigurator] Non-admin: Valid saved picks found for draw ${CURRENT_DRAW_ID}. Setting hasUsedSmartPickThisDraw=true.`);
     } else {
-      setHasUsedSmartPickThisDraw(false);
+      setHasUsedSmartPickThisDraw(false); // No valid results, allow generation
+      console.log(`[PredictionConfigurator] Non-admin: No valid saved picks for draw ${CURRENT_DRAW_ID}. Setting hasUsedSmartPickThisDraw=false.`);
+    }
+
+    if (onUsageStatusChange) {
+      const usageMarkerSet = localStorage.getItem(usageMarkerKey) === 'true';
+      // Show results area if admin, or if non-admin has ever used/attempted OR valid picks exist
+      const shouldShowResultsArea = isAdmin || usageMarkerSet || validSavedPicksExist;
+      console.log(`[PredictionConfigurator] Notifying parent: onUsageStatusChange(${shouldShowResultsArea}). isAdmin: ${isAdmin}, usageMarkerSet: ${usageMarkerSet}, validSavedPicksExist: ${validSavedPicksExist}`);
+      onUsageStatusChange(shouldShowResultsArea);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, isAdmin, OFFICIAL_PREDICTIONS_DRAW_ID]);
-
+  }, [user, isAdmin, CURRENT_DRAW_ID]); // onUsageStatusChange removed from deps to avoid potential loops if parent re-renders
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
+    if (isLoading) return;
 
-    if (!isAdmin && hasUsedSmartPickThisDraw) {
-      toast({
-        title: "已使用",
-        description: "您已使用本期免费智能选号。",
-        variant: "default",
-      });
-      return;
+    if (!isAdmin) {
+      const resultsKey = `smartPickResults_${CURRENT_DRAW_ID}_${user?.uid || 'guest'}`;
+      const savedPicksString = localStorage.getItem(resultsKey);
+      if (savedPicksString) {
+        try {
+          const savedPicks = JSON.parse(savedPicksString) as TotoCombination[];
+          if (Array.isArray(savedPicks) && savedPicks.length > 0) {
+            toast({
+              title: "结果已加载",
+              description: "您之前为本期生成的智能选号结果已从本地加载。",
+            });
+            onPredictionsGenerated(savedPicks); // Update parent state with loaded picks
+            if (onUsageStatusChange) onUsageStatusChange(true); // Ensure results area is shown
+            setHasUsedSmartPickThisDraw(true); // Disable button for further generation this session
+            return;
+          }
+        } catch (e) {
+          console.warn("Error parsing saved picks from localStorage on submit:", e);
+        }
+      }
+      // If no valid saved picks for non-admin, proceed to generate.
     }
-    if (isAdmin && !user) { // Should not happen if isAdmin is true, but as a safeguard
-        toast({ title: "错误", description: "管理员账户未正确识别，请重新登录。", variant: "destructive" });
-        return;
-    }
-
 
     setIsLoading(true);
     onLoadingChange(true);
@@ -119,21 +149,19 @@ export function PredictionConfigurator({
       }
       onPredictionsGenerated(result.combinations as TotoCombination[]);
 
-      // Save to localStorage
       try {
-        const resultsKey = `smartPickResults_${OFFICIAL_PREDICTIONS_DRAW_ID}_${user?.uid || 'guest'}`;
+        const resultsKey = `smartPickResults_${CURRENT_DRAW_ID}_${user?.uid || 'guest'}`;
         localStorage.setItem(resultsKey, JSON.stringify(result.combinations));
         console.log(`[PredictionConfigurator] Smart pick results saved to localStorage key: ${resultsKey}`);
+        
+        if (!isAdmin) {
+          const usageMarkerKey = `smartPickUsed_${CURRENT_DRAW_ID}_${user?.uid || 'guest'}`;
+          localStorage.setItem(usageMarkerKey, 'true'); // Mark that user has used it for this draw
+          setHasUsedSmartPickThisDraw(true); // Set to true as results are now saved
+        }
       } catch (e) {
         console.error("Error saving smart pick results to localStorage:", e);
         toast({ title: "保存本地失败", description: "无法将选号结果保存到本地存储。", variant: "destructive" });
-      }
-
-      if (!isAdmin) {
-        const usageKey = `smartPickUsed_${OFFICIAL_PREDICTIONS_DRAW_ID}_${user?.uid || 'guest'}`;
-        console.log(`[PredictionConfigurator] handleSubmit: Setting localStorage usage key ${usageKey} to true for non-admin.`);
-        localStorage.setItem(usageKey, 'true');
-        setHasUsedSmartPickThisDraw(true);
       }
     }
   };
@@ -146,7 +174,7 @@ export function PredictionConfigurator({
             <Button
               type="submit"
               className="flex-1"
-              disabled={isLoading || (!isAdmin && hasUsedSmartPickThisDraw) || (isAdmin && !user) }
+              disabled={isLoading || (!isAdmin && hasUsedSmartPickThisDraw)}
             >
               {isLoading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
