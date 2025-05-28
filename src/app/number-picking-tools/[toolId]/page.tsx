@@ -1,5 +1,4 @@
-
-"use client"; // Required for admin save button, useAuth, useState, useEffect
+"use client"; // Required for useAuth, useState, useEffect, use, toast
 
 import Link from "next/link";
 import { useEffect, useState, useCallback, use } from "react";
@@ -10,11 +9,9 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-  CardFooter,
 } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, TrendingUp, TrendingDown, Info, Target, Loader2, Save, AlertCircle, DatabaseZap } from "lucide-react";
+import { ArrowLeft, Target, Loader2, Save, AlertCircle, DatabaseZap } from "lucide-react";
 import type { HistoricalResult } from "@/lib/types";
 import { MOCK_HISTORICAL_DATA, OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types";
 import { NumberPickingToolDisplay } from "@/components/toto/NumberPickingToolDisplay";
@@ -35,8 +32,6 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Separator } from "@/components/ui/separator";
-
 
 export default function SingleNumberToolPage({
   params,
@@ -82,9 +77,6 @@ export default function SingleNumberToolPage({
     }
   }, [tool, fetchAndSetSavedPrediction]);
 
-  // Removed automatic saving of historical predictions on load.
-  // This will now be triggered by an admin button.
-
   const handleSaveCurrentDrawPrediction = async () => {
     if (!tool || !isAdmin || !user?.uid) {
       toast({ title: "错误", description: "只有管理员才能保存预测。", variant: "destructive" });
@@ -100,7 +92,7 @@ export default function SingleNumberToolPage({
         toolId: tool.id,
         toolName: tool.name,
         targetDrawNumber: OFFICIAL_PREDICTIONS_DRAW_ID,
-        targetDrawDate: "PENDING_DRAW", // Or derive this if needed
+        targetDrawDate: "PENDING_DRAW",
         predictedNumbers: dynamicallyGeneratedCurrentPrediction,
         userId: user.uid,
       };
@@ -108,7 +100,7 @@ export default function SingleNumberToolPage({
 
       if (result.success) {
         toast({ title: "成功", description: result.message || `预测已为第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期保存/更新。` });
-        fetchAndSetSavedPrediction(); // Re-fetch to display the newly saved prediction
+        fetchAndSetSavedPrediction(); 
       } else {
         toast({ title: "保存失败", description: result.message || "无法保存预测。", variant: "destructive" });
       }
@@ -127,31 +119,30 @@ export default function SingleNumberToolPage({
     setIsSavingHistorical(true);
     try {
       const allHistoricalData: HistoricalResult[] = MOCK_HISTORICAL_DATA;
-      const recentTenHistoricalDrawsForAnalysis: HistoricalResult[] = allHistoricalData.slice(0, 10);
       const predictionsToSave: ToolPredictionInput[] = [];
 
-      recentTenHistoricalDrawsForAnalysis.forEach((targetDraw) => {
-        const originalIndex = allHistoricalData.findIndex(d => d.drawNumber === targetDraw.drawNumber);
-        if (originalIndex === -1) return;
+      allHistoricalData.forEach((targetDraw, originalIndex) => {
+        // Check if there are 10 preceding draws
+        // The 10 preceding draws are from index `originalIndex + 1` to `originalIndex + 10`
+        // So, we need `originalIndex + 10` to be a valid index within `allHistoricalData`
+        if (originalIndex + 10 < allHistoricalData.length) {
+          const precedingTenDraws = allHistoricalData.slice(originalIndex + 1, originalIndex + 1 + 10);
+          
+          let predictedNumbersForTargetDraw: number[] = [];
+          if (tool.algorithmFn) {
+              predictedNumbersForTargetDraw = tool.algorithmFn(precedingTenDraws);
+          }
 
-        const precedingDrawsStartIndex = originalIndex + 1;
-        const precedingDrawsEndIndex = precedingDrawsStartIndex + 10;
-        const precedingTenDraws = allHistoricalData.slice(precedingDrawsStartIndex, precedingDrawsEndIndex);
-
-        let predictedNumbersForTargetDraw: number[] = [];
-        if (tool.algorithmFn) {
-            predictedNumbersForTargetDraw = tool.algorithmFn(precedingTenDraws);
-        }
-
-        if (predictedNumbersForTargetDraw.length > 0) {
-          predictionsToSave.push({
-            toolId: tool.id,
-            toolName: tool.name,
-            targetDrawNumber: targetDraw.drawNumber,
-            targetDrawDate: targetDraw.date,
-            predictedNumbers: predictedNumbersForTargetDraw,
-            userId: user.uid,
-          });
+          if (predictedNumbersForTargetDraw.length > 0) {
+            predictionsToSave.push({
+              toolId: tool.id,
+              toolName: tool.name,
+              targetDrawNumber: targetDraw.drawNumber,
+              targetDrawDate: targetDraw.date,
+              predictedNumbers: predictedNumbersForTargetDraw,
+              userId: user.uid,
+            });
+          }
         }
       });
 
@@ -163,7 +154,7 @@ export default function SingleNumberToolPage({
           toast({ title: "保存失败", description: result.message || "无法批量保存历史回测预测。", variant: "destructive" });
         }
       } else {
-        toast({ title: "无数据", description: "没有可保存的历史回测预测数据。", variant: "default" });
+        toast({ title: "无数据", description: "没有符合条件的可保存的历史回测预测数据。", variant: "default" });
       }
     } catch (error: any) {
       toast({ title: "保存出错", description: error.message || "批量保存历史回测预测时发生错误。", variant: "destructive" });
@@ -190,16 +181,21 @@ export default function SingleNumberToolPage({
     );
   }
 
-  const allHistoricalData: HistoricalResult[] = MOCK_HISTORICAL_DATA;
-  const recentTenHistoricalDrawsForAnalysis: HistoricalResult[] = allHistoricalData.slice(0, 10);
+  // For displaying historical performance, we still use the latest 10 draws in the UI
+  const allHistoricalDataForDisplay: HistoricalResult[] = MOCK_HISTORICAL_DATA;
+  const recentTenHistoricalDrawsForDisplay: HistoricalResult[] = allHistoricalDataForDisplay.slice(0, 10);
 
-  const historicalPerformancesToDisplay = recentTenHistoricalDrawsForAnalysis.map((targetDraw) => {
-    const originalIndex = allHistoricalData.findIndex(d => d.drawNumber === targetDraw.drawNumber);
+  const historicalPerformancesToDisplay = recentTenHistoricalDrawsForDisplay.map((targetDraw) => {
+    const originalIndex = allHistoricalDataForDisplay.findIndex(d => d.drawNumber === targetDraw.drawNumber);
     if (originalIndex === -1) return null;
 
     const precedingDrawsStartIndex = originalIndex + 1;
     const precedingDrawsEndIndex = precedingDrawsStartIndex + 10;
-    const precedingTenDraws = allHistoricalData.slice(precedingDrawsStartIndex, precedingDrawsEndIndex);
+    
+    // Ensure we have 10 preceding draws for dynamic prediction
+    if (precedingDrawsEndIndex > allHistoricalDataForDisplay.length) return null; 
+    
+    const precedingTenDraws = allHistoricalDataForDisplay.slice(precedingDrawsStartIndex, precedingDrawsEndIndex);
 
     let predictedNumbersForTargetDraw: number[] = [];
     if (tool.algorithmFn) {
@@ -208,7 +204,7 @@ export default function SingleNumberToolPage({
 
     const hitDetails = calculateHitDetails(predictedNumbersForTargetDraw, targetDraw);
     const hitRate = targetDraw.numbers.length > 0 && predictedNumbersForTargetDraw.length > 0
-        ? (hitDetails.mainHitCount / Math.min(targetDraw.numbers.length, predictedNumbersForTargetDraw.length)) * 100
+        ? (hitDetails.mainHitCount / Math.min(predictedNumbersForTargetDraw.length, TOTO_NUMBER_RANGE.max)) * 100 // Max is 6 for main numbers of a standard ticket
         : 0;
     const hasAnyHit = hitDetails.mainHitCount > 0 || hitDetails.matchedAdditionalNumberDetails.matched;
 
@@ -225,7 +221,7 @@ export default function SingleNumberToolPage({
     hitDetails: ReturnType<typeof calculateHitDetails>;
     hitRate: number;
     hasAnyHit: boolean;
-  }>; // Added explicit type assertion
+  }>; 
 
 
   const OfficialDrawDisplay = ({ draw }: { draw: HistoricalResult }) => (
@@ -262,12 +258,10 @@ export default function SingleNumberToolPage({
   } else if (savedPredictionForTargetDraw && savedPredictionForTargetDraw.length > 0) {
     displayNumbersForCurrentDrawSection = savedPredictionForTargetDraw;
     currentDrawSectionTitle = `第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期预测号码 (来自数据库):`;
-    if (isAdmin) { // Admin can update existing saved prediction
+    if (isAdmin) { 
       showAdminSaveCurrentDrawButton = true;
     }
   } else {
-    // If no saved prediction, admins see dynamically generated ones and can save them.
-    // Non-admins see a "not available" message.
     if (isAdmin) {
       displayNumbersForCurrentDrawSection = dynamicallyGeneratedCurrentPrediction;
       currentDrawSectionTitle = `当前动态生成号码 (可保存为第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期预测):`;
@@ -349,10 +343,10 @@ export default function SingleNumberToolPage({
                 ) : (
                   <Save className="mr-2 h-4 w-4" />
                 )}
-                保存近10期历史回测预测到数据库
+                保存全部历史回测预测到数据库
               </Button>
               <p className="text-xs text-muted-foreground mt-2">
-                此操作会将本工具对最近10期历史开奖的动态预测结果保存到数据库。
+                此操作会将本工具对所有符合条件的历史开奖的动态预测结果保存到数据库（每期预测基于其前10期数据）。
               </p>
             </div>
           )}
@@ -466,3 +460,4 @@ export function generateStaticParams() {
     toolId: tool.id,
   }));
 }
+
