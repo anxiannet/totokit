@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Info, Award, CheckCircle, XCircle, ArrowRight } from "lucide-react"; // Added ArrowRight
+import { Info, Award, CheckCircle, XCircle } from "lucide-react";
 import type { HitDetails, TotoCombination } from "@/lib/types";
 import { NumberPickingToolDisplay } from "./NumberPickingToolDisplay";
 import { MOCK_LATEST_RESULT } from '@/lib/types';
@@ -129,19 +129,21 @@ export function LastDrawTopTools({ tools, latestDrawNumber }: LastDrawTopToolsPr
       <CardContent className="pt-2 pb-4 px-0">
         <div
           ref={scrollContainerRef}
-          className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar h-[230px]" // Added fixed height
+          className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar h-[200px]" // Adjusted height
         >
           {tools.map((tool, index) => (
             <div
               key={tool.id}
               ref={el => itemRefs.current[index] = el}
-              className="min-w-full snap-start flex-shrink-0 px-4 py-2 h-full" // Added h-full
+              className="min-w-full snap-start flex-shrink-0 px-4 py-2 h-full" 
             >
               <Link href={`/number-picking-tools/${tool.id}`} className="block h-full focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded-lg">
                 <div className="p-4 border rounded-lg bg-card shadow-sm h-full flex flex-col justify-between hover:bg-muted/50 transition-colors cursor-pointer">
                   <div>
                     <div className="flex flex-row justify-between items-center mb-2 gap-2">
-                      <h3 className="text-md font-semibold text-primary truncate">{tool.name}</h3>
+                      <h3 className="text-md font-semibold text-primary truncate">
+                        {tool.name} ({tool.predictionForLastDraw.length}个)
+                      </h3>
                       <Badge variant={tool.hitRateForLastDraw > 0 ? "default" : "secondary"} className="bg-green-600 hover:bg-green-700 text-white whitespace-nowrap flex-shrink-0">
                         {tool.hitRateForLastDraw > 0 ? <CheckCircle className="mr-1.5 h-4 w-4" /> : <XCircle className="mr-1.5 h-4 w-4" />}
                         上期命中率: {tool.hitRateForLastDraw.toFixed(1)}%
@@ -158,9 +160,7 @@ export function LastDrawTopTools({ tools, latestDrawNumber }: LastDrawTopToolsPr
                       ))}
                     </div>
                   </div>
-                   <div className="mt-auto text-center text-xs text-primary/80 flex items-center justify-center pt-2">
-                      详细分析 <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-                    </div>
+                  {/* Removed "详细分析" link text from here */}
                 </div>
               </Link>
             </div>
