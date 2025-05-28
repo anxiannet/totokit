@@ -1,14 +1,14 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import type { HistoricalResult } from "@/lib/types";
-import { HistoricalResultSchema as AdminPageHistoricalResultSchema } from "@/lib/types"; // Renamed for clarity
+import { HistoricalResultSchema as AdminPageHistoricalResultSchema } from "@/lib/types"; 
 import { z } from "zod";
 import { ArrowLeft, CheckCircle, XCircle, Info, Loader2, ShieldAlert, RefreshCw, CloudUpload, FileText, Edit3, PackageOpen } from "lucide-react";
 import Link from "next/link";
@@ -18,9 +18,10 @@ import {
   syncHistoricalResultsToFirestore, 
   updateCurrentDrawDisplayInfo, 
   getCurrentDrawDisplayInfo,
-  adminRecalculateAndSaveAllToolPredictions // New action
+  adminRecalculateAndSaveAllToolPredictions 
 } from "@/lib/actions";
 import { Separator } from "@/components/ui/separator";
+import { OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types";
 
 
 const ClientSideHistoricalResultsArraySchema = z.array(AdminPageHistoricalResultSchema);
@@ -62,7 +63,7 @@ export default function AdminUpdateTotoResultsPage() {
   const [isUpdatingDrawInfo, setIsUpdatingDrawInfo] = useState(false);
   const [isLoadingDrawInfo, setIsLoadingDrawInfo] = useState(true);
 
-  const [isRecalculatingAllTools, setIsRecalculatingAllTools] = useState(false);
+  const [isProcessingPredictions, setIsProcessingPredictions] = useState(false);
 
   const adminEmail = "admin@totokit.com";
   const adminUID = "mAvLawNGpGdKwPoHuMQyXlKpPNv1";
@@ -197,14 +198,15 @@ export default function AdminUpdateTotoResultsPage() {
     const jsonDataToSync = JSON.stringify(sortedData, null, 2);
 
     try {
-      const syncResult = await syncHistoricalResultsToFirestore(jsonDataToSync, user.uid);
+      // Pass admin's UID to the server action
+      const syncResult = await syncHistoricalResultsToFirestore(jsonDataToSync, user.uid); 
       if (syncResult.success) {
         toast({
           title: "历史结果同步成功",
           description: syncResult.message || `成功同步 ${syncResult.count || 0} 条历史记录。`,
         });
         setValidationStatus("success");
-        setValidationMessage(syncResult.message || `成功同步 ${syncResult.count || 0} 条历史记录到 Firestore。\n现在您可以考虑点击下方的“全局工具预测更新”按钮。`);
+        setValidationMessage(syncResult.message || `成功同步 ${syncResult.count || 0} 条历史记录到 Firestore。\n现在您可以考虑点击下方的“处理当前预测并生成下一期”按钮。`);
         // setPlainTextData(""); // Optionally clear plain text data
       } else {
         toast({
@@ -220,10 +222,6 @@ export default function AdminUpdateTotoResultsPage() {
       let specificMessage = "历史结果同步出错: ";
       if (error instanceof Error) {
         specificMessage += error.message;
-        const firebaseError = error as any;
-        if (firebaseError.code === 'permission-denied' || firebaseError.code === 7) {
-          specificMessage += " (Firestore权限不足。请确认管理员声明已在客户端和服务端生效，且Firestore规则配置正确。)";
-        }
       } else {
         specificMessage += "未知错误";
       }
@@ -282,46 +280,46 @@ export default function AdminUpdateTotoResultsPage() {
     }
   };
 
-  const handleRecalculateAllTools = async () => {
+  const handleProcessAndPrepareNextPredictions = async () => {
     if (!user || user.uid !== adminUID) {
       toast({ title: "权限不足", description: "只有管理员才能执行此操作。", variant: "destructive" });
       return;
     }
-    setIsRecalculatingAllTools(true);
-    setValidationMessage("正在为所有工具重新计算和保存预测数据，这可能需要一些时间...");
+    setIsProcessingPredictions(true);
+    setValidationMessage("正在处理当前预测并生成下一期预测，这可能需要一些时间...");
     setValidationStatus("info");
 
     try {
       const result = await adminRecalculateAndSaveAllToolPredictions(user.uid);
       if (result.success) {
         toast({
-          title: "全局工具预测更新成功",
-          description: result.message || "所有工具的预测数据已更新并保存到数据库。",
+          title: "预测处理成功",
+          description: result.message || "所有工具的当期预测日期已更新，下一期预测已生成。",
           duration: 7000,
         });
         setValidationStatus("success");
         setValidationMessage(`${result.message}\n详情:\n${(result.details || []).join('\n')}`);
       } else {
         toast({
-          title: "全局工具预测更新失败",
-          description: result.message || "更新过程中发生错误。",
+          title: "预测处理失败",
+          description: result.message || "处理过程中发生错误。",
           variant: "destructive",
           duration: 10000,
         });
         setValidationStatus("error");
-        setValidationMessage(`更新失败: ${result.message}\n详情:\n${(result.details || []).join('\n')}`);
+        setValidationMessage(`处理失败: ${result.message}\n详情:\n${(result.details || []).join('\n')}`);
       }
     } catch (error: any) {
       toast({
-        title: "全局更新出错",
-        description: error.message || "执行全局工具预测更新时发生未知错误。",
+        title: "预测处理出错",
+        description: error.message || "执行预测处理时发生未知错误。",
         variant: "destructive",
         duration: 10000,
       });
       setValidationStatus("error");
-      setValidationMessage(`全局更新出错: ${error.message || "未知错误"}`);
+      setValidationMessage(`预测处理出错: ${error.message || "未知错误"}`);
     } finally {
-      setIsRecalculatingAllTools(false);
+      setIsProcessingPredictions(false);
     }
   };
 
@@ -457,25 +455,28 @@ export default function AdminUpdateTotoResultsPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <PackageOpen className="h-5 w-5 text-primary" />
-            全局工具预测管理
+            工具预测处理
           </CardTitle>
           <CardDescription>
-            在同步最新的历史开奖结果后，点击下方按钮可为所有选号工具重新计算并保存其对所有历史期号的回测预测，以及对当前指定期号 ({OFFICIAL_PREDICTIONS_DRAW_ID}) 的新预测。此操作会覆盖数据库中现有的工具预测数据，可能需要一些时间。
+            在同步最新的历史开奖结果后，点击下方按钮可为所有选号工具：
+            1. 将当前待开奖期号 ({OFFICIAL_PREDICTIONS_DRAW_ID}) 的预测记录的日期更新为最新的实际开奖日期。
+            2. 为下一个期号 (例如 {Number(OFFICIAL_PREDICTIONS_DRAW_ID) + 1}) 生成并保存新的 "PENDING_DRAW" 预测。
+            此操作会更新数据库中 `toolPredictions` 集合的数据，可能需要一些时间。它不会重新计算已保存的其他历史期号的回测。
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Button
-            onClick={handleRecalculateAllTools}
+            onClick={handleProcessAndPrepareNextPredictions}
             className="w-full"
-            disabled={isRecalculatingAllTools || !isAdminByEmail}
+            disabled={isProcessingPredictions || !isAdminByEmail}
             variant="destructive"
           >
-            {isRecalculatingAllTools ? (
+            {isProcessingPredictions ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <RefreshCw className="mr-2 h-4 w-4" />
             )}
-            全局工具预测更新 (当期及历史回测)
+            处理当前预测并生成下一期
           </Button>
         </CardContent>
       </Card>
