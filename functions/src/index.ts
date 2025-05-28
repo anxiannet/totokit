@@ -111,12 +111,12 @@ export const syncTotoResultsCallable = functions.https.onCall(
         "syncTotoResultsCallable: Successfully validated " +
         `${resultsToSync.length} results for sync.`
       );
-    } catch (error: any) {
+    } catch (error: any) { // Explicitly typed as any for now
       console.error(
         "syncTotoResultsCallable: Error parsing or validating JSON data.",
         error
       );
-      const errorMessage = error.message || "Unknown parsing/validation error";
+      const errorMessage = (error instanceof Error) ? error.message : "Unknown parsing/validation error";
       throw new functions.https.HttpsError(
         "invalid-argument",
         `Invalid JSON data provided: ${errorMessage}`
@@ -160,12 +160,12 @@ export const syncTotoResultsCallable = functions.https.onCall(
           `成功通过云函数同步/更新 ${syncedCount} 条开奖结果到 Firestore。`,
         count: syncedCount,
       };
-    } catch (error: any) {
+    } catch (error: any) { // Explicitly typed as any for now
       console.error(
         "syncTotoResultsCallable: Error committing batch to Firestore.",
         error
       );
-      const firestoreErrorMessage = error.message || "Unknown Firestore error";
+      const firestoreErrorMessage = (error instanceof Error) ? error.message : "Unknown Firestore error";
       throw new functions.https.HttpsError(
         "internal",
         `Failed to sync data to Firestore: ${firestoreErrorMessage}`
