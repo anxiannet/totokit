@@ -2,7 +2,7 @@
 "use client"; // Required for admin save button, useAuth, useState, useEffect
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -15,7 +15,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, TrendingUp, TrendingDown, Info, Target, Loader2, Save, AlertCircle } from "lucide-react";
 import type { HistoricalResult } from "@/lib/types";
-import { MOCK_HISTORICAL_DATA, OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types"; // Import OFFICIAL_PREDICTIONS_DRAW_ID
+import { MOCK_HISTORICAL_DATA, OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types";
 import { NumberPickingToolDisplay } from "@/components/toto/NumberPickingToolDisplay";
 import { FavoriteStarButton } from "@/components/toto/FavoriteStarButton";
 import {
@@ -28,8 +28,9 @@ import { dynamicTools, type NumberPickingTool } from "@/lib/numberPickingAlgos";
 import {
   saveToolPrediction,
   getPredictionForToolAndDraw,
+  type ToolPredictionInput,
+  saveMultipleToolPredictions, // Import the new batch save action
 } from "@/lib/actions";
-import type { ToolPredictionInput } from "@/lib/actions";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -39,15 +40,17 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 function AdminSavePredictionButton({
   toolId,
   toolName,
-  predictedNumbers, // These are the dynamically generated numbers
+  predictedNumbers,
   adminUserId,
   onSaveSuccess,
+  currentDrawNumber,
 }: {
   toolId: string;
   toolName: string;
   predictedNumbers: number[];
   adminUserId: string | null;
   onSaveSuccess: () => void;
+  currentDrawNumber: string | number;
 }) {
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
@@ -66,14 +69,14 @@ function AdminSavePredictionButton({
       const predictionData: ToolPredictionInput = {
         toolId: toolId,
         toolName: toolName,
-        targetDrawNumber: OFFICIAL_PREDICTIONS_DRAW_ID, // Save for the official target draw
-        targetDrawDate: "PENDING_DRAW", // Or another suitable placeholder
+        targetDrawNumber: currentDrawNumber,
+        targetDrawDate: "PENDING_DRAW", // Or another suitable placeholder for current predictions
         predictedNumbers: predictedNumbers,
       };
       const result = await saveToolPrediction(predictionData);
 
       if (result.success) {
-        toast({ title: "成功", description: result.message || `预测已为第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期保存/更新。` });
+        toast({ title: "成功", description: result.message || `预测已为第 ${currentDrawNumber} 期保存/更新。` });
         onSaveSuccess(); // Notify parent to refetch saved prediction
       } else {
         toast({ title: "保存失败", description: result.message || "无法保存预测。", variant: "destructive" });
@@ -92,7 +95,7 @@ function AdminSavePredictionButton({
       ) : (
         <Save className="mr-2 h-4 w-4" />
       )}
-      为第 {OFFICIAL_PREDICTIONS_DRAW_ID} 期保存/更新预测
+      为第 {currentDrawNumber} 期保存/更新预测
     </Button>
   );
 }
@@ -106,18 +109,15 @@ export default function SingleNumberToolPage({
   const { toolId } = params;
   const tool = dynamicTools.find((t) => t.id === toolId);
   const { user } = useAuth();
-  const { toast } = useToast(); // Added useToast
+  const { toast } = useToast();
 
-  // State for dynamically generated numbers (used by admin as basis for saving)
-  const [dynamicallyGeneratedCurrentPrediction, setDynamicallyGeneratedCurrentPrediction] = useState<number[]>([]);
-  // State for the prediction loaded from Firestore for OFFICIAL_PREDICTIONS_DRAW_ID
   const [savedPredictionForTargetDraw, setSavedPredictionForTargetDraw] = useState<number[] | null>(null);
   const [isLoadingSavedPrediction, setIsLoadingSavedPrediction] = useState(true);
-
+  const [dynamicallyGeneratedCurrentPrediction, setDynamicallyGeneratedCurrentPrediction] = useState<number[]>([]);
 
   const isAdmin = user && user.email === "admin@totokit.com";
 
-  const fetchAndSetSavedPrediction = async () => {
+  const fetchAndSetSavedPrediction = useCallback(async () => {
     if (!tool) return;
     setIsLoadingSavedPrediction(true);
     try {
@@ -125,25 +125,70 @@ export default function SingleNumberToolPage({
       setSavedPredictionForTargetDraw(saved);
     } catch (error) {
       console.error(`Error fetching saved prediction for tool ${tool.id}, draw ${OFFICIAL_PREDICTIONS_DRAW_ID}:`, error);
-      setSavedPredictionForTargetDraw(null); // Ensure it's null on error
+      setSavedPredictionForTargetDraw(null);
     } finally {
       setIsLoadingSavedPrediction(false);
     }
-  };
+  }, [tool]);
 
   useEffect(() => {
     if (tool) {
-      // Calculate dynamic prediction (admin might use this as basis for saving)
       const allHistoricalDataForDynamic: HistoricalResult[] = MOCK_HISTORICAL_DATA;
       const absoluteLatestTenDrawsForDynamic: HistoricalResult[] = allHistoricalDataForDynamic.slice(0, 10);
       const dynamicPred = tool.algorithmFn(absoluteLatestTenDrawsForDynamic);
       setDynamicallyGeneratedCurrentPrediction(dynamicPred);
-
-      // Fetch any existing prediction saved for the OFFICIAL_PREDICTIONS_DRAW_ID
       fetchAndSetSavedPrediction();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tool]); // Re-run if tool changes
+  }, [tool, fetchAndSetSavedPrediction]);
+
+  useEffect(() => {
+    // This effect handles saving historical predictions (back-testing)
+    // It runs only once when the tool is loaded, or if the tool itself changes.
+    if (tool && MOCK_HISTORICAL_DATA.length > 0) {
+      const allHistoricalData: HistoricalResult[] = MOCK_HISTORICAL_DATA;
+      const recentTenHistoricalDrawsForAnalysis: HistoricalResult[] = allHistoricalData.slice(0, 10);
+      const predictionsToSave: ToolPredictionInput[] = [];
+
+      recentTenHistoricalDrawsForAnalysis.forEach((targetDraw) => {
+        const originalIndex = allHistoricalData.findIndex(d => d.drawNumber === targetDraw.drawNumber);
+        if (originalIndex === -1) return;
+
+        const precedingDrawsStartIndex = originalIndex + 1;
+        const precedingDrawsEndIndex = precedingDrawsStartIndex + 10;
+        const precedingTenDraws = allHistoricalData.slice(precedingDrawsStartIndex, precedingDrawsEndIndex);
+
+        let predictedNumbersForTargetDraw: number[] = [];
+        if (tool.algorithmFn) {
+            predictedNumbersForTargetDraw = tool.algorithmFn(precedingTenDraws);
+        }
+
+        if (predictedNumbersForTargetDraw.length > 0) {
+          predictionsToSave.push({
+            toolId: tool.id,
+            toolName: tool.name,
+            targetDrawNumber: targetDraw.drawNumber,
+            targetDrawDate: targetDraw.date,
+            predictedNumbers: predictedNumbersForTargetDraw,
+          });
+        }
+      });
+
+      if (predictionsToSave.length > 0) {
+        saveMultipleToolPredictions(predictionsToSave)
+          .then(result => {
+            if (result.success) {
+              // console.log(`Successfully batch saved/updated ${result.savedCount} historical predictions for tool ${tool.id}`);
+            } else {
+              // console.error(`Failed to batch save historical predictions for tool ${tool.id}: ${result.message}`);
+            }
+          })
+          .catch(error => {
+            // console.error(`Error in batch saving historical predictions for tool ${tool.id}:`, error);
+          });
+      }
+    }
+  }, [tool]); // Only re-run if tool changes
+
 
   if (!tool) {
     return (
@@ -162,61 +207,27 @@ export default function SingleNumberToolPage({
     );
   }
 
-  // Historical performance section
   const allHistoricalData: HistoricalResult[] = MOCK_HISTORICAL_DATA;
   const recentTenHistoricalDrawsForAnalysis: HistoricalResult[] = allHistoricalData.slice(0, 10);
 
-  const historicalPerformances = recentTenHistoricalDrawsForAnalysis.map((targetDraw) => {
-    const originalIndex = allHistoricalData.findIndex(
-      (d) => d.drawNumber === targetDraw.drawNumber
-    );
+  const historicalPerformancesToDisplay = recentTenHistoricalDrawsForAnalysis.map((targetDraw) => {
+    const originalIndex = allHistoricalData.findIndex(d => d.drawNumber === targetDraw.drawNumber);
     if (originalIndex === -1) return null;
 
     const precedingDrawsStartIndex = originalIndex + 1;
     const precedingDrawsEndIndex = precedingDrawsStartIndex + 10;
-    const precedingTenDraws = allHistoricalData.slice(
-      precedingDrawsStartIndex,
-      precedingDrawsEndIndex
-    );
+    const precedingTenDraws = allHistoricalData.slice(precedingDrawsStartIndex, precedingDrawsEndIndex);
 
     let predictedNumbersForTargetDraw: number[] = [];
     if (tool.algorithmFn) {
         predictedNumbersForTargetDraw = tool.algorithmFn(precedingTenDraws);
-    } else {
-        console.warn(`Algorithm function for tool ${tool.id} is undefined.`);
     }
 
-    // Save historical prediction (this already happens)
-    if (predictedNumbersForTargetDraw.length > 0) {
-      const predictionData: ToolPredictionInput = {
-        toolId: tool.id,
-        toolName: tool.name,
-        targetDrawNumber: targetDraw.drawNumber,
-        targetDrawDate: targetDraw.date, // This is for historical back-testing
-        predictedNumbers: predictedNumbersForTargetDraw,
-      };
-      saveToolPrediction(predictionData).catch(error => {
-        // console.error(`Error saving prediction for tool ${tool.id}, draw ${targetDraw.drawNumber}:`, error);
-      });
-    }
-
-    const hitDetails = calculateHitDetails(
-      predictedNumbersForTargetDraw,
-      targetDraw
-    );
-    const hitRate =
-      targetDraw.numbers.length > 0 &&
-      predictedNumbersForTargetDraw.length > 0
-        ? (hitDetails.mainHitCount /
-            Math.min(
-              targetDraw.numbers.length,
-              predictedNumbersForTargetDraw.length
-            )) *
-          100
+    const hitDetails = calculateHitDetails(predictedNumbersForTargetDraw, targetDraw);
+    const hitRate = targetDraw.numbers.length > 0 && predictedNumbersForTargetDraw.length > 0
+        ? (hitDetails.mainHitCount / Math.min(targetDraw.numbers.length, predictedNumbersForTargetDraw.length)) * 100
         : 0;
-    const hasAnyHit =
-      hitDetails.mainHitCount > 0 ||
-      hitDetails.matchedAdditionalNumberDetails.matched;
+    const hasAnyHit = hitDetails.mainHitCount > 0 || hitDetails.matchedAdditionalNumberDetails.matched;
 
     return {
       targetDraw,
@@ -226,6 +237,7 @@ export default function SingleNumberToolPage({
       hasAnyHit,
     };
   }).filter(Boolean);
+
 
   const OfficialDrawDisplay = ({ draw }: { draw: HistoricalResult }) => (
     <div className="flex flex-wrap gap-1.5 items-center">
@@ -252,26 +264,19 @@ export default function SingleNumberToolPage({
     </div>
   );
 
-  // Determine what numbers to display in the main prediction section
   let displayNumbersForCurrentDrawSection: number[] = [];
   let currentDrawSectionTitle = `第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期预测号码:`;
   let showAdminSaveButton = false;
 
   if (isLoadingSavedPrediction) {
-    // Show loader (handled below)
+    // Loader shown below
   } else if (savedPredictionForTargetDraw && savedPredictionForTargetDraw.length > 0) {
-    // If a prediction for DRAW_ID is saved in Firestore, show that
     displayNumbersForCurrentDrawSection = savedPredictionForTargetDraw;
   } else {
-    // No saved prediction for DRAW_ID in Firestore
     if (isAdmin) {
-      // If admin and no saved prediction, show the dynamically generated one
       displayNumbersForCurrentDrawSection = dynamicallyGeneratedCurrentPrediction;
       currentDrawSectionTitle = `当前动态生成号码 (可保存为第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期预测):`;
-      showAdminSaveButton = true; // Admin can save these dynamic numbers
-    } else {
-      // Non-admin and no saved prediction, displayNumbers remains empty
-      // A message will be shown below
+      showAdminSaveButton = true;
     }
   }
 
@@ -298,7 +303,6 @@ export default function SingleNumberToolPage({
           <CardDescription>{tool.description}</CardDescription>
         </CardHeader>
         <CardContent>
-          {/* Prediction for Target Draw Section */}
           <div className="mb-6 pb-6 border-b">
             <h4 className="text-md font-semibold mb-2 flex items-center gap-1.5">
                 <Target className="h-5 w-5 text-primary" />
@@ -323,16 +327,20 @@ export default function SingleNumberToolPage({
                 toolName={tool.name}
                 predictedNumbers={dynamicallyGeneratedCurrentPrediction}
                 adminUserId={user?.uid || null}
-                onSaveSuccess={fetchAndSetSavedPrediction} // Refetch after save
+                onSaveSuccess={fetchAndSetSavedPrediction}
+                currentDrawNumber={OFFICIAL_PREDICTIONS_DRAW_ID}
               />
             )}
              {isAdmin && savedPredictionForTargetDraw && savedPredictionForTargetDraw.length > 0 && (
               <AdminSavePredictionButton
                 toolId={tool.id}
                 toolName={tool.name}
-                predictedNumbers={dynamicallyGeneratedCurrentPrediction} // Admin can still update with latest dynamic
+                // Admin can update with latest dynamic even if one is saved.
+                // Or, could choose to show the *saved* one here and a different button for "Re-generate & Update"
+                predictedNumbers={dynamicallyGeneratedCurrentPrediction}
                 adminUserId={user?.uid || null}
                 onSaveSuccess={fetchAndSetSavedPrediction}
+                currentDrawNumber={OFFICIAL_PREDICTIONS_DRAW_ID}
               />
             )}
             {!isAdmin && !isLoadingSavedPrediction && (!savedPredictionForTargetDraw || savedPredictionForTargetDraw.length === 0) && (
@@ -346,14 +354,13 @@ export default function SingleNumberToolPage({
             )}
           </div>
 
-          {/* Historical Performance Section */}
           <div className="pt-0">
             <h4 className="text-md font-semibold mb-3">
               历史开奖动态预测表现 (最近10期):
             </h4>
-            {historicalPerformances.length > 0 ? (
-              <ScrollArea className="h-[calc(100vh-550px)] rounded-md border p-3 space-y-4 bg-background/50">
-                {historicalPerformances.map((performance) => {
+            {historicalPerformancesToDisplay.length > 0 ? (
+              <ScrollArea className="h-[calc(100vh-600px)] rounded-md border p-3 space-y-4 bg-background/50">
+                {historicalPerformancesToDisplay.map((performance) => {
                   if (!performance) return null;
                   const { targetDraw, predictedNumbersForTargetDraw, hitDetails, hitRate, hasAnyHit } = performance;
                   return (
@@ -449,3 +456,5 @@ export default function SingleNumberToolPage({
     </div>
   );
 }
+
+    
