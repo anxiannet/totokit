@@ -3,8 +3,18 @@
 
 import type { GenerateNumberCombinationsInput, GenerateNumberCombinationsOutput } from "@/ai/flows/generate-number-combinations";
 import { generateNumberCombinations as genkitGenerateNumberCombinations } from "@/ai/flows/generate-number-combinations";
-import type { HistoricalResult, SmartPickResultInput, ToolPredictionInput, TotoCombination, WeightedCriterion, PredictionDetail, ToolPredictionsDocument, CurrentDrawInfo as CurrentDrawInfoType } from "./types"; // Added CurrentDrawInfoType
-import { OFFICIAL_PREDICTIONS_DRAW_ID, TOTO_NUMBER_RANGE } from "./types"; // Ensure OFFICIAL_PREDICTIONS_DRAW_ID is imported
+import type { 
+  HistoricalResult, 
+  SmartPickResultInput, 
+  ToolPredictionInput, 
+  TotoCombination, 
+  WeightedCriterion, 
+  PredictionDetail, 
+  ToolPredictionsDocument, 
+  CurrentDrawInfo as CurrentDrawInfoType,
+  HistoricalPerformanceDisplayData // Ensure this type is exported or defined if used by client
+} from "./types";
+import { TOTO_NUMBER_RANGE } from "./types";
 import { auth as firebaseClientAuthInstance, db } from "./firebase";
 import { dynamicTools } from "./numberPickingAlgos";
 import { calculateHitDetails as utilCalculateHitDetails, type HitDetails } from "./totoUtils";
@@ -35,13 +45,13 @@ export async function syncHistoricalResultsToFirestore(
     console.error("[SYNC_HISTORICAL_FIRESTORE] Firestore 'db' instance is not initialized.");
     return { success: false, message: "Firestore 'db' instance is not initialized." };
   }
-  if (!adminUserId || adminUserId !== "mAvLawNGpGdKwPoHuMQyXlKpPNv1") { // Hardcoded admin UID check
+  if (!adminUserId || adminUserId !== "mAvLawNGpGdKwPoHuMQyXlKpPNv1") { 
     console.error("[SYNC_HISTORICAL_FIRESTORE] Invalid or non-admin User ID for sync.");
     return { success: false, message: "需要有效的管理员权限 (UID不匹配)。" };
   }
 
   try {
-    const results: HistoricalResult[] = JSON.parse(jsonDataString);
+    const results: Omit<HistoricalResult, 'userId'>[] = JSON.parse(jsonDataString);
     if (!Array.isArray(results)) {
       return { success: false, message: "无效的JSON数据格式，应为一个数组。" };
     }
@@ -78,29 +88,35 @@ export async function syncHistoricalResultsToFirestore(
 }
 
 // --- Current Draw Display Info (Admin & Client) ---
+interface UpdateCurrentDrawInfoInput {
+  currentDrawDateTime: string;
+  currentJackpot: string;
+  officialPredictionsDrawId: string;
+}
+
 export async function updateCurrentDrawDisplayInfo(
-  currentDrawDateTime: string,
-  currentJackpot: string,
+  data: UpdateCurrentDrawInfoInput,
   adminUserId: string | null
 ): Promise<{ success: boolean; message?: string }> {
   if (!db) {
     return { success: false, message: "Firestore 'db' instance is not initialized." };
   }
-  if (!adminUserId || adminUserId !== "mAvLawNGpGdKwPoHuMQyXlKpPNv1") { // Hardcoded admin UID check
+  if (!adminUserId || adminUserId !== "mAvLawNGpGdKwPoHuMQyXlKpPNv1") { 
     return { success: false, message: "需要有效的管理员权限 (UID不匹配)才能更新。" };
   }
-  if (!currentDrawDateTime || !currentJackpot) {
-    return { success: false, message: "开奖日期/时间或头奖金额不能为空。" };
+  if (!data.currentDrawDateTime || !data.currentJackpot || !data.officialPredictionsDrawId) {
+    return { success: false, message: "开奖日期/时间、头奖金额或官方预测期号不能为空。" };
   }
   try {
     const docRef = doc(db, "appSettings", "currentDrawInfo");
     await setDoc(docRef, {
-      currentDrawDateTime: currentDrawDateTime,
-      currentJackpot: currentJackpot,
-      userId: adminUserId, // Changed from updatedBy to userId to match rule
+      currentDrawDateTime: data.currentDrawDateTime,
+      currentJackpot: data.currentJackpot,
+      officialPredictionsDrawId: data.officialPredictionsDrawId,
+      userId: adminUserId, 
       updatedAt: serverTimestamp(),
     }, { merge: true });
-    return { success: true, message: "本期开奖信息已更新。" };
+    return { success: true, message: "应用设置（开奖信息和预测期号）已更新。" };
   } catch (error: any) {
     const errorMessage = error instanceof Error ? error.message : "未知错误";
     console.error("[UPDATE_DRAW_INFO_ERROR]", errorMessage, error);
@@ -118,13 +134,24 @@ export async function getCurrentDrawDisplayInfo(): Promise<CurrentDrawInfoType |
       return {
         currentDrawDateTime: data.currentDrawDateTime || "",
         currentJackpot: data.currentJackpot || "",
+        officialPredictionsDrawId: data.officialPredictionsDrawId || "4082", // Default if not set
         userId: data.userId,
       };
     }
-    return null;
+    // If doc doesn't exist, return defaults
+    return {
+        currentDrawDateTime: "周四, 2025年5月29日, 傍晚6点30分",
+        currentJackpot: "$4,500,000",
+        officialPredictionsDrawId: "4082",
+    };
   } catch (error) {
     console.error("Error fetching current draw display info:", error);
-    return null;
+    // Fallback to defaults on error as well
+     return {
+        currentDrawDateTime: "周四, 2025年5月29日, 傍晚6点30分",
+        currentJackpot: "$4,500,000",
+        officialPredictionsDrawId: "4082",
+    };
   }
 }
 
@@ -154,7 +181,6 @@ export async function toggleFavoriteTool(
 
   try {
     let isCurrentlyFavorited = false;
-    // Firestore transaction to ensure atomic read-modify-write
     await db.runTransaction(async (transaction) => {
       const userFavDoc = await transaction.get(userFavDocRef);
       let currentFavorites: string[] = [];
@@ -163,18 +189,16 @@ export async function toggleFavoriteTool(
       }
 
       if (currentFavorites.includes(toolId)) {
-        // Remove from favorites
         transaction.update(userFavDocRef, {
           favoriteToolIds: currentFavorites.filter(id => id !== toolId),
           updatedAt: serverTimestamp()
         });
         isCurrentlyFavorited = false;
       } else {
-        // Add to favorites
         transaction.set(userFavDocRef, {
           favoriteToolIds: [...currentFavorites, toolId],
           updatedAt: serverTimestamp()
-        }, { merge: true }); // Use merge:true to create doc if it doesn't exist
+        }, { merge: true }); 
         isCurrentlyFavorited = true;
       }
     });
@@ -186,7 +210,7 @@ export async function toggleFavoriteTool(
   }
 }
 
-// --- Fetching All Historical Results (for client-side use in components) ---
+// --- Fetching All Historical Results ---
 export async function getAllHistoricalResultsFromFirestore(): Promise<HistoricalResult[]> {
   if (!db) {
     console.error("[GET_ALL_HISTORICAL_ERROR] Firestore 'db' instance is not initialized.");
@@ -199,7 +223,6 @@ export async function getAllHistoricalResultsFromFirestore(): Promise<Historical
     const results: HistoricalResult[] = [];
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data();
-      // Basic validation, consider more robust validation if data source is less trusted
       if (
         typeof data.drawNumber === 'number' &&
         typeof data.date === 'string' &&
@@ -211,6 +234,7 @@ export async function getAllHistoricalResultsFromFirestore(): Promise<Historical
           date: data.date,
           numbers: data.numbers,
           additionalNumber: data.additionalNumber,
+          userId: data.userId // Include userId if it exists
         } as HistoricalResult);
       } else {
         console.warn("[GET_ALL_HISTORICAL_WARN] Skipping document with invalid structure:", docSnap.id, data);
@@ -225,13 +249,11 @@ export async function getAllHistoricalResultsFromFirestore(): Promise<Historical
 
 
 // --- Tool Predictions Management (One document per tool) ---
-
-// Saves/Updates the prediction for a specific draw for a specific tool
 export async function saveCurrentDrawToolPrediction(
   toolId: string,
   toolName: string,
   targetDrawNumber: string | number,
-  targetDrawDate: string, // Can be "PENDING_DRAW" or an actual date
+  targetDrawDate: string, 
   predictedNumbers: number[],
   adminUserId: string | null
 ): Promise<{ success: boolean; message: string }> {
@@ -248,12 +270,11 @@ export async function saveCurrentDrawToolPrediction(
   try {
     const newPredictionDetail: PredictionDetail = {
       predictedNumbers: predictedNumbers,
-      targetDrawDate: targetDrawDate,
+      targetDrawDate: targetDrawDate, // Can be "PENDING_DRAW" or actual date
       savedAt: serverTimestamp(),
       userId: adminUserId,
     };
 
-    // Fetch current document to merge predictionsByDraw map correctly
     const docSnap = await getDoc(toolDocRef);
     let currentPredictionsByDraw: Record<string, PredictionDetail> = {};
     if (docSnap.exists() && docSnap.data()?.predictionsByDraw) {
@@ -283,12 +304,10 @@ export async function saveCurrentDrawToolPrediction(
   }
 }
 
-
-// Saves/Updates multiple historical predictions for a tool
 export async function saveHistoricalToolPredictions(
   toolId: string,
   toolName: string,
-  historicalPredictions: Array<Omit<ToolPredictionInput, 'toolId' | 'toolName' | 'userId'> & { userId?: string }>, // Input can omit toolId/Name, userId is optional
+  historicalPredictions: Array<Omit<ToolPredictionInput, 'toolId' | 'toolName' | 'userId' >>,
   adminUserId: string | null
 ): Promise<{ success: boolean; message: string; savedCount?: number }> {
   console.log(
@@ -327,7 +346,7 @@ export async function saveHistoricalToolPredictions(
         predictedNumbers: pred.predictedNumbers,
         targetDrawDate: pred.targetDrawDate || "HISTORICAL_DRAW_DATE_MISSING",
         savedAt: serverTimestamp(),
-        userId: pred.userId || adminUserId, 
+        userId: adminUserId, // Assign adminUserId to each historical prediction entry
       };
     });
 
@@ -346,7 +365,7 @@ export async function saveHistoricalToolPredictions(
         lastUpdatedAt: serverTimestamp(),
     };
     const numNewOrUpdated = Object.keys(newOrUpdatedPredictionDetails).length;
-    console.log(`[SAVE_HISTORICAL_TOOL_PREDICTIONS] Preparing to set document for tool ${toolId}. Admin: ${adminUserId}. New/updated predictions: ${numNewOrUpdated}. Total predictions in map: ${Object.keys(finalPredictionsByDraw).length}.`);
+    console.log(`[SAVE_HISTORICAL_TOOL_PREDICTIONS] Preparing to set document for tool ${toolId}. Admin: ${adminUserId}. New/updated predictions: ${numNewOrUpdated}. Total predictions in map: ${Object.keys(finalPredictionsByDraw).length}. Doc userId: ${docDataToSet.userId}`);
     
     await setDoc(toolDocRef, docDataToSet, { merge: true }); 
 
@@ -364,7 +383,6 @@ export async function saveHistoricalToolPredictions(
   }
 }
 
-// Fetches predictions for a specific tool and target draw number.
 export async function getPredictionForToolAndDraw(
   toolId: string,
   targetDrawNumber: string | number
@@ -383,7 +401,6 @@ export async function getPredictionForToolAndDraw(
         return data.predictionsByDraw[drawKey].predictedNumbers;
       }
     }
-    // console.log(`[GET_PRED_TOOL_DRAW] No prediction found for Tool: ${toolId}, Draw: ${drawKey}`);
     return null;
   } catch (error) {
     console.error(`Error fetching prediction for tool ${toolId}, draw ${drawKey}:`, error);
@@ -391,10 +408,9 @@ export async function getPredictionForToolAndDraw(
   }
 }
 
-// Fetches all predictions for a specific target draw number across all tools.
 export async function getPredictionsForDraw(
   targetDrawNumber: string | number
-): Promise<Record<string, number[]>> { // Returns a map: toolId -> predictedNumbers[]
+): Promise<Record<string, number[]>> { 
   if (!db) return {};
   const predictionsMap: Record<string, number[]> = {};
   const toolPredictionsColRef = collection(db, "toolPredictions");
@@ -404,13 +420,9 @@ export async function getPredictionsForDraw(
     const querySnapshot = await getDocs(toolPredictionsColRef);
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data() as ToolPredictionsDocument;
-      // Check if the tool document itself and its predictionsByDraw map exist
       if (data.toolId && data.predictionsByDraw && data.predictionsByDraw[drawKey]) {
-        // Check if predictedNumbers exist and is an array for that specific draw
         if (Array.isArray(data.predictionsByDraw[drawKey].predictedNumbers)) {
           predictionsMap[data.toolId] = data.predictionsByDraw[drawKey].predictedNumbers;
-        } else {
-          // console.warn(`[GET_PREDS_FOR_DRAW] Tool ${data.toolId} has entry for draw ${drawKey} but predictedNumbers is missing or not an array.`);
         }
       }
     });
@@ -421,7 +433,6 @@ export async function getPredictionsForDraw(
   }
 }
 
-// Fetches all saved historical predictions for a specific tool.
 export async function getSavedHistoricalPredictionsForTool(
   toolId: string
 ): Promise<Record<string, PredictionDetail> | null> {
@@ -435,28 +446,15 @@ export async function getSavedHistoricalPredictionsForTool(
     if (docSnap.exists()) {
       const data = docSnap.data() as ToolPredictionsDocument;
       console.log(`[GET_SAVED_HISTORICAL] Found saved predictions for tool ${toolId}:`, Object.keys(data.predictionsByDraw || {}).length, "entries.");
-      return data.predictionsByDraw || {}; // Return the map
+      return data.predictionsByDraw || {}; 
     }
     console.log(`[GET_SAVED_HISTORICAL] No saved predictions document found for tool ${toolId}.`);
-    return null; // No document found for the tool
+    return null;
   } catch (error: any) {
     console.error(`[GET_SAVED_HISTORICAL_ERROR] Error fetching saved historical predictions for tool ${toolId}:`, error);
     return null;
   }
 }
-
-
-// --- Tool Algorithm Calculations (Server Actions) ---
-export interface HistoricalPerformanceDisplayData {
-  targetDraw: HistoricalResult;
-  predictedNumbersForTargetDraw: number[];
-  hitDetails: HitDetails;
-  hitRate: number;
-  hasAnyHit: boolean;
-  predictionBasisDraws: string | null;
-  isSavedPrediction: boolean;
-}
-
 
 export async function calculateHistoricalPerformances(
   toolId: string,
@@ -471,27 +469,21 @@ export async function calculateHistoricalPerformances(
 
   const performances: HistoricalPerformanceDisplayData[] = [];
 
-  // Iterate backwards, but ensure we always have 10 prior results for prediction
-  // Process all draws for which 10 preceding draws exist
   for (let i = 0; i <= allHistoricalData.length - 11; i++) { 
-    const targetDraw = allHistoricalData[i]; // Newest draw first
+    const targetDraw = allHistoricalData[i]; 
     if (!targetDraw || !targetDraw.numbers || typeof targetDraw.additionalNumber === 'undefined') {
         console.warn(`[CALC_HIST_PERF_WARN] Skipping invalid targetDraw at index ${i}:`, targetDraw);
         continue;
     }
-
-    // Preceding ten draws are the next 10 in the array (older draws)
-    const precedingTenDraws = allHistoricalData.slice(i + 1, i + 1 + 11); // Slice is (start, end (exclusive))
-
+    const precedingTenDraws = allHistoricalData.slice(i + 1, i + 1 + 11); 
     if (precedingTenDraws.length < 10) {
-      // This condition should ideally not be met due to loop bounds, but good as a safeguard
       console.log(`[CALC_HIST_PERF] Not enough preceding data for targetDraw ${targetDraw.drawNumber}. Needed 10, got ${precedingTenDraws.length}. Skipping.`);
       continue;
     }
 
     let predictionBasisDraws: string | null = null;
-    const firstPreceding = precedingTenDraws[0]; // Most recent of the preceding 10
-    const lastPreceding = precedingTenDraws[precedingTenDraws.length - 1]; // Oldest of the preceding 10
+    const firstPreceding = precedingTenDraws[0]; 
+    const lastPreceding = precedingTenDraws[precedingTenDraws.length - 1]; 
 
     if (firstPreceding && lastPreceding) {
         predictionBasisDraws = `基于期号: ${firstPreceding.drawNumber}${precedingTenDraws.length > 1 ? ` - ${lastPreceding.drawNumber}`: ""} (共${precedingTenDraws.length}期)`;
@@ -544,7 +536,6 @@ export async function calculateSingleToolPrediction(
     return null;
   }
 }
-
 
 // --- Genkit AI Prediction (Main page "Smart Pick") ---
 export async function generateTotoPredictions(
@@ -624,79 +615,89 @@ export async function adminRecalculateAndSaveAllToolPredictions(
   adminUserId: string | null
 ): Promise<{ success: boolean; message: string; details?: string[] }> {
   console.log(`[ADMIN_PROCESS_AND_PREPARE_NEXT] Initiated by admin: ${adminUserId}`);
-  if (!adminUserId || adminUserId !== "mAvLawNGpGdKwPoHuMQyXlKpPNv1") { // Hardcoded admin UID check
+  if (!adminUserId || adminUserId !== "mAvLawNGpGdKwPoHuMQyXlKpPNv1") {
     return { success: false, message: "操作失败：需要有效的管理员权限。" };
   }
 
   const details: string[] = [];
 
   try {
+    const appSettings = await getCurrentDrawDisplayInfo();
+    if (!appSettings || !appSettings.officialPredictionsDrawId) {
+      details.push("无法获取当前官方预测期号设置，操作中止。");
+      return { success: false, message: "无法获取当前官方预测期号设置，操作中止。", details };
+    }
+    const currentProcessingDrawId = appSettings.officialPredictionsDrawId;
+    details.push(`当前处理的官方预测期号: ${currentProcessingDrawId}`);
+
     const allFetchedHistoricalData = await getAllHistoricalResultsFromFirestore();
     if (!allFetchedHistoricalData || allFetchedHistoricalData.length === 0) {
       details.push("无法获取历史开奖结果，操作中止。");
       return { success: false, message: "无法获取历史开奖结果，操作中止。", details };
     }
-    console.log(`[ADMIN_PROCESS_AND_PREPARE_NEXT] Fetched ${allFetchedHistoricalData.length} historical results.`);
-    
-    const latestActualDrawDate = allFetchedHistoricalData[0].date; // Assuming data is sorted desc by drawNumber
+    const latestActualDrawDate = allFetchedHistoricalData[0].date; 
+    details.push(`最新的实际历史开奖日期: ${latestActualDrawDate}`);
 
     for (const tool of dynamicTools) {
       let toolMessage = `${tool.name}: `;
       let toolSuccess = true;
 
       const toolDocRef = doc(db, "toolPredictions", tool.id);
-      let currentPredictionsByDraw: Record<string, PredictionDetail> = {};
       const docSnap = await getDoc(toolDocRef);
-      if (docSnap.exists() && docSnap.data()?.predictionsByDraw) {
-        currentPredictionsByDraw = docSnap.data()?.predictionsByDraw;
-      }
+      let currentToolDocData: ToolPredictionsDocument;
 
+      if (docSnap.exists()) {
+        currentToolDocData = docSnap.data() as ToolPredictionsDocument;
+      } else {
+        currentToolDocData = {
+          toolId: tool.id,
+          toolName: tool.name,
+          predictionsByDraw: {},
+          userId: adminUserId, // Will be set as admin performing this overall operation
+          lastUpdatedAt: serverTimestamp(),
+        };
+      }
+      
       // 1. Update date of current OFFICIAL_PREDICTIONS_DRAW_ID
-      const currentOfficialDrawKey = String(OFFICIAL_PREDICTIONS_DRAW_ID);
-      if (currentPredictionsByDraw[currentOfficialDrawKey]) {
-        currentPredictionsByDraw[currentOfficialDrawKey].targetDrawDate = latestActualDrawDate;
-        currentPredictionsByDraw[currentOfficialDrawKey].updatedAt = serverTimestamp(); // Ensure this is a Firestore Timestamp
+      const currentOfficialDrawKey = String(currentProcessingDrawId);
+      if (currentToolDocData.predictionsByDraw[currentOfficialDrawKey]) {
+        currentToolDocData.predictionsByDraw[currentOfficialDrawKey].targetDrawDate = latestActualDrawDate;
+        currentToolDocData.predictionsByDraw[currentOfficialDrawKey].savedAt = serverTimestamp();
+        currentToolDocData.predictionsByDraw[currentOfficialDrawKey].userId = adminUserId;
         toolMessage += `期号 ${currentOfficialDrawKey} 日期已更新为 ${latestActualDrawDate}. `;
       } else {
         toolMessage += `期号 ${currentOfficialDrawKey} 的预测不存在，无法更新日期. `;
-        // Optionally create it if it doesn't exist? Or rely on admin to have saved it first.
-        // For now, let's assume it should exist if this process is run.
       }
 
       // 2. Generate new "PENDING_DRAW" prediction for the next draw ID
-      const nextDrawIdNumber = Number(OFFICIAL_PREDICTIONS_DRAW_ID) + 1;
-      const nextPendingDrawId = String(nextDrawIdNumber);
+      const nextPendingDrawIdNumber = Number(currentProcessingDrawId) + 1;
+      const nextPendingDrawIdKey = String(nextPendingDrawIdNumber);
       const latestTenHistoricalDraws = allFetchedHistoricalData.slice(0, 10);
 
       if (latestTenHistoricalDraws.length < 10) {
-        toolMessage += `无法为下一期 ${nextPendingDrawId} 生成预测 (历史数据不足10期). `;
+        toolMessage += `无法为下一期 ${nextPendingDrawIdKey} 生成预测 (历史数据不足10期). `;
         toolSuccess = false;
       } else {
         const newPredictedNumbers = await calculateSingleToolPrediction(tool.id, latestTenHistoricalDraws);
         if (newPredictedNumbers !== null) {
-          currentPredictionsByDraw[nextPendingDrawId] = {
+          currentToolDocData.predictionsByDraw[nextPendingDrawIdKey] = {
             predictedNumbers: newPredictedNumbers,
             targetDrawDate: "PENDING_DRAW",
-            savedAt: serverTimestamp(), // Ensure this is a Firestore Timestamp
+            savedAt: serverTimestamp(),
             userId: adminUserId,
           };
-          toolMessage += `已为下一期 ${nextPendingDrawId} 生成新预测. `;
+          toolMessage += `已为下一期 ${nextPendingDrawIdKey} 生成新预测. `;
         } else {
-          toolMessage += `为下一期 ${nextPendingDrawId} 生成预测失败 (算法返回null). `;
+          toolMessage += `为下一期 ${nextPendingDrawIdKey} 生成预测失败 (算法返回null). `;
           toolSuccess = false;
         }
       }
       
-      // Save the updated document for the tool
+      currentToolDocData.lastUpdatedAt = serverTimestamp();
+      currentToolDocData.userId = adminUserId; // Ensure admin ID is on the main doc
+
       try {
-        const docDataToSet: ToolPredictionsDocument = {
-          toolId: tool.id,
-          toolName: tool.name,
-          predictionsByDraw: currentPredictionsByDraw,
-          userId: adminUserId,
-          lastUpdatedAt: serverTimestamp(), // Ensure this is a Firestore Timestamp
-        };
-        await setDoc(toolDocRef, docDataToSet, { merge: true });
+        await setDoc(toolDocRef, currentToolDocData, { merge: true });
         if (!toolSuccess) toolMessage += " (部分操作可能未完成).";
       } catch(saveError: any) {
         toolMessage += `保存工具 ${tool.id} 文档失败: ${saveError.message}. `;
@@ -705,10 +706,20 @@ export async function adminRecalculateAndSaveAllToolPredictions(
       details.push(`${toolSuccess ? "✅" : "❌"} ${toolMessage}`);
     }
 
+    // 3. Update appSettings with the new officialPredictionsDrawId
+    const nextOfficialDrawIdForApp = String(Number(currentProcessingDrawId) + 1);
+    await updateCurrentDrawDisplayInfo({
+      currentDrawDateTime: appSettings.currentDrawDateTime, // Keep existing date/jackpot
+      currentJackpot: appSettings.currentJackpot,
+      officialPredictionsDrawId: nextOfficialDrawIdForApp
+    }, adminUserId);
+    details.push(`应用设置中的官方预测期号已更新为: ${nextOfficialDrawIdForApp}`);
+
+
     const overallSuccess = !details.some(d => d.startsWith("❌"));
     return {
       success: overallSuccess,
-      message: overallSuccess ? "所有工具的当期预测日期已更新，下一期预测已生成。" : "部分工具操作失败，请查看详情。",
+      message: overallSuccess ? "所有工具的当期预测日期已更新，下一期预测已生成，并且应用设置中的官方预测期号已更新。" : "部分工具操作失败，请查看详情。",
       details,
     };
 

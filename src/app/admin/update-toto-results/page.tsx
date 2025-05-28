@@ -4,13 +4,14 @@
 import { useState, useEffect, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input"; // Added for new input
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import type { HistoricalResult } from "@/lib/types";
 import { HistoricalResultSchema as AdminPageHistoricalResultSchema } from "@/lib/types"; 
 import { z } from "zod";
-import { ArrowLeft, CheckCircle, XCircle, Info, Loader2, ShieldAlert, RefreshCw, CloudUpload, FileText, Edit3, PackageOpen } from "lucide-react";
+import { ArrowLeft, CheckCircle, XCircle, Info, Loader2, ShieldAlert, RefreshCw, CloudUpload, FileText, Edit3, PackageOpen, CalendarClock } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -21,7 +22,6 @@ import {
   adminRecalculateAndSaveAllToolPredictions 
 } from "@/lib/actions";
 import { Separator } from "@/components/ui/separator";
-import { OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types";
 
 
 const ClientSideHistoricalResultsArraySchema = z.array(AdminPageHistoricalResultSchema);
@@ -60,22 +60,33 @@ export default function AdminUpdateTotoResultsPage() {
   
   const [isAdminByEmail, setIsAdminByEmail] = useState(false);
   const [currentDrawInfoText, setCurrentDrawInfoText] = useState("");
+  const [officialDrawIdInput, setOfficialDrawIdInput] = useState("4082"); // Default or fetched
   const [isUpdatingDrawInfo, setIsUpdatingDrawInfo] = useState(false);
   const [isLoadingDrawInfo, setIsLoadingDrawInfo] = useState(true);
 
   const [isProcessingPredictions, setIsProcessingPredictions] = useState(false);
 
   const adminEmail = "admin@totokit.com";
-  const adminUID = "mAvLawNGpGdKwPoHuMQyXlKpPNv1";
+  const adminUID = "mAvLawNGpGdKwPoHuMQyXlKpPNv1"; // Storing for direct check, complement to claim
 
   const fetchCurrentDrawInfo = async () => {
     setIsLoadingDrawInfo(true);
     try {
       const info = await getCurrentDrawDisplayInfo();
-      if (info && info.currentDrawDateTime && info.currentJackpot) {
-        setCurrentDrawInfoText(`${info.currentDrawDateTime}\n${info.currentJackpot}`);
+      if (info) {
+        if (info.currentDrawDateTime && info.currentJackpot) {
+          setCurrentDrawInfoText(`${info.currentDrawDateTime}\n${info.currentJackpot}`);
+        } else {
+          setCurrentDrawInfoText("周四, 2025年5月29日, 傍晚6点30分\n$4,500,000");
+        }
+        if (info.officialPredictionsDrawId) {
+          setOfficialDrawIdInput(info.officialPredictionsDrawId);
+        } else {
+          setOfficialDrawIdInput("4082"); // Default if not set
+        }
       } else {
         setCurrentDrawInfoText("周四, 2025年5月29日, 傍晚6点30分\n$4,500,000");
+        setOfficialDrawIdInput("4082");
       }
     } catch (error) {
       console.error("Error fetching current draw info:", error);
@@ -85,6 +96,7 @@ export default function AdminUpdateTotoResultsPage() {
         variant: "destructive"
       });
       setCurrentDrawInfoText("周四, 2025年5月29日, 傍晚6点30分\n$4,500,000");
+      setOfficialDrawIdInput("4082");
     } finally {
       setIsLoadingDrawInfo(false);
     }
@@ -198,7 +210,6 @@ export default function AdminUpdateTotoResultsPage() {
     const jsonDataToSync = JSON.stringify(sortedData, null, 2);
 
     try {
-      // Pass admin's UID to the server action
       const syncResult = await syncHistoricalResultsToFirestore(jsonDataToSync, user.uid); 
       if (syncResult.success) {
         toast({
@@ -207,7 +218,6 @@ export default function AdminUpdateTotoResultsPage() {
         });
         setValidationStatus("success");
         setValidationMessage(syncResult.message || `成功同步 ${syncResult.count || 0} 条历史记录到 Firestore。\n现在您可以考虑点击下方的“处理当前预测并生成下一期”按钮。`);
-        // setPlainTextData(""); // Optionally clear plain text data
       } else {
         toast({
           title: "历史结果同步失败",
@@ -242,8 +252,8 @@ export default function AdminUpdateTotoResultsPage() {
       toast({ title: "权限不足", description: "需要管理员权限才能更新。", variant: "destructive" });
       return;
     }
-    if (!currentDrawInfoText.trim()) {
-      toast({ title: "输入不完整", description: "请输入本期开奖信息。", variant: "destructive" });
+    if (!currentDrawInfoText.trim() || !officialDrawIdInput.trim()) {
+      toast({ title: "输入不完整", description: "请输入本期开奖信息和官方预测期号。", variant: "destructive" });
       return;
     }
 
@@ -267,7 +277,11 @@ export default function AdminUpdateTotoResultsPage() {
 
     setIsUpdatingDrawInfo(true);
     try {
-      const result = await updateCurrentDrawDisplayInfo(extractedDrawTime, extractedJackpot, user.uid);
+      const result = await updateCurrentDrawDisplayInfo({
+        currentDrawDateTime: extractedDrawTime, 
+        currentJackpot: extractedJackpot,
+        officialPredictionsDrawId: officialDrawIdInput
+      }, user.uid);
       if (result.success) {
         toast({ title: "本期开奖信息更新成功", description: result.message });
       } else {
@@ -299,6 +313,8 @@ export default function AdminUpdateTotoResultsPage() {
         });
         setValidationStatus("success");
         setValidationMessage(`${result.message}\n详情:\n${(result.details || []).join('\n')}`);
+        // Fetch the new official draw ID to update the input field
+        await fetchCurrentDrawInfo(); 
       } else {
         toast({
           title: "预测处理失败",
@@ -366,31 +382,48 @@ export default function AdminUpdateTotoResultsPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Edit3 className="h-5 w-5 text-primary" />
-            更新本期开奖信息 (首页显示)
+            更新应用设置 (首页显示及预测期号)
           </CardTitle>
           <CardDescription>
-            在此处粘贴本期开奖的日期/时间和预估头奖金额。请确保第一行为日期/时间，第二行为头奖金额。系统会自动忽略如“本期开奖信息”或“当前头奖预估”之类的标签行。
+            在此处粘贴本期开奖的日期/时间和预估头奖金额，以及设置当前官方预测使用的期号。
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {isLoadingDrawInfo ? (
             <div className="flex items-center space-x-2">
               <Loader2 className="h-5 w-5 animate-spin" />
-              <p>正在加载当前开奖信息...</p>
+              <p>正在加载当前设置...</p>
             </div>
           ) : (
-            <div>
-              <Label htmlFor="currentDrawInfoText">本期开奖信息 (纯文本)</Label>
-              <Textarea
-                id="currentDrawInfoText"
-                value={currentDrawInfoText}
-                onChange={(e) => setCurrentDrawInfoText(e.target.value)}
-                placeholder={"例如:\n周四, 2025年5月29日, 傍晚6点30分\n$4,500,000\n\n或包含标签的完整格式：\n本期开奖信息\n周四, 2025年5月29日, 傍晚6点30分\n当前头奖预估\n$4,500,000"}
-                rows={5}
-                className="mt-1 font-mono text-sm"
-                disabled={isUpdatingDrawInfo || !isAdminByEmail}
-              />
-            </div>
+            <>
+              <div>
+                <Label htmlFor="currentDrawInfoText">本期开奖信息 (纯文本)</Label>
+                <Textarea
+                  id="currentDrawInfoText"
+                  value={currentDrawInfoText}
+                  onChange={(e) => setCurrentDrawInfoText(e.target.value)}
+                  placeholder={"例如:\n周四, 2025年5月29日, 傍晚6点30分\n$4,500,000\n\n或包含标签的完整格式：\n本期开奖信息\n周四, 2025年5月29日, 傍晚6点30分\n当前头奖预估\n$4,500,000"}
+                  rows={5}
+                  className="mt-1 font-mono text-sm"
+                  disabled={isUpdatingDrawInfo || !isAdminByEmail}
+                />
+              </div>
+              <div>
+                <Label htmlFor="officialDrawIdInput">当前官方预测期号</Label>
+                <Input
+                  id="officialDrawIdInput"
+                  type="text"
+                  value={officialDrawIdInput}
+                  onChange={(e) => setOfficialDrawIdInput(e.target.value)}
+                  placeholder="例如: 4082"
+                  className="mt-1"
+                  disabled={isUpdatingDrawInfo || !isAdminByEmail}
+                />
+                 <p className="text-xs text-muted-foreground mt-1">
+                  应用前端将使用此期号来获取和显示“当前”工具预测。
+                </p>
+              </div>
+            </>
           )}
         </CardContent>
         <CardFooter>
@@ -404,7 +437,7 @@ export default function AdminUpdateTotoResultsPage() {
             ) : (
               <CloudUpload className="mr-2 h-4 w-4" />
             )}
-            更新本期开奖信息到 Firestore
+            更新应用设置到 Firestore
           </Button>
         </CardFooter>
       </Card>
@@ -455,13 +488,14 @@ export default function AdminUpdateTotoResultsPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <PackageOpen className="h-5 w-5 text-primary" />
-            工具预测处理
+            工具预测处理 (期号轮转)
           </CardTitle>
           <CardDescription>
-            在同步最新的历史开奖结果后，点击下方按钮可为所有选号工具：
-            1. 将当前待开奖期号 ({OFFICIAL_PREDICTIONS_DRAW_ID}) 的预测记录的日期更新为最新的实际开奖日期。
-            2. 为下一个期号 (例如 {Number(OFFICIAL_PREDICTIONS_DRAW_ID) + 1}) 生成并保存新的 "PENDING_DRAW" 预测。
-            此操作会更新数据库中 `toolPredictions` 集合的数据，可能需要一些时间。它不会重新计算已保存的其他历史期号的回测。
+            在同步最新的历史开奖结果 **并更新了上方的“当前官方预测期号”之后**，点击下方按钮可为所有选号工具：
+            1. 将当前官方预测期号 (例如 {officialDrawIdInput}) 的预测记录的日期更新为最新的实际开奖日期。
+            2. 为下一个期号 (例如 {Number(officialDrawIdInput) + 1}) 生成并保存新的 "PENDING_DRAW" 预测。
+            3. **此操作还会自动将 Firestore 中的“当前官方预测期号”更新为这个新的下一期期号。**
+            此操作会更新数据库中 `toolPredictions` 和 `appSettings` 集合的数据。
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -476,7 +510,7 @@ export default function AdminUpdateTotoResultsPage() {
             ) : (
               <RefreshCw className="mr-2 h-4 w-4" />
             )}
-            处理当前预测并生成下一期
+            处理当前预测并生成下一期 (自动更新期号)
           </Button>
         </CardContent>
       </Card>
@@ -497,5 +531,3 @@ export default function AdminUpdateTotoResultsPage() {
     </div>
   );
 }
-
-    

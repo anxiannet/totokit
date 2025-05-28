@@ -17,6 +17,7 @@ export const HistoricalResultSchema = z.object({
     z.number().min(TOTO_NUMBER_RANGE.min).max(TOTO_NUMBER_RANGE.max)
   ).length(TOTO_COMBINATION_LENGTH, `Must have ${TOTO_COMBINATION_LENGTH} winning numbers`),
   additionalNumber: z.number().min(TOTO_NUMBER_RANGE.min).max(TOTO_NUMBER_RANGE.max),
+  userId: z.string().optional(), // Added for Firestore rule checking on admin sync
 });
 
 // Derive the TypeScript interface from the Zod schema
@@ -176,8 +177,46 @@ export interface AnalysisData {
   hotNumbers: { number: number, frequency: number }[];
   coldNumbers: { number: number, frequency: number }[];
   oddEvenRatio: { odd: number, even: number, percentage: number }[];
-  // Add more analysis data structures as needed
 }
 
-// --- Tool Predictions for a Specific Target Draw (e.g., "4082") ---
-export const OFFICIAL_PREDICTIONS_DRAW_ID = "4082";
+// --- For Firestore `toolPredictions` collection ---
+export interface PredictionDetail {
+  predictedNumbers: number[];
+  targetDrawDate: string; // Actual date for historical, "PENDING_DRAW" for future
+  savedAt: any; // Firestore Timestamp
+  userId?: string; // Admin UID who saved/updated this specific prediction
+}
+
+export interface ToolPredictionsDocument {
+  toolId: string;
+  toolName: string;
+  predictionsByDraw: Record<string, PredictionDetail>; // Key is targetDrawNumber as string
+  lastUpdatedAt: any; // Firestore Timestamp
+  userId: string; // Admin UID who last updated this document
+}
+
+// For saving individual predictions from server actions
+export interface ToolPredictionInput {
+  toolId: string;
+  toolName: string;
+  targetDrawNumber: string | number;
+  targetDrawDate?: string;
+  predictedNumbers: number[];
+  userId?: string; // UID of the admin performing the save
+}
+
+// For saving smart pick results (now local, but interface can remain)
+export interface SmartPickResultInput {
+  userId: string | null;
+  drawId: string;
+  combinations: TotoCombination[];
+  idToken?: string | null; // If passing user's ID token
+}
+
+// For appSettings/currentDrawInfo
+export interface CurrentDrawInfo {
+  currentDrawDateTime: string;
+  currentJackpot: string;
+  officialPredictionsDrawId?: string; // The draw ID for which official predictions are being shown/generated
+  userId?: string; // Admin UID who last updated this
+}

@@ -4,15 +4,17 @@
 import { useState, useEffect } from 'react';
 import { PredictionConfigurator } from "@/components/toto/PredictionConfigurator";
 import { PredictionResultsDisplay } from "@/components/toto/PredictionResultsDisplay";
-import type { TotoCombination } from "@/lib/types";
+import type { TotoCombination, CurrentDrawInfo } from "@/lib/types"; // Added CurrentDrawInfo
 import { CurrentAndLatestDrawInfo } from "@/components/toto/CurrentAndLatestDrawInfo";
 import { TopPerformingTools, type TopToolDisplayInfo } from "@/components/toto/TopPerformingTools";
 import { LastDrawTopTools, type LastDrawToolPerformanceInfo } from "@/components/toto/LastDrawTopTools";
-import { MOCK_HISTORICAL_DATA, MOCK_LATEST_RESULT, OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types";
+import { MOCK_HISTORICAL_DATA, MOCK_LATEST_RESULT } from "@/lib/types";
 import { dynamicTools } from "@/lib/numberPickingAlgos";
 import { calculateHitDetails } from "@/lib/totoUtils";
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from "@/hooks/use-toast";
+import { getCurrentDrawDisplayInfo } from '@/lib/actions'; // To get official draw ID
+import { Loader2 } from 'lucide-react';
 
 
 export default function TotoForecasterPage() {
@@ -23,8 +25,24 @@ export default function TotoForecasterPage() {
   const [displayResultsArea, setDisplayResultsArea] = useState<boolean>(false);
   const [topPerformingTools, setTopPerformingTools] = useState<TopToolDisplayInfo[]>([]);
   const [lastDrawTopPerformingTools, setLastDrawTopPerformingTools] = useState<LastDrawToolPerformanceInfo[]>([]);
+  
+  const [currentOfficialDrawId, setCurrentOfficialDrawId] = useState<string | null>(null);
+  const [isLoadingDrawId, setIsLoadingDrawId] = useState(true);
 
-  const CURRENT_DRAW_ID = OFFICIAL_PREDICTIONS_DRAW_ID;
+  useEffect(() => {
+    const fetchDrawId = async () => {
+      setIsLoadingDrawId(true);
+      const settings = await getCurrentDrawDisplayInfo();
+      if (settings && settings.officialPredictionsDrawId) {
+        setCurrentOfficialDrawId(settings.officialPredictionsDrawId);
+      } else {
+        setCurrentOfficialDrawId("4082"); // Fallback default
+      }
+      setIsLoadingDrawId(false);
+    };
+    fetchDrawId();
+  }, []);
+
 
   const handlePredictionsGenerated = (newPredictions: TotoCombination[]) => {
     setPredictions(newPredictions);
@@ -47,9 +65,11 @@ export default function TotoForecasterPage() {
 
   useEffect(() => {
     const loadSavedPicksFromLocalStorage = () => {
-      console.log(`[TotoForecasterPage] loadSavedPicks: Attempting to load. user: ${user?.uid}, displayResultsArea: ${displayResultsArea}, !isGenerating: ${!isGeneratingPredictions}, preds.length: ${predictions.length}`);
+      if (!currentOfficialDrawId) return; // Wait for draw ID to load
+
+      console.log(`[TotoForecasterPage] loadSavedPicks: Attempting to load. user: ${user?.uid}, displayResultsArea: ${displayResultsArea}, !isGenerating: ${!isGeneratingPredictions}, preds.length: ${predictions.length}, drawId: ${currentOfficialDrawId}`);
       if (displayResultsArea && !isGeneratingPredictions && predictions.length === 0) {
-        const resultsKey = `smartPickResults_${CURRENT_DRAW_ID}_${user?.uid || 'guest'}`;
+        const resultsKey = `smartPickResults_${currentOfficialDrawId}_${user?.uid || 'guest'}`;
         console.log(`[TotoForecasterPage] loadSavedPicks: Attempting to load from localStorage key: ${resultsKey}`);
         setIsGeneratingPredictions(true); 
         try {
@@ -59,7 +79,6 @@ export default function TotoForecasterPage() {
             if (Array.isArray(savedPicks) && savedPicks.length > 0) {
               setPredictions(savedPicks);
               console.log(`[TotoForecasterPage] loadSavedPicks: setPredictions called with localStorage picks.`);
-              // toast({ title: "已加载您本地保存的选号 (本地)" }); // Removed this toast
             } else {
               console.log(`[TotoForecasterPage] loadSavedPicks: No valid saved picks found in localStorage or empty array.`);
             }
@@ -76,9 +95,11 @@ export default function TotoForecasterPage() {
          console.log(`[TotoForecasterPage] loadSavedPicks: Conditions NOT met for loading from localStorage.`);
       }
     };
-    loadSavedPicksFromLocalStorage();
+    if (!isLoadingDrawId) { // Only run if draw ID is loaded
+        loadSavedPicksFromLocalStorage();
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, displayResultsArea, CURRENT_DRAW_ID]); // Removed toast, predictions.length, isGeneratingPredictions from deps as they might cause loops or incorrect trigger points for just loading
+  }, [user, displayResultsArea, currentOfficialDrawId, isLoadingDrawId]);
 
 
   useEffect(() => {
@@ -89,14 +110,6 @@ export default function TotoForecasterPage() {
     const toolPerformances: TopToolDisplayInfo[] = dynamicTools.map(tool => {
       let totalHitRate = 0;
       let drawsAnalyzed = 0;
-      let currentPredictionForDraw: TotoCombination = [];
-
-      // Calculate current prediction based on the absolute latest 10 draws
-      if (allHistoricalData.length >= 10) {
-        const absoluteLatestTenDraws = allHistoricalData.slice(0, 10);
-        currentPredictionForDraw = tool.algorithmFn(absoluteLatestTenDraws);
-      }
-
 
       if (overallRecentTenDraws.length > 0) {
         overallRecentTenDraws.forEach(targetDraw => {
@@ -106,10 +119,6 @@ export default function TotoForecasterPage() {
           const precedingTenDrawsForTarget = allHistoricalData.slice(originalIndex + 1, originalIndex + 1 + 10);
           
           if (precedingTenDrawsForTarget.length < 10 && originalIndex + 1 < 10) { 
-            // Not enough preceding draws (and it's not simply because we're near the end of the full history)
-            // For average hit rate calculation, we need a consistent basis.
-            // If a tool's algorithm fundamentally needs 10 draws, skip this target draw for avg calculation.
-            // Or, allow algorithmFn to handle fewer than 10 if designed for it (current algos might just return empty)
             return; 
           }
 
@@ -124,7 +133,8 @@ export default function TotoForecasterPage() {
         });
       }
       const averageHitRate = drawsAnalyzed > 0 ? totalHitRate / drawsAnalyzed : 0;
-      return { ...tool, averageHitRate: parseFloat(averageHitRate.toFixed(1)), currentPredictionForDraw };
+      // For TopPerformingTools on homepage, currentPredictionForDraw will be fetched by the component itself
+      return { ...tool, averageHitRate: parseFloat(averageHitRate.toFixed(1)) };
     });
     toolPerformances.sort((a, b) => b.averageHitRate - a.averageHitRate);
     setTopPerformingTools(toolPerformances.slice(0, 5));
@@ -163,6 +173,15 @@ export default function TotoForecasterPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  if (isLoadingDrawId) {
+    return (
+      <div className="flex min-h-screen flex-col bg-background">
+        <main className="flex-grow container mx-auto px-4 py-8 md:px-6 md:py-12 flex items-center justify-center">
+          <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -171,17 +190,22 @@ export default function TotoForecasterPage() {
 
         <div className="w-full space-y-6 mt-6">
           <LastDrawTopTools tools={lastDrawTopPerformingTools} latestDrawNumber={MOCK_LATEST_RESULT?.drawNumber} />
-          <TopPerformingTools tools={topPerformingTools} />
-          <PredictionConfigurator
-            onPredictionsGenerated={handlePredictionsGenerated}
-            onLoadingChange={handleLoadingChange}
-            onUsageStatusChange={handleUsageStatusChange}
-          />
-          {(displayResultsArea || isGeneratingPredictions) && (
-            <PredictionResultsDisplay predictions={predictions} isLoading={isGeneratingPredictions} />
+          {currentOfficialDrawId && <TopPerformingTools tools={topPerformingTools} officialDrawId={currentOfficialDrawId} />}
+          
+          {currentOfficialDrawId && (
+            <>
+              <PredictionConfigurator
+                onPredictionsGenerated={handlePredictionsGenerated}
+                onLoadingChange={handleLoadingChange}
+                onUsageStatusChange={handleUsageStatusChange}
+                currentDrawId={currentOfficialDrawId} 
+              />
+              {(displayResultsArea || isGeneratingPredictions) && (
+                <PredictionResultsDisplay predictions={predictions} isLoading={isGeneratingPredictions} currentDrawId={currentOfficialDrawId} />
+              )}
+            </>
           )}
         </div>
-
       </main>
       <footer className="py-6 text-center text-sm text-muted-foreground border-t">
         TOTOKIT &copy; {new Date().getFullYear()}. 仅供娱乐。请理性游戏。
@@ -189,4 +213,3 @@ export default function TotoForecasterPage() {
     </div>
   );
 }
-

@@ -10,9 +10,9 @@ import { Target, Info } from "lucide-react";
 interface PredictionResultsDisplayProps {
   predictions: TotoCombination[];
   isLoading: boolean;
+  currentDrawId: string | null; // New prop
 }
 
-// Helper component for loading state to be used in PredictionResultsDisplay
 const Loader2 = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -31,9 +31,8 @@ const Loader2 = (props: React.SVGProps<SVGSVGElement>) => (
 );
 
 
-export function PredictionResultsDisplay({ predictions, isLoading }: PredictionResultsDisplayProps) {
+export function PredictionResultsDisplay({ predictions, isLoading, currentDrawId }: PredictionResultsDisplayProps) {
   const getPredictionBallColor = (number: number): string => {
-    // Using chart-5 (purple) for predicted numbers to differentiate from official results
     return "bg-[hsl(var(--chart-5))] text-primary-foreground"; 
   };
 
@@ -42,9 +41,8 @@ export function PredictionResultsDisplay({ predictions, isLoading }: PredictionR
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Target className="h-6 w-6 text-primary" />
-          第 4082 期智能选号结果
+          {currentDrawId ? `第 ${currentDrawId} 期` : ""}智能选号结果
         </CardTitle>
-        {/* CardDescription removed as per request */}
       </CardHeader>
       <CardContent>
         {isLoading ? (
@@ -79,8 +77,6 @@ export function PredictionResultsDisplay({ predictions, isLoading }: PredictionR
                       ))}
                     </div>
                   </div>
-                  {/* Score can be added here if provided by AI later */}
-                  {/* <Badge variant="outline">Score: N/A</Badge> */}
                 </li>
               ))}
             </ul>
@@ -90,4 +86,3 @@ export function PredictionResultsDisplay({ predictions, isLoading }: PredictionR
     </Card>
   );
 }
-
