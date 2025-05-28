@@ -4,9 +4,8 @@
 import { generateNumberCombinations as genkitGenerateNumberCombinations } from "@/ai/flows/generate-number-combinations";
 import type { GenerateNumberCombinationsInput, GenerateNumberCombinationsOutput } from "@/ai/flows/generate-number-combinations";
 import type { WeightedCriterion, HistoricalResult, TotoCombination } from "./types";
-import { db, auth as firebaseClientAuthInstance } from "./firebase"; // Renamed import for clarity
-import { collection, addDoc, serverTimestamp, query, where, getDocs, limit, doc, writeBatch, runTransaction, arrayUnion, arrayRemove, getDoc } from "firebase/firestore";
-import { type User } from "firebase/auth";
+import { db, auth as firebaseClientAuthInstance } from "./firebase"; 
+import { collection, addDoc, serverTimestamp, query, where, getDocs, limit, doc, writeBatch, runTransaction, arrayUnion, arrayRemove, getDoc, setDoc } from "firebase/firestore";
 
 
 export async function generateTotoPredictions(
@@ -119,7 +118,7 @@ export async function saveToolPrediction(
 
 export async function syncHistoricalResultsToFirestore(
   jsonDataString: string,
-  adminUserId: string | null // Added adminUserId parameter
+  adminUserId: string | null
 ): Promise<{ success: boolean; message: string; count?: number }> {
   console.log("[SYNC_FIRESTORE] Attempting to sync historical results to Firestore.");
   if (!db) {
@@ -147,7 +146,6 @@ export async function syncHistoricalResultsToFirestore(
         continue;
       }
       const resultDocRef = doc(db, "totoResults", String(result.drawNumber));
-      // Add the adminUserId to the document being written
       const dataToSet = { ...result, userId: adminUserId };
       batch.set(resultDocRef, dataToSet, { merge: true }); 
       count++;
@@ -174,73 +172,6 @@ export async function syncHistoricalResultsToFirestore(
 }
 
 
-export async function getUserFavoriteTools(userId: string): Promise<string[]> {
-  if (!db) {
-    console.error("[GET_USER_FAVORITES] Firestore 'db' instance is not initialized.");
-    throw new Error("Database not initialized");
-  }
-  if (!userId) {
-    console.warn("[GET_USER_FAVORITES] No userId provided.");
-    return [];
-  }
-  try {
-    const userFavoritesRef = doc(db, "userToolFavorites", userId);
-    const docSnap = await getDoc(userFavoritesRef);
-    if (docSnap.exists()) {
-      const data = docSnap.data();
-      return data.favoriteToolIds || [];
-    }
-    return [];
-  } catch (error) {
-    console.error("Error fetching user favorite tools:", error);
-    throw error; 
-  }
-}
-
-export async function toggleFavoriteTool(
-  userId: string,
-  toolId: string
-): Promise<{ success: boolean; favorited: boolean; message?: string }> {
-  if (!db) {
-    return { success: false, favorited: false, message: "Database not initialized" };
-  }
-  if (!userId) {
-    return { success: false, favorited: false, message: "User not authenticated" };
-  }
-
-  const userFavoritesRef = doc(db, "userToolFavorites", userId);
-
-  try {
-    let currentFavoritedStatus = false;
-    await runTransaction(db, async (transaction) => {
-      const sfDoc = await transaction.get(userFavoritesRef);
-      let favoriteToolIds: string[] = [];
-      if (!sfDoc.exists()) {
-        transaction.set(userFavoritesRef, { favoriteToolIds: [toolId] });
-        currentFavoritedStatus = true;
-      } else {
-        favoriteToolIds = sfDoc.data().favoriteToolIds || [];
-        if (favoriteToolIds.includes(toolId)) {
-          transaction.update(userFavoritesRef, {
-            favoriteToolIds: arrayRemove(toolId),
-          });
-          currentFavoritedStatus = false;
-        } else {
-          transaction.update(userFavoritesRef, {
-            favoriteToolIds: arrayUnion(toolId),
-          });
-          currentFavoritedStatus = true;
-        }
-      }
-    });
-    return { success: true, favorited: currentFavoritedStatus };
-  } catch (error) {
-    console.error("Error toggling favorite tool:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    return { success: false, favorited: false, message: `操作失败: ${errorMessage}` };
-  }
-}
-
 export interface SmartPickResultInput {
   userId: string | null;
   idToken: string | null; 
@@ -261,8 +192,8 @@ export async function saveSmartPickResult(
 
   console.log(`[SAVE_SMART_PICK] Attempting to save smart pick.`);
   console.log(`[SAVE_SMART_PICK] Input userId from client: ${data.userId}`);
+  console.log(`[SAVE_SMART_PICK] Input ID Token (present): ${!!data.idToken}`);
   console.log(`[SAVE_SMART_PICK] Firebase SDK auth.currentUser.uid inside action: ${actionAuthUid}`);
-  console.log(`[SAVE_SMART_PICK] ID Token (present): ${!!data.idToken}`);
   
   try {
     const transformedCombinations = data.combinations.map(combo => ({ numbers: combo }));
@@ -274,7 +205,8 @@ export async function saveSmartPickResult(
     };
     
     console.log(`[SAVE_SMART_PICK] Data being written to Firestore:`, JSON.stringify(dataToSave, null, 2));
-
+    console.log(`[SAVE_SMART_PICK] Target collection: smartPickResults`);
+    
     const docRef = await addDoc(collection(db, "smartPickResults"), dataToSave);
     console.log(`[SAVE_SMART_PICK] Smart pick result saved successfully with ID: ${docRef.id} for draw ${data.drawId}, user: ${data.userId || 'anonymous'}`);
     return { success: true, message: "智能选号结果已保存。", docId: docRef.id };
@@ -294,4 +226,51 @@ export async function saveSmartPickResult(
   }
 }
 
+export async function updateCurrentDrawDisplayInfo(
+  data: { currentDrawDateTime: string; currentJackpot: string },
+  adminUserId: string | null
+): Promise<{ success: boolean; message?: string }> {
+  if (!db) {
+    return { success: false, message: "Firestore 'db' instance is not initialized." };
+  }
+  if (!adminUserId) {
+    return { success: false, message: "管理员未登录，无法更新。" };
+  }
+
+  try {
+    const docRef = doc(db, "appSettings", "currentDrawInfo");
+    await setDoc(docRef, {
+      ...data,
+      updatedBy: adminUserId,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+    return { success: true, message: "本期开奖信息已更新。" };
+  } catch (error) {
+    console.error("Error updating current draw display info:", error);
+    const errorMessage = error instanceof Error ? error.message : "未知错误";
+    return { success: false, message: `更新失败: ${errorMessage}` };
+  }
+}
+
+export async function getCurrentDrawDisplayInfo(): Promise<{ currentDrawDateTime: string; currentJackpot: string } | null> {
+  if (!db) {
+    console.error("Firestore 'db' instance is not initialized for getCurrentDrawDisplayInfo.");
+    return null;
+  }
+  try {
+    const docRef = doc(db, "appSettings", "currentDrawInfo");
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      return {
+        currentDrawDateTime: data.currentDrawDateTime || "",
+        currentJackpot: data.currentJackpot || "",
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error("Error fetching current draw display info:", error);
+    return null;
+  }
+}
     

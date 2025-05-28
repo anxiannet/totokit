@@ -6,20 +6,24 @@ service cloud.firestore {
 
     // TOTO Historical Results
     // Allow anyone to read historical results.
-    // Allow write if the document being written contains a non-null 'userId' field.
-    // This 'userId' field should be populated by the server action with the admin's UID.
+    // Write access controlled by the server action which should verify admin.
     match /totoResults/{drawId} {
       allow read: if true;
+      // This rule assumes the 'userId' field will be populated by the admin's UID
+      // during the server action `syncHistoricalResultsToFirestore`.
+      // And that server action itself verifies the caller is an admin.
       allow write: if request.resource.data.userId != null;
     }
 
     // Tool Predictions (Predictions made by specific tools for historical draws)
-    // Allow create by any authenticated user (server action runs as system/authenticated context from client)
-    // More specific rules might be needed if users can read/update these.
+    // Allow anyone to read these predictions.
+    // Create operations are allowed (e.g., by server components/actions).
+    // Update/delete are restricted or can be admin-only.
     match /toolPredictions/{predictionId} {
-      allow read: if true; // Or more restrictive if needed
-      allow create: if true; // Assuming server action is trusted source
-      allow update, delete: if false; // Or allow admin: request.auth != null && request.auth.token.isAdmin == true;
+      allow read: if true;
+      allow create: if true; // Allows server actions/components to save predictions.
+                             // Review for production; consider if specific auth is needed.
+      allow update, delete: if request.auth != null && request.auth.token.isAdmin == true;
     }
 
     // User Favorite Tools
@@ -30,12 +34,23 @@ service cloud.firestore {
 
     // Smart Pick AI Results
     // Allow authenticated users to create their own smart pick results.
-    // Users can read their own saved smart picks.
+    // Allow users to read their own saved smart picks.
     match /smartPickResults/{resultId} {
       allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
       allow read: if request.auth != null && resource.data.userId == request.auth.uid;
-      allow update, delete: if false; // Or set specific rules
+      allow update, delete: if false; // Or more specific rules if needed
     }
+
+    // App Settings (like current draw display info)
+    // Allow anyone to read.
+    // Only allow admin to write (verified by `updatedBy` field and admin claim).
+    match /appSettings/currentDrawInfo {
+      allow read: if true;
+      allow write: if request.auth != null && 
+                     request.auth.token.isAdmin == true &&
+                     request.resource.data.updatedBy == request.auth.uid;
+    }
+
 
     // Default deny all other access to prevent unintended access
     match /{document=**} {
@@ -43,5 +58,3 @@ service cloud.firestore {
     }
   }
 }
-
-    

@@ -4,19 +4,19 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import type { HistoricalResult } from "@/lib/types"; // Assuming MOCK_HISTORICAL_DATA is no longer needed here
+import type { HistoricalResult } from "@/lib/types";
 import { z } from "zod";
-import { ArrowLeft, CheckCircle, XCircle, Info, Loader2, ShieldAlert, RefreshCw, CloudUpload, FileText } from "lucide-react";
+import { ArrowLeft, CheckCircle, XCircle, Info, Loader2, ShieldAlert, RefreshCw, CloudUpload, FileText, Edit3 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { syncHistoricalResultsToFirestore } from "@/lib/actions";
+import { syncHistoricalResultsToFirestore, updateCurrentDrawDisplayInfo, getCurrentDrawDisplayInfo } from "@/lib/actions";
 import { Separator } from "@/components/ui/separator";
 
-// Zod schema for validation
 const HistoricalResultSchema = z.object({
   drawNumber: z.number(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),
@@ -28,7 +28,6 @@ const HistoricalResultsArraySchema = z.array(HistoricalResultSchema);
 
 type AdminClaimStatus = "loading" | "verified" | "not_found" | "error" | "not_admin_email";
 
-// Month mapping for date parsing
 const monthMap: { [key: string]: string } = {
   Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06",
   Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12",
@@ -38,7 +37,7 @@ function parseDateFromText(dateStr: string): string {
   const parts = dateStr.split(" ");
   if (parts.length < 4) return "";
 
-  const dayPart = parts[1].replace(/,$/, ""); // Remove comma if present
+  const dayPart = parts[1].replace(/,$/, "");
   const day = dayPart.padStart(2, "0");
   const month = monthMap[parts[2]];
   const year = parts[3];
@@ -54,11 +53,17 @@ export default function AdminUpdateTotoResultsPage() {
   const [plainTextData, setPlainTextData] = useState("");
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [validationStatus, setValidationStatus] = useState<"success" | "error" | "info" | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false); // Combined loading state
+  const [isProcessing, setIsProcessing] = useState(false);
   const [isCheckingAdmin, setIsCheckingAdmin] = useState(true);
   const [isAdminByEmail, setIsAdminByEmail] = useState(false);
   const [adminClaimStatus, setAdminClaimStatus] = useState<AdminClaimStatus>("loading");
   const [isCheckingClaim, setIsCheckingClaim] = useState(false);
+
+  const [currentDrawDateTime, setCurrentDrawDateTime] = useState("");
+  const [currentJackpot, setCurrentJackpot] = useState("");
+  const [isUpdatingDrawInfo, setIsUpdatingDrawInfo] = useState(false);
+  const [isLoadingDrawInfo, setIsLoadingDrawInfo] = useState(true);
+
 
   const adminEmail = "admin@totokit.com";
 
@@ -97,6 +102,33 @@ export default function AdminUpdateTotoResultsPage() {
     }
   };
 
+  const fetchCurrentDrawInfo = async () => {
+    setIsLoadingDrawInfo(true);
+    try {
+      const info = await getCurrentDrawDisplayInfo();
+      if (info) {
+        setCurrentDrawDateTime(info.currentDrawDateTime || "");
+        setCurrentJackpot(info.currentJackpot || "");
+      } else {
+        // Fallback or defaults if not found in Firestore
+        setCurrentDrawDateTime("周四, 2025年5月29日, 傍晚6点30分");
+        setCurrentJackpot("$4,500,000 (估计)");
+      }
+    } catch (error) {
+      console.error("Error fetching current draw info:", error);
+      toast({
+        title: "获取开奖信息失败",
+        description: "无法从数据库加载当前的开奖信息和头奖金额。",
+        variant: "destructive"
+      });
+      // Fallback to defaults
+      setCurrentDrawDateTime("周四, 2025年5月29日, 傍晚6点30分");
+      setCurrentJackpot("$4,500,000 (估计)");
+    } finally {
+      setIsLoadingDrawInfo(false);
+    }
+  };
+
 
   useEffect(() => {
     if (!authLoading) {
@@ -104,6 +136,7 @@ export default function AdminUpdateTotoResultsPage() {
       if (user && user.email === adminEmail) {
         setIsAdminByEmail(true);
         checkAdminClaim();
+        fetchCurrentDrawInfo(); // Fetch current draw info for admin
       } else {
         setIsAdminByEmail(false);
         setAdminClaimStatus("not_admin_email");
@@ -148,7 +181,6 @@ export default function AdminUpdateTotoResultsPage() {
       return;
     }
 
-    // 1. Parse Plain Text
     const entries = plainTextData.trim().split(/\n\s*\n/);
     const parsedResults: HistoricalResult[] = [];
     let parsingErrors: string[] = [];
@@ -210,7 +242,6 @@ export default function AdminUpdateTotoResultsPage() {
       return;
     }
 
-    // 2. Validate Parsed Data
     const validationResult = HistoricalResultsArraySchema.safeParse(parsedResults);
     if (!validationResult.success) {
       const errorIssues = validationResult.error.issues.map(issue => `路径 '${issue.path.join('.') || 'root'}': ${issue.message}`).join("\\n");
@@ -222,7 +253,6 @@ export default function AdminUpdateTotoResultsPage() {
       return;
     }
 
-    // 3. Sync to Firestore
     const validatedData = validationResult.data;
     const sortedData = [...validatedData].sort((a, b) => b.drawNumber - a.drawNumber);
     const jsonDataToSync = JSON.stringify(sortedData, null, 2);
@@ -231,35 +261,62 @@ export default function AdminUpdateTotoResultsPage() {
       const syncResult = await syncHistoricalResultsToFirestore(jsonDataToSync, user.uid);
       if (syncResult.success) {
         toast({
-          title: "同步成功",
-          description: syncResult.message || `成功同步 ${syncResult.count || 0} 条记录。`,
+          title: "历史结果同步成功",
+          description: syncResult.message || `成功同步 ${syncResult.count || 0} 条历史记录。`,
         });
         setValidationStatus("success");
-        setValidationMessage(syncResult.message || `成功同步 ${syncResult.count || 0} 条记录到 Firestore。`);
-        setPlainTextData(""); // Clear plain text area on success
+        setValidationMessage(syncResult.message || `成功同步 ${syncResult.count || 0} 条历史记录到 Firestore。`);
+        setPlainTextData(""); 
       } else {
         toast({
-          title: "同步失败",
+          title: "历史结果同步失败",
           description: syncResult.message || "服务器报告同步失败。",
           variant: "destructive",
         });
         setValidationStatus("error");
-        setValidationMessage(`同步失败: ${syncResult.message || "未知错误"}`);
+        setValidationMessage(`历史结果同步失败: ${syncResult.message || "未知错误"}`);
       }
     } catch (error: any) {
       console.error("Error calling syncHistoricalResultsToFirestore server action:", error);
       toast({
-        title: "同步出错",
+        title: "历史结果同步出错",
         description: error.message || "调用服务器操作时发生未知错误。",
         variant: "destructive",
       });
       setValidationStatus("error");
-      setValidationMessage(`同步出错: ${error.message || "未知错误"}`);
+      setValidationMessage(`历史结果同步出错: ${error.message || "未知错误"}`);
     } finally {
       setIsProcessing(false);
     }
   };
 
+  const handleUpdateCurrentDrawInfo = async () => {
+    if (adminClaimStatus !== "verified" || !user) {
+      toast({ title: "权限不足", description: "需要管理员权限才能更新。", variant: "destructive" });
+      return;
+    }
+    if (!currentDrawDateTime.trim() || !currentJackpot.trim()) {
+      toast({ title: "输入不完整", description: "请输入开奖日期/时间和预估头奖。", variant: "destructive" });
+      return;
+    }
+
+    setIsUpdatingDrawInfo(true);
+    try {
+      const result = await updateCurrentDrawDisplayInfo(
+        { currentDrawDateTime, currentJackpot },
+        user.uid
+      );
+      if (result.success) {
+        toast({ title: "本期开奖信息更新成功", description: result.message });
+      } else {
+        toast({ title: "更新失败", description: result.message || "无法更新本期开奖信息。", variant: "destructive" });
+      }
+    } catch (error: any) {
+      toast({ title: "更新出错", description: error.message || "更新本期开奖信息时发生错误。", variant: "destructive" });
+    } finally {
+      setIsUpdatingDrawInfo(false);
+    }
+  };
 
   if (isCheckingAdmin || authLoading) {
     return (
@@ -352,9 +409,70 @@ export default function AdminUpdateTotoResultsPage() {
         </Card>
       )}
 
+      <Card className="w-full mb-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Edit3 className="h-5 w-5 text-primary"/>
+            更新本期开奖信息 (首页显示)
+          </CardTitle>
+          <CardDescription>
+            在这里更新将在首页显示的“本期开奖”日期/时间和“预估头奖”金额。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isLoadingDrawInfo ? (
+            <div className="flex items-center space-x-2">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <p>正在加载当前开奖信息...</p>
+            </div>
+          ) : (
+            <>
+              <div>
+                <Label htmlFor="currentDrawDateTime">本期开奖日期/时间</Label>
+                <Input
+                  id="currentDrawDateTime"
+                  value={currentDrawDateTime}
+                  onChange={(e) => setCurrentDrawDateTime(e.target.value)}
+                  placeholder="例如: 周四, 2025年5月29日, 傍晚6点30分"
+                  disabled={isUpdatingDrawInfo}
+                />
+              </div>
+              <div>
+                <Label htmlFor="currentJackpot">本期预估头奖</Label>
+                <Input
+                  id="currentJackpot"
+                  value={currentJackpot}
+                  onChange={(e) => setCurrentJackpot(e.target.value)}
+                  placeholder="例如: $4,500,000 (估计)"
+                  disabled={isUpdatingDrawInfo}
+                />
+              </div>
+            </>
+          )}
+        </CardContent>
+        <CardFooter>
+          <Button 
+            onClick={handleUpdateCurrentDrawInfo} 
+            className="w-full"
+            disabled={isUpdatingDrawInfo || adminClaimStatus !== 'verified' || isLoadingDrawInfo}
+          >
+            {isUpdatingDrawInfo ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <CloudUpload className="mr-2 h-4 w-4" />
+            )}
+            更新本期开奖信息到 Firestore
+          </Button>
+        </CardFooter>
+      </Card>
+
+
       <Card className="w-full">
         <CardHeader>
-          <CardTitle>管理员：更新TOTO开奖结果</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5 text-primary"/>
+             更新历史开奖结果 (Firestore)
+            </CardTitle>
           <CardDescription>
             在下方粘贴**纯文本格式**的开奖结果。系统将解析、验证数据，然后直接将其同步到 Firestore。
             确保文本中的每一条记录都包含5行：日期和期号（制表符分隔），"Winning Numbers"，中奖号码（空格分隔），"Additional Number"，特别号码。多条记录用空行分隔。
@@ -372,6 +490,7 @@ export default function AdminUpdateTotoResultsPage() {
               placeholder={`例如:\nThu, 22 May 2025\tDraw No. 4080\nWinning Numbers\n3 10 32 34 44 48\nAdditional Number\n29\n\n(多条记录请用空行分隔)`}
               rows={10}
               className="mt-2 font-mono text-sm"
+              disabled={isProcessing}
             />
           </div>
 
@@ -387,7 +506,7 @@ export default function AdminUpdateTotoResultsPage() {
             ) : (
               <CloudUpload className="mr-2 h-4 w-4" />
             )}
-            解析文本并同步到 Firestore
+            解析文本并同步历史结果到 Firestore
           </Button>
           {(adminClaimStatus !== 'verified') && (
             <p className="text-xs text-red-600 text-center -mt-4">
@@ -420,3 +539,4 @@ export default function AdminUpdateTotoResultsPage() {
     </div>
   );
 }
+
