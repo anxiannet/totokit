@@ -2,7 +2,7 @@
 "use client"; // Required for admin save button, useAuth, useState, useEffect
 
 import Link from "next/link";
-import { useEffect, useState, useCallback, use } from "react"; // Import use
+import { useEffect, useState, useCallback, use } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -29,12 +29,11 @@ import {
   saveToolPrediction,
   getPredictionForToolAndDraw,
   type ToolPredictionInput,
-  saveMultipleToolPredictions, // Import the new batch save action
+  saveMultipleToolPredictions,
 } from "@/lib/actions";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-
 
 // Client Component for the Admin Save Button
 function AdminSavePredictionButton({
@@ -70,14 +69,15 @@ function AdminSavePredictionButton({
         toolId: toolId,
         toolName: toolName,
         targetDrawNumber: currentDrawNumber,
-        targetDrawDate: "PENDING_DRAW", // Or another suitable placeholder for current predictions
+        targetDrawDate: "PENDING_DRAW",
         predictedNumbers: predictedNumbers,
+        userId: adminUserId, // Include admin's UID
       };
       const result = await saveToolPrediction(predictionData);
 
       if (result.success) {
         toast({ title: "成功", description: result.message || `预测已为第 ${currentDrawNumber} 期保存/更新。` });
-        onSaveSuccess(); // Notify parent to refetch saved prediction
+        onSaveSuccess();
       } else {
         toast({ title: "保存失败", description: result.message || "无法保存预测。", variant: "destructive" });
       }
@@ -104,10 +104,10 @@ function AdminSavePredictionButton({
 export default function SingleNumberToolPage({
   params,
 }: {
-  params: { toolId: string }; // Next.js may pass this as a Promise to Client Components
+  params: { toolId: string };
 }) {
-  const resolvedParams = use(params); // Unwrap the params Promise
-  const { toolId } = resolvedParams; // Access toolId from the resolved params
+  const resolvedParams = use(params);
+  const { toolId } = resolvedParams;
 
   const tool = dynamicTools.find((t) => t.id === toolId);
   const { user } = useAuth();
@@ -144,8 +144,6 @@ export default function SingleNumberToolPage({
   }, [tool, fetchAndSetSavedPrediction]);
 
   useEffect(() => {
-    // This effect handles saving historical predictions (back-testing)
-    // It runs only once when the tool is loaded, or if the tool itself changes.
     if (tool && MOCK_HISTORICAL_DATA.length > 0) {
       const allHistoricalData: HistoricalResult[] = MOCK_HISTORICAL_DATA;
       const recentTenHistoricalDrawsForAnalysis: HistoricalResult[] = allHistoricalData.slice(0, 10);
@@ -171,12 +169,14 @@ export default function SingleNumberToolPage({
             targetDrawNumber: targetDraw.drawNumber,
             targetDrawDate: targetDraw.date,
             predictedNumbers: predictedNumbersForTargetDraw,
+            // userId will be added by saveMultipleToolPredictions if adminUserId is provided
           });
         }
       });
 
       if (predictionsToSave.length > 0) {
-        saveMultipleToolPredictions(predictionsToSave)
+        // Pass admin's UID if available, so historical saves are attributed
+        saveMultipleToolPredictions(predictionsToSave, user?.uid)
           .then(result => {
             if (result.success) {
               // console.log(`Successfully batch saved/updated ${result.savedCount} historical predictions for tool ${tool.id}`);
@@ -189,7 +189,7 @@ export default function SingleNumberToolPage({
           });
       }
     }
-  }, [tool]); // Only re-run if tool changes
+  }, [tool, user?.uid]); // Add user.uid to dependency array
 
 
   if (!tool) {
@@ -275,6 +275,8 @@ export default function SingleNumberToolPage({
   } else if (savedPredictionForTargetDraw && savedPredictionForTargetDraw.length > 0) {
     displayNumbersForCurrentDrawSection = savedPredictionForTargetDraw;
   } else {
+    // If no saved prediction, admins see dynamically generated ones and can save them.
+    // Non-admins see a "not available" message.
     if (isAdmin) {
       displayNumbersForCurrentDrawSection = dynamicallyGeneratedCurrentPrediction;
       currentDrawSectionTitle = `当前动态生成号码 (可保存为第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期预测):`;
@@ -323,22 +325,11 @@ export default function SingleNumberToolPage({
               </p>
             )}
 
-            {isAdmin && showAdminSaveButton && dynamicallyGeneratedCurrentPrediction.length > 0 && (
+            {/* Show save button if admin and either no saved prediction exists OR if there is a saved one (for updating) */}
+            {isAdmin && (showAdminSaveButton || (savedPredictionForTargetDraw && savedPredictionForTargetDraw.length > 0)) && dynamicallyGeneratedCurrentPrediction.length > 0 && (
               <AdminSavePredictionButton
                 toolId={tool.id}
                 toolName={tool.name}
-                predictedNumbers={dynamicallyGeneratedCurrentPrediction}
-                adminUserId={user?.uid || null}
-                onSaveSuccess={fetchAndSetSavedPrediction}
-                currentDrawNumber={OFFICIAL_PREDICTIONS_DRAW_ID}
-              />
-            )}
-             {isAdmin && savedPredictionForTargetDraw && savedPredictionForTargetDraw.length > 0 && (
-              <AdminSavePredictionButton
-                toolId={tool.id}
-                toolName={tool.name}
-                // Admin can update with latest dynamic even if one is saved.
-                // Or, could choose to show the *saved* one here and a different button for "Re-generate & Update"
                 predictedNumbers={dynamicallyGeneratedCurrentPrediction}
                 adminUserId={user?.uid || null}
                 onSaveSuccess={fetchAndSetSavedPrediction}
@@ -458,5 +449,3 @@ export default function SingleNumberToolPage({
     </div>
   );
 }
-
-    
