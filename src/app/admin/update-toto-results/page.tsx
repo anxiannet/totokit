@@ -4,7 +4,6 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-// import { Input } from "@/components/ui/input"; // No longer needed for current draw info
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -39,10 +38,9 @@ function parseDateFromText(dateStr: string): string {
   const parts = dateStr.split(" ");
   if (parts.length < 4) return ""; // e.g., "Thu, 22 May 2025"
 
-  // Attempt to handle formats like "Day, DD Mon YYYY"
-  const dayPartCandidate = parts[1]; // "22" or "22,"
-  const monthPartCandidate = parts[2]; // "May"
-  const yearPartCandidate = parts[3]; // "2025"
+  const dayPartCandidate = parts[1]; 
+  const monthPartCandidate = parts[2]; 
+  const yearPartCandidate = parts[3]; 
 
   if (!dayPartCandidate || !monthPartCandidate || !yearPartCandidate) return "";
 
@@ -116,7 +114,6 @@ export default function AdminUpdateTotoResultsPage() {
       if (info && info.currentDrawDateTime && info.currentJackpot) {
         setCurrentDrawInfoText(`${info.currentDrawDateTime}\n${info.currentJackpot}`);
       } else {
-        // Fallback or defaults if not found in Firestore
         setCurrentDrawInfoText("周四, 2025年5月29日, 傍晚6点30分\n$4,500,000 (估计)");
       }
     } catch (error) {
@@ -126,7 +123,6 @@ export default function AdminUpdateTotoResultsPage() {
         description: "无法从数据库加载当前的开奖信息和头奖金额。",
         variant: "destructive"
       });
-      // Fallback to defaults
       setCurrentDrawInfoText("周四, 2025年5月29日, 傍晚6点30分\n$4,500,000 (估计)");
     } finally {
       setIsLoadingDrawInfo(false);
@@ -146,7 +142,7 @@ export default function AdminUpdateTotoResultsPage() {
         setAdminClaimStatus("not_admin_email");
       }
     }
-  }, [user, authLoading]);
+  }, [user, authLoading]); // Removed checkAdminClaim from dependencies
 
 
   const handleParseTextAndSyncToFirestore = async () => {
@@ -257,6 +253,7 @@ export default function AdminUpdateTotoResultsPage() {
       return;
     }
 
+    // Sort data by drawNumber descending before syncing
     const validatedData = validationResult.data;
     const sortedData = [...validatedData].sort((a, b) => b.drawNumber - a.drawNumber);
     const jsonDataToSync = JSON.stringify(sortedData, null, 2);

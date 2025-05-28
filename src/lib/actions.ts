@@ -4,7 +4,7 @@
 import { generateNumberCombinations as genkitGenerateNumberCombinations } from "@/ai/flows/generate-number-combinations";
 import type { GenerateNumberCombinationsInput, GenerateNumberCombinationsOutput } from "@/ai/flows/generate-number-combinations";
 import type { WeightedCriterion, HistoricalResult, TotoCombination } from "./types";
-import { db, auth as firebaseClientAuthInstance } from "./firebase";
+import { db, auth as firebaseClientAuthInstance } from "./firebase"; // Renamed authInstance to firebaseClientAuthInstance for clarity
 import {
   collection, addDoc, serverTimestamp, query, where,
   getDocs, limit, doc, writeBatch, runTransaction,
@@ -122,7 +122,7 @@ export async function saveToolPrediction(
 
 export async function syncHistoricalResultsToFirestore(
   jsonDataString: string,
-  adminUserId: string | null
+  adminUserId: string | null // Added adminUserId parameter
 ): Promise<{ success: boolean; message: string; count?: number }> {
   console.log("[SYNC_FIRESTORE] Attempting to sync historical results to Firestore.");
   if (!db) {
@@ -151,7 +151,7 @@ export async function syncHistoricalResultsToFirestore(
         continue;
       }
       const resultDocRef = doc(db, "totoResults", String(result.drawNumber));
-      const dataToSet = { ...result, userId: adminUserId }; // Ensure userId is added
+      const dataToSet = { ...result, userId: adminUserId }; // Ensure userId is added for the rule
       batch.set(resultDocRef, dataToSet, { merge: true });
       count++;
     }
@@ -179,7 +179,7 @@ export async function syncHistoricalResultsToFirestore(
 
 export interface SmartPickResultInput {
   userId: string | null;
-  idToken: string | null;
+  idToken: string | null; // Added idToken
   drawId: string;
   combinations: TotoCombination[];
 }
@@ -192,15 +192,18 @@ export async function saveSmartPickResult(
     return { success: false, message: "Firestore 'db' instance is not initialized." };
   }
 
-  const actionAuthUid = firebaseClientAuthInstance.currentUser ? firebaseClientAuthInstance.currentUser.uid : null;
+  const clientAuthUid = firebaseClientAuthInstance.currentUser ? firebaseClientAuthInstance.currentUser.uid : null;
 
   console.log(`[SAVE_SMART_PICK] Attempting to save smart pick.`);
   console.log(`[SAVE_SMART_PICK] Input userId from client (data.userId): ${data.userId}`);
   console.log(`[SAVE_SMART_PICK] Input ID Token (present): ${!!data.idToken}`);
-  console.log(`[SAVE_SMART_PICK] Firebase SDK auth.currentUser.uid inside action: ${actionAuthUid}`);
+  console.log(`[SAVE_SMART_PICK] Firebase SDK auth.currentUser.uid inside action: ${clientAuthUid}`);
+
 
   try {
+    // Transform combinations from number[][] to Array<{ numbers: number[] }>
     const transformedCombinations = data.combinations.map(combo => ({ numbers: combo }));
+
     const dataToSave = {
       userId: data.userId,
       drawId: data.drawId,
@@ -221,7 +224,7 @@ export async function saveSmartPickResult(
       errorMessage += error.message;
        const firebaseError = error as any;
        if (firebaseError.code === 'permission-denied' || firebaseError.code === 7 || firebaseError.code === 'PERMISSION_DENIED') {
-        errorMessage += ` (Firestore权限不足。尝试保存的userId: ${data.userId}. 服务器端SDK识别的用户UID: ${actionAuthUid}. 请确认Firestore安全规则已正确部署，并且客户端已重新登录以刷新权限。)`;
+        errorMessage += ` (Firestore权限不足。尝试保存的userId: ${data.userId}. 服务器端SDK识别的用户UID: ${clientAuthUid}. 请确认Firestore安全规则已正确部署，并且客户端已重新登录以刷新权限。)`;
       }
     } else {
       errorMessage += "未知错误";
