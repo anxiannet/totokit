@@ -10,12 +10,12 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"; // Removed CardFooter as it's not used
+} from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, TrendingUp, TrendingDown, Info, Target, Loader2, Save, AlertCircle } from "lucide-react";
-import type { HistoricalResult, TotoCombination } from "@/lib/types";
-import { MOCK_HISTORICAL_DATA } from "@/lib/types";
+import type { HistoricalResult } from "@/lib/types";
+import { MOCK_HISTORICAL_DATA, OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types"; // Import OFFICIAL_PREDICTIONS_DRAW_ID
 import { NumberPickingToolDisplay } from "@/components/toto/NumberPickingToolDisplay";
 import { FavoriteStarButton } from "@/components/toto/FavoriteStarButton";
 import {
@@ -25,24 +25,23 @@ import {
 } from "@/lib/totoUtils";
 import { zhCN } from "date-fns/locale";
 import { dynamicTools, type NumberPickingTool } from "@/lib/numberPickingAlgos";
-import { 
-  saveToolPrediction, // For historical back-testing logs
-  saveOfficialToolPrediction, 
-  getOfficialToolPrediction 
+import {
+  saveToolPrediction,
+  getPredictionForToolAndDraw,
 } from "@/lib/actions";
+import type { ToolPredictionInput } from "@/lib/actions";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
-const OFFICIAL_PREDICTIONS_DRAW_ID = "4082"; // Consistent draw ID for official predictions
 
 // Client Component for the Admin Save Button
 function AdminSavePredictionButton({
   toolId,
   toolName,
-  predictedNumbers,
+  predictedNumbers, // These are the dynamically generated numbers
   adminUserId,
-  onSaveSuccess, // Callback to potentially refresh displayed official prediction
+  onSaveSuccess,
 }: {
   toolId: string;
   toolName: string;
@@ -64,15 +63,23 @@ function AdminSavePredictionButton({
     }
     setIsSaving(true);
     try {
-      const result = await saveOfficialToolPrediction(toolId, toolName, predictedNumbers, adminUserId);
+      const predictionData: ToolPredictionInput = {
+        toolId: toolId,
+        toolName: toolName,
+        targetDrawNumber: OFFICIAL_PREDICTIONS_DRAW_ID, // Save for the official target draw
+        targetDrawDate: "PENDING_DRAW", // Or another suitable placeholder
+        predictedNumbers: predictedNumbers,
+      };
+      const result = await saveToolPrediction(predictionData);
+
       if (result.success) {
-        toast({ title: "成功", description: result.message || "官方预测已保存/更新。" });
-        onSaveSuccess(); // Notify parent to refetch official prediction
+        toast({ title: "成功", description: result.message || `预测已为第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期保存/更新。` });
+        onSaveSuccess(); // Notify parent to refetch saved prediction
       } else {
-        toast({ title: "保存失败", description: result.message || "无法保存官方预测。", variant: "destructive" });
+        toast({ title: "保存失败", description: result.message || "无法保存预测。", variant: "destructive" });
       }
     } catch (error: any) {
-      toast({ title: "保存出错", description: error.message || "保存官方预测时发生错误。", variant: "destructive" });
+      toast({ title: "保存出错", description: error.message || "保存预测时发生错误。", variant: "destructive" });
     } finally {
       setIsSaving(false);
     }
@@ -85,7 +92,7 @@ function AdminSavePredictionButton({
       ) : (
         <Save className="mr-2 h-4 w-4" />
       )}
-      为第 {OFFICIAL_PREDICTIONS_DRAW_ID} 期保存/更新官方预测
+      为第 {OFFICIAL_PREDICTIONS_DRAW_ID} 期保存/更新预测
     </Button>
   );
 }
@@ -99,45 +106,46 @@ export default function SingleNumberToolPage({
   const { toolId } = params;
   const tool = dynamicTools.find((t) => t.id === toolId);
   const { user } = useAuth();
-  const { toast } = useToast(); // Though not directly used here, good to have if needed
+  const { toast } = useToast(); // Added useToast
 
+  // State for dynamically generated numbers (used by admin as basis for saving)
   const [dynamicallyGeneratedCurrentPrediction, setDynamicallyGeneratedCurrentPrediction] = useState<number[]>([]);
-  const [officialSavedPrediction, setOfficialSavedPrediction] = useState<number[] | null>(null);
-  const [isLoadingOfficialPrediction, setIsLoadingOfficialPrediction] = useState(true);
+  // State for the prediction loaded from Firestore for OFFICIAL_PREDICTIONS_DRAW_ID
+  const [savedPredictionForTargetDraw, setSavedPredictionForTargetDraw] = useState<number[] | null>(null);
+  const [isLoadingSavedPrediction, setIsLoadingSavedPrediction] = useState(true);
+
 
   const isAdmin = user && user.email === "admin@totokit.com";
 
-  const fetchAndSetOfficialPrediction = async () => {
+  const fetchAndSetSavedPrediction = async () => {
     if (!tool) return;
-    setIsLoadingOfficialPrediction(true);
+    setIsLoadingSavedPrediction(true);
     try {
-      const saved = await getOfficialToolPrediction(tool.id);
-      setOfficialSavedPrediction(saved);
+      const saved = await getPredictionForToolAndDraw(tool.id, OFFICIAL_PREDICTIONS_DRAW_ID);
+      setSavedPredictionForTargetDraw(saved);
     } catch (error) {
-      console.error("Error fetching official prediction:", error);
-      setOfficialSavedPrediction(null);
+      console.error(`Error fetching saved prediction for tool ${tool.id}, draw ${OFFICIAL_PREDICTIONS_DRAW_ID}:`, error);
+      setSavedPredictionForTargetDraw(null); // Ensure it's null on error
     } finally {
-      setIsLoadingOfficialPrediction(false);
+      setIsLoadingSavedPrediction(false);
     }
   };
 
   useEffect(() => {
     if (tool) {
-      // Calculate dynamic prediction for admin preview
+      // Calculate dynamic prediction (admin might use this as basis for saving)
       const allHistoricalDataForDynamic: HistoricalResult[] = MOCK_HISTORICAL_DATA;
       const absoluteLatestTenDrawsForDynamic: HistoricalResult[] = allHistoricalDataForDynamic.slice(0, 10);
       const dynamicPred = tool.algorithmFn(absoluteLatestTenDrawsForDynamic);
       setDynamicallyGeneratedCurrentPrediction(dynamicPred);
-      
-      // Fetch any existing official prediction
-      fetchAndSetOfficialPrediction();
+
+      // Fetch any existing prediction saved for the OFFICIAL_PREDICTIONS_DRAW_ID
+      fetchAndSetSavedPrediction();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tool]); // Rerun if tool object changes (e.g., on initial load)
+  }, [tool]); // Re-run if tool changes
 
   if (!tool) {
-    // This part will be handled by Next.js if toolId is invalid based on generateStaticParams,
-    // but keep a fallback.
     return (
       <div className="container mx-auto px-4 py-8 md:px-6 md:py-12 text-center">
         <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)]">
@@ -153,8 +161,8 @@ export default function SingleNumberToolPage({
       </div>
     );
   }
-  
-  // Historical performance section (remains unchanged in its logic)
+
+  // Historical performance section
   const allHistoricalData: HistoricalResult[] = MOCK_HISTORICAL_DATA;
   const recentTenHistoricalDrawsForAnalysis: HistoricalResult[] = allHistoricalData.slice(0, 10);
 
@@ -177,20 +185,21 @@ export default function SingleNumberToolPage({
     } else {
         console.warn(`Algorithm function for tool ${tool.id} is undefined.`);
     }
-    
+
+    // Save historical prediction (this already happens)
     if (predictedNumbersForTargetDraw.length > 0) {
       const predictionData: ToolPredictionInput = {
         toolId: tool.id,
         toolName: tool.name,
         targetDrawNumber: targetDraw.drawNumber,
-        targetDrawDate: targetDraw.date,
+        targetDrawDate: targetDraw.date, // This is for historical back-testing
         predictedNumbers: predictedNumbersForTargetDraw,
       };
       saveToolPrediction(predictionData).catch(error => {
         // console.error(`Error saving prediction for tool ${tool.id}, draw ${targetDraw.drawNumber}:`, error);
       });
     }
-    
+
     const hitDetails = calculateHitDetails(
       predictedNumbersForTargetDraw,
       targetDraw
@@ -243,15 +252,27 @@ export default function SingleNumberToolPage({
     </div>
   );
 
-  let displayNumbersForOfficialSection: number[] = [];
-  let officialSectionTitle = `第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期官方预测号码:`;
+  // Determine what numbers to display in the main prediction section
+  let displayNumbersForCurrentDrawSection: number[] = [];
+  let currentDrawSectionTitle = `第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期预测号码:`;
+  let showAdminSaveButton = false;
 
-  if (officialSavedPrediction && officialSavedPrediction.length > 0) {
-    displayNumbersForOfficialSection = officialSavedPrediction;
-  } else if (isAdmin) {
-    // Admin sees dynamic prediction if no official one is saved
-    displayNumbersForOfficialSection = dynamicallyGeneratedCurrentPrediction;
-    officialSectionTitle = `当前动态生成号码 (可保存为第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期官方预测):`;
+  if (isLoadingSavedPrediction) {
+    // Show loader (handled below)
+  } else if (savedPredictionForTargetDraw && savedPredictionForTargetDraw.length > 0) {
+    // If a prediction for DRAW_ID is saved in Firestore, show that
+    displayNumbersForCurrentDrawSection = savedPredictionForTargetDraw;
+  } else {
+    // No saved prediction for DRAW_ID in Firestore
+    if (isAdmin) {
+      // If admin and no saved prediction, show the dynamically generated one
+      displayNumbersForCurrentDrawSection = dynamicallyGeneratedCurrentPrediction;
+      currentDrawSectionTitle = `当前动态生成号码 (可保存为第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期预测):`;
+      showAdminSaveButton = true; // Admin can save these dynamic numbers
+    } else {
+      // Non-admin and no saved prediction, displayNumbers remains empty
+      // A message will be shown below
+    }
   }
 
 
@@ -277,52 +298,61 @@ export default function SingleNumberToolPage({
           <CardDescription>{tool.description}</CardDescription>
         </CardHeader>
         <CardContent>
-          {/* Official Prediction Section */}
+          {/* Prediction for Target Draw Section */}
           <div className="mb-6 pb-6 border-b">
             <h4 className="text-md font-semibold mb-2 flex items-center gap-1.5">
                 <Target className="h-5 w-5 text-primary" />
-                {officialSectionTitle}
+                {currentDrawSectionTitle}
             </h4>
-            {isLoadingOfficialPrediction ? (
+            {isLoadingSavedPrediction ? (
               <div className="flex items-center space-x-2">
                 <Loader2 className="h-5 w-5 animate-spin" />
-                <p>正在加载官方预测...</p>
+                <p>正在加载为第 {OFFICIAL_PREDICTIONS_DRAW_ID} 期保存的预测...</p>
               </div>
-            ) : displayNumbersForOfficialSection.length > 0 ? (
-                <NumberPickingToolDisplay numbers={displayNumbersForOfficialSection} />
+            ) : displayNumbersForCurrentDrawSection.length > 0 ? (
+                <NumberPickingToolDisplay numbers={displayNumbersForCurrentDrawSection} />
             ) : (
-                <p className="text-sm text-muted-foreground italic">
-                  {isAdmin ? "当前算法未生成号码。" : `本工具第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期官方预测号码尚未由管理员生成。`}
-                </p>
+              <p className="text-sm text-muted-foreground italic">
+                {isAdmin && !showAdminSaveButton ? "当前算法未生成号码。" : `第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期预测号码尚未由管理员生成。`}
+              </p>
             )}
-            
-            {isAdmin && (
-              <AdminSavePredictionButton 
+
+            {isAdmin && showAdminSaveButton && dynamicallyGeneratedCurrentPrediction.length > 0 && (
+              <AdminSavePredictionButton
                 toolId={tool.id}
                 toolName={tool.name}
-                predictedNumbers={dynamicallyGeneratedCurrentPrediction} 
+                predictedNumbers={dynamicallyGeneratedCurrentPrediction}
                 adminUserId={user?.uid || null}
-                onSaveSuccess={fetchAndSetOfficialPrediction} // Refetch after save
+                onSaveSuccess={fetchAndSetSavedPrediction} // Refetch after save
               />
             )}
-            {!isAdmin && !isLoadingOfficialPrediction && (!officialSavedPrediction || officialSavedPrediction.length === 0) && (
+             {isAdmin && savedPredictionForTargetDraw && savedPredictionForTargetDraw.length > 0 && (
+              <AdminSavePredictionButton
+                toolId={tool.id}
+                toolName={tool.name}
+                predictedNumbers={dynamicallyGeneratedCurrentPrediction} // Admin can still update with latest dynamic
+                adminUserId={user?.uid || null}
+                onSaveSuccess={fetchAndSetSavedPrediction}
+              />
+            )}
+            {!isAdmin && !isLoadingSavedPrediction && (!savedPredictionForTargetDraw || savedPredictionForTargetDraw.length === 0) && (
                  <Alert variant="default" className="mt-3">
                     <AlertCircle className="h-4 w-4" />
                     <AlertTitle>提示</AlertTitle>
                     <AlertDescription>
-                        本工具当前开奖期 (第 {OFFICIAL_PREDICTIONS_DRAW_ID} 期) 的官方预测号码尚未由管理员生成。
+                        本工具对第 {OFFICIAL_PREDICTIONS_DRAW_ID} 期的预测号码尚未由管理员生成。
                     </AlertDescription>
                 </Alert>
             )}
           </div>
-          
+
           {/* Historical Performance Section */}
-          <div className="pt-0"> {/* Adjusted padding */}
+          <div className="pt-0">
             <h4 className="text-md font-semibold mb-3">
               历史开奖动态预测表现 (最近10期):
             </h4>
             {historicalPerformances.length > 0 ? (
-              <ScrollArea className="h-[calc(100vh-500px)] rounded-md border p-3 space-y-4 bg-background/50"> {/* Adjusted height */}
+              <ScrollArea className="h-[calc(100vh-550px)] rounded-md border p-3 space-y-4 bg-background/50">
                 {historicalPerformances.map((performance) => {
                   if (!performance) return null;
                   const { targetDraw, predictedNumbersForTargetDraw, hitDetails, hitRate, hasAnyHit } = performance;

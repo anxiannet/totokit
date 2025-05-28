@@ -4,7 +4,8 @@
 import { generateNumberCombinations as genkitGenerateNumberCombinations } from "@/ai/flows/generate-number-combinations";
 import type { GenerateNumberCombinationsInput, GenerateNumberCombinationsOutput } from "@/ai/flows/generate-number-combinations";
 import type { WeightedCriterion, HistoricalResult, TotoCombination } from "./types";
-import { db, auth as firebaseClientAuthInstance } from "./firebase";
+import { OFFICIAL_PREDICTIONS_DRAW_ID } from "./types"; // Import from new location
+import { db, auth as firebaseClientAuthInstance } from "./firebase"; // Renamed to avoid conflict
 import {
   collection, addDoc, serverTimestamp, query, where,
   getDocs, limit, doc, writeBatch, runTransaction,
@@ -75,8 +76,8 @@ export async function generateTotoPredictions(
 export interface ToolPredictionInput {
   toolId: string;
   toolName: string;
-  targetDrawNumber: number;
-  targetDrawDate: string;
+  targetDrawNumber: number | string;
+  targetDrawDate?: string; // Optional, used for historical back-testing and special values like "PENDING_DRAW"
   predictedNumbers: number[];
 }
 
@@ -90,33 +91,34 @@ export async function saveToolPrediction(
   }
   try {
     const toolPredictionsCol = collection(db, "toolPredictions");
+    // Use toolId + targetDrawNumber as doc ID for upsert
+    const docId = `${data.toolId}_${data.targetDrawNumber}`;
+    const predictionDocRef = doc(toolPredictionsCol, docId);
 
-    const q = query(
-      toolPredictionsCol,
-      where("toolId", "==", data.toolId),
-      where("targetDrawNumber", "==", data.targetDrawNumber),
-      limit(1)
-    );
-    const querySnapshot = await getDocs(q);
-
-    if (!querySnapshot.empty) {
-      const existingDocId = querySnapshot.docs[0].id;
-      console.log(`[SAVE_TOOL_PREDICTION_INFO] Prediction already exists for toolId: ${data.toolId}, targetDrawNumber: ${data.targetDrawNumber}. Doc ID: ${existingDocId}`);
-      return { success: true, message: "Prediction already exists for this tool and draw.", predictionId: existingDocId };
+    const dataToSave: any = {
+      toolId: data.toolId,
+      toolName: data.toolName,
+      targetDrawNumber: data.targetDrawNumber,
+      predictedNumbers: data.predictedNumbers,
+      createdAt: serverTimestamp(),
+    };
+    if (data.targetDrawDate) { // Only include if provided
+      dataToSave.targetDrawDate = data.targetDrawDate;
     }
 
-    const docRef = await addDoc(toolPredictionsCol, {
-      ...data,
-      createdAt: serverTimestamp(),
-    });
-    console.log(`[SAVE_TOOL_PREDICTION_SUCCESS] Tool prediction saved successfully with ID: ${docRef.id} for tool: ${data.toolId}, draw: ${data.targetDrawNumber}`);
-    return { success: true, message: "Tool prediction saved successfully.", predictionId: docRef.id };
+    // Using setDoc with merge:true to create or update the document
+    await setDoc(predictionDocRef, dataToSave, { merge: true });
+
+    console.log(`[SAVE_TOOL_PREDICTION_SUCCESS] Tool prediction saved/updated successfully with ID: ${predictionDocRef.id} for tool: ${data.toolId}, draw: ${data.targetDrawNumber}`);
+    return { success: true, message: "Tool prediction saved/updated successfully.", predictionId: predictionDocRef.id };
+
   } catch (error) {
     console.error("[SAVE_TOOL_PREDICTION_ERROR] Error saving tool prediction to Firestore:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return { success: false, message: `Failed to save tool prediction: ${errorMessage}` };
   }
 }
+
 
 export interface SmartPickResultInput {
   userId: string | null;
@@ -128,9 +130,11 @@ export interface SmartPickResultInput {
 export async function saveSmartPickResult(
   data: SmartPickResultInput
 ): Promise<{ success: boolean; message?: string; docId?: string }> {
-  console.log(`[SAVE_SMART_PICK] Received request. User ID from client: ${data.userId}, Draw ID: ${data.drawId}, ID Token present: ${!!data.idToken}`);
-  const clientAuthUid = firebaseClientAuthInstance.currentUser ? firebaseClientAuthInstance.currentUser.uid : null;
-  console.log(`[SAVE_SMART_PICK] Firebase SDK auth.currentUser.uid inside action: ${clientAuthUid || 'NULL'}`);
+  const clientAuth = firebaseClientAuthInstance;
+  const sdkUserUid = clientAuth.currentUser ? clientAuth.currentUser.uid : null;
+
+  console.log(`[SAVE_SMART_PICK] Received request. Client-provided userId: ${data.userId}, Draw ID: ${data.drawId}, ID Token present: ${!!data.idToken}`);
+  console.log(`[SAVE_SMART_PICK] Firebase SDK auth.currentUser.uid inside action: ${sdkUserUid || "NULL"}`);
 
 
   if (!db) {
@@ -139,12 +143,13 @@ export async function saveSmartPickResult(
   }
 
   try {
+    // Transform [[1,2,3],[4,5,6]] to [{numbers: [1,2,3]}, {numbers: [4,5,6]}]
     const transformedCombinations = data.combinations.map(combo => ({ numbers: combo }));
 
     const dataToSave = {
       userId: data.userId,
       drawId: data.drawId,
-      combinations: transformedCombinations,
+      combinations: transformedCombinations, // Use transformed array
       createdAt: serverTimestamp(),
     };
 
@@ -155,8 +160,10 @@ export async function saveSmartPickResult(
   } catch (error: any) {
     console.error("[SAVE_SMART_PICK_ERROR] Error saving smart pick result to Firestore:", error);
     let errorMessage = "保存智能选号结果失败: ";
-     if (error.code === 'permission-denied' || error.code === 7 || error.code === 'PERMISSION_DENIED') {
-      errorMessage += `Firestore权限不足。尝试保存的userId: ${data.userId}. 服务器端SDK识别的用户UID: ${clientAuthUid}. 请确认Firestore安全规则已正确部署，并且客户端已重新登录以刷新权限。`;
+    if (error.code === 'permission-denied' || error.code === 7 || error.code === 'PERMISSION_DENIED') {
+      errorMessage += `Firestore权限不足。尝试保存的userId: ${data.userId}. 服务器端SDK识别的用户UID: ${sdkUserUid}. 请确认Firestore安全规则已正确部署，并且客户端已重新登录以刷新权限。`;
+    } else if (error.code === 'invalid-argument' && error.message.includes('Nested arrays are not supported')) {
+      errorMessage += "数据结构错误，可能包含不支持的嵌套数组。这通常在保存组合时发生。";
     } else if (error instanceof Error) {
       errorMessage += error.message;
     } else {
@@ -165,7 +172,6 @@ export async function saveSmartPickResult(
     return { success: false, message: errorMessage };
   }
 }
-
 
 export async function syncHistoricalResultsToFirestore(
   jsonDataString: string,
@@ -198,7 +204,8 @@ export async function syncHistoricalResultsToFirestore(
         continue;
       }
       const resultDocRef = doc(db, "totoResults", String(result.drawNumber));
-      const dataToSet = { ...result, userId: adminUserId };
+      // Add adminUserId to the document being written
+      const dataToSet = { ...result, userId: adminUserId }; // Ensure 'userId' field for rule
       batch.set(resultDocRef, dataToSet, { merge: true });
       count++;
     }
@@ -213,7 +220,7 @@ export async function syncHistoricalResultsToFirestore(
       specificMessage += error.message;
       const firebaseError = error as any;
       if (firebaseError.code === 'permission-denied' || firebaseError.code === 'PERMISSION_DENIED' || firebaseError.code === 7) {
-        specificMessage += " (Firestore权限被拒绝。请确认管理员声明已在客户端和服务端生效（可能需要重新登录以刷新ID令牌），且Firestore规则配置正确并已部署。) ";
+        specificMessage += " (Firestore权限被拒绝。请确认管理员UID正确，且Firestore规则允许此UID写入。可能需要管理员重新登录以刷新ID令牌。) ";
       }
     } else {
       specificMessage += "未知错误";
@@ -226,7 +233,7 @@ export async function syncHistoricalResultsToFirestore(
 export async function updateCurrentDrawDisplayInfo(
   currentDrawDateTime: string,
   currentJackpot: string,
-  adminUserId: string | null
+  adminUserId: string | null // Changed from updatedBy to adminUserId for clarity, will save as 'userId'
 ): Promise<{ success: boolean; message?: string }> {
   if (!db) {
     return { success: false, message: "Firestore 'db' instance is not initialized." };
@@ -245,7 +252,7 @@ export async function updateCurrentDrawDisplayInfo(
     await setDoc(docRef, {
       currentDrawDateTime,
       currentJackpot,
-      userId: adminUserId, 
+      userId: adminUserId, // Save admin's UID as 'userId' to match rule
       updatedAt: serverTimestamp(),
     }, { merge: true });
     console.log(`[UPDATE_DRAW_INFO_SUCCESS] Current draw info updated by admin ${adminUserId}.`);
@@ -283,7 +290,7 @@ export interface UserFavoriteTool {
   userId: string;
   toolId: string;
   toolName?: string;
-  favoritedAt: typeof Timestamp;
+  favoritedAt: Timestamp;
 }
 
 export async function getUserFavoriteTools(userId: string): Promise<string[]> {
@@ -429,114 +436,65 @@ export async function getAllHistoricalResultsFromFirestore(): Promise<Historical
   }
 }
 
-// --- Official Tool Predictions Actions ---
-const OFFICIAL_PREDICTIONS_DRAW_ID = "4082"; // Define the draw ID for which official predictions are made
 
-export interface OfficialToolPredictionData {
-  toolId: string;
-  toolName: string;
-  predictedNumbers: number[];
-  drawId: string; 
-  generatedBy: string; // Admin UID
-  generatedAt: Timestamp;
-}
-
-export async function saveOfficialToolPrediction(
+// Fetches predictions for a specific tool and target draw number.
+export async function getPredictionForToolAndDraw(
   toolId: string,
-  toolName: string,
-  predictedNumbers: number[],
-  adminUserId: string | null
-): Promise<{ success: boolean; message?: string }> {
-  if (!db) {
-    return { success: false, message: "数据库服务未初始化。" };
-  }
-  if (!adminUserId) {
-    return { success: false, message: "管理员未登录，无法保存官方预测。" };
-  }
-  if (!toolId || !predictedNumbers || predictedNumbers.length === 0) {
-    return { success: false, message: "工具ID或预测号码不能为空。" };
-  }
-
-  // Document ID will be toolId_drawId for easier querying if needed for other draws later
-  const docId = `${toolId}_${OFFICIAL_PREDICTIONS_DRAW_ID}`;
-  const predictionDocRef = doc(db, "officialToolPredictions", docId);
-
-  const dataToSave: OfficialToolPredictionData = {
-    toolId,
-    toolName, // Save toolName for easier display if needed
-    predictedNumbers,
-    drawId: OFFICIAL_PREDICTIONS_DRAW_ID,
-    generatedBy: adminUserId,
-    generatedAt: Timestamp.now(),
-  };
-
-  try {
-    // Using setDoc with merge:true will create the document if it doesn't exist,
-    // or update it if it does. This is suitable for "latest official prediction".
-    await setDoc(predictionDocRef, dataToSave, { merge: true });
-    console.log(`[SAVE_OFFICIAL_PREDICTION_SUCCESS] Official prediction for tool ${toolId} (Draw ${OFFICIAL_PREDICTIONS_DRAW_ID}) saved/updated by admin ${adminUserId}.`);
-    return { success: true, message: "官方预测已保存/更新。" };
-  } catch (error: any) {
-    console.error("[SAVE_OFFICIAL_PREDICTION_ERROR] Error saving official tool prediction:", error);
-    let errorMessage = "保存官方预测失败: ";
-     if (error.code === 'permission-denied' || error.code === 7 || error.code === 'PERMISSION_DENIED') {
-      errorMessage += `Firestore权限不足。请确认管理员声明已正确设置并已重新登录。`;
-    } else if (error instanceof Error) {
-      errorMessage += error.message;
-    } else {
-      errorMessage += "未知错误";
-    }
-    return { success: false, message: errorMessage };
-  }
-}
-
-export async function getOfficialToolPrediction(
-  toolId: string
+  targetDrawNumber: string | number
 ): Promise<number[] | null> {
   if (!db) {
-    console.error("[GET_OFFICIAL_PREDICTION_ERROR] Firestore 'db' instance is not initialized.");
+    console.error("[GET_PREDICTION_FOR_TOOL_DRAW_ERROR] Firestore 'db' instance is not initialized.");
     return null;
   }
-  const docId = `${toolId}_${OFFICIAL_PREDICTIONS_DRAW_ID}`;
-  const predictionDocRef = doc(db, "officialToolPredictions", docId);
+  const docId = `${toolId}_${targetDrawNumber}`;
+  const predictionDocRef = doc(db, "toolPredictions", docId);
 
   try {
     const docSnap = await getDoc(predictionDocRef);
     if (docSnap.exists()) {
-      const data = docSnap.data() as OfficialToolPredictionData; // Cast to the defined type
-      return data.predictedNumbers || null;
+      const data = docSnap.data();
+      // Ensure 'predictedNumbers' exists and is an array
+      if (data && Array.isArray(data.predictedNumbers)) {
+        return data.predictedNumbers as number[];
+      }
+      console.warn(`[GET_PREDICTION_FOR_TOOL_DRAW_WARN] Document ${docId} exists but 'predictedNumbers' is missing or not an array.`);
+      return null;
     }
-    console.log(`[GET_OFFICIAL_PREDICTION_INFO] No official prediction found for tool ${toolId}, draw ${OFFICIAL_PREDICTIONS_DRAW_ID}.`);
+    console.log(`[GET_PREDICTION_FOR_TOOL_DRAW_INFO] No prediction found for tool ${toolId}, draw ${targetDrawNumber} (docId: ${docId}).`);
     return null;
   } catch (error) {
-    console.error(`[GET_OFFICIAL_PREDICTION_ERROR] Error fetching official prediction for tool ${toolId}:`, error);
+    console.error(`[GET_PREDICTION_FOR_TOOL_DRAW_ERROR] Error fetching prediction for tool ${toolId}, draw ${targetDrawNumber}:`, error);
     return null;
   }
 }
 
-export async function getAllOfficialToolPredictionsForCurrentDraw(): Promise<Record<string, number[]>> {
+// Fetches all tool predictions for a specific target draw number.
+export async function getPredictionsForDraw(
+  targetDrawNumber: string | number
+): Promise<Record<string, number[]>> {
   if (!db) {
-    console.error("[GET_ALL_OFFICIAL_PREDICTIONS_ERROR] Firestore 'db' instance is not initialized.");
+    console.error("[GET_PREDICTIONS_FOR_DRAW_ERROR] Firestore 'db' instance is not initialized.");
     return {};
   }
-  
+
   const predictionsMap: Record<string, number[]> = {};
-  const predictionsCol = collection(db, "officialToolPredictions");
-  // Query for documents matching the current official draw ID
-  const q = query(predictionsCol, where("drawId", "==", OFFICIAL_PREDICTIONS_DRAW_ID));
+  const predictionsCol = collection(db, "toolPredictions");
+  const q = query(predictionsCol, where("targetDrawNumber", "==", targetDrawNumber));
 
   try {
     const querySnapshot = await getDocs(q);
     querySnapshot.forEach((docSnap) => {
-      const data = docSnap.data() as OfficialToolPredictionData;
-      if (data.toolId && data.predictedNumbers) {
-        predictionsMap[data.toolId] = data.predictedNumbers;
+      const data = docSnap.data();
+      if (data.toolId && data.predictedNumbers && Array.isArray(data.predictedNumbers)) {
+        predictionsMap[data.toolId] = data.predictedNumbers as number[];
+      } else {
+        console.warn(`[GET_PREDICTIONS_FOR_DRAW_WARN] Document ${docSnap.id} for draw ${targetDrawNumber} has invalid structure.`);
       }
     });
-    console.log(`[GET_ALL_OFFICIAL_PREDICTIONS_INFO] Fetched ${Object.keys(predictionsMap).length} official predictions for draw ${OFFICIAL_PREDICTIONS_DRAW_ID}.`);
+    console.log(`[GET_PREDICTIONS_FOR_DRAW_INFO] Fetched ${Object.keys(predictionsMap).length} predictions for draw ${targetDrawNumber}.`);
     return predictionsMap;
   } catch (error) {
-    console.error(`[GET_ALL_OFFICIAL_PREDICTIONS_ERROR] Error fetching all official predictions for draw ${OFFICIAL_PREDICTIONS_DRAW_ID}:`, error);
+    console.error(`[GET_PREDICTIONS_FOR_DRAW_ERROR] Error fetching predictions for draw ${targetDrawNumber}:`, error);
     return {};
   }
 }

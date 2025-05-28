@@ -6,6 +6,7 @@ export type TotoCombination = number[];
 export const TOTO_NUMBER_RANGE = { min: 1, max: 49 };
 export const TOTO_COMBINATION_LENGTH = 6;
 
+// Define the schema first
 export const HistoricalResultSchema = z.object({
   drawNumber: z.number(),
   date: z.string().regex(
@@ -20,6 +21,7 @@ export const HistoricalResultSchema = z.object({
 
 // Derive the TypeScript interface from the Zod schema
 export interface HistoricalResult extends z.infer<typeof HistoricalResultSchema> {}
+
 
 // Mock historical data for development
 export const MOCK_HISTORICAL_DATA: HistoricalResult[] = [
@@ -176,3 +178,6 @@ export interface AnalysisData {
   oddEvenRatio: { odd: number, even: number, percentage: number }[];
   // Add more analysis data structures as needed
 }
+
+// --- Tool Predictions for a Specific Target Draw (e.g., "4082") ---
+export const OFFICIAL_PREDICTIONS_DRAW_ID = "4082";
