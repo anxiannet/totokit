@@ -13,9 +13,9 @@ import { ArrowLeft, CheckCircle, XCircle, Info, Loader2, ShieldAlert, RefreshCw,
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { getIdTokenResult } from "firebase/auth";
+// Removed: import { getIdTokenResult } from "firebase/auth"; // Not directly used in this simplified check
 import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
-import { auth as firebaseAuthInstance } from "@/lib/firebase";
+import { auth as firebaseAuthInstance } from "@/lib/firebase"; // Named import
 import { syncHistoricalResultsToFirestore } from "@/lib/actions";
 import { Separator } from "@/components/ui/separator";
 
@@ -105,7 +105,6 @@ export default function AdminUpdateTotoResultsPage() {
       setIsCheckingAdmin(false);
       if (user && user.email === adminEmail) {
         setIsAdminByEmail(true);
-        // setJsonData(JSON.stringify(MOCK_HISTORICAL_DATA, null, 2)); // Already initialized
         checkAdminClaim();
       } else {
         setIsAdminByEmail(false);
@@ -129,7 +128,6 @@ export default function AdminUpdateTotoResultsPage() {
         setValidationStatus("success");
         setValidationMessage("JSON数据有效！请按照以下步骤更新应用数据，或通过云函数/服务器操作同步到Firestore。");
         setValidatedJsonOutput(JSON.stringify(sortedData, null, 2));
-        // Update jsonData with the sorted version as well to keep it consistent
         setJsonData(JSON.stringify(sortedData, null, 2));
       } else {
         setValidationStatus("error");
@@ -148,7 +146,7 @@ export default function AdminUpdateTotoResultsPage() {
       return;
     }
 
-    const entries = plainTextData.trim().split(/\n\s*\n/); // Split by one or more blank lines
+    const entries = plainTextData.trim().split(/\n\s*\n/);
     const newResults: HistoricalResult[] = [];
     let errors: string[] = [];
 
@@ -160,7 +158,6 @@ export default function AdminUpdateTotoResultsPage() {
       }
 
       try {
-        // Line 1: Day, DD Mon YYYY\tDraw No. NNNN
         const firstLineParts = lines[0].split('\t');
         if (firstLineParts.length < 2) {
           errors.push(`记录 ${index + 1}: 第一行格式错误，无法分离日期和期号。`);
@@ -180,14 +177,12 @@ export default function AdminUpdateTotoResultsPage() {
           return;
         }
 
-        // Line 3: Winning Numbers (N N N N N N)
         const numbers = lines[2].split(/\s+/).map(n => parseInt(n, 10)).filter(n => !isNaN(n));
         if (numbers.length !== 6) {
           errors.push(`记录 ${index + 1}: 中奖号码必须是6个数字。找到: ${numbers.join(', ')}`);
           return;
         }
 
-        // Line 5: Additional Number (N)
         const additionalNumber = parseInt(lines[4], 10);
         if (isNaN(additionalNumber)) {
           errors.push(`记录 ${index + 1}: 特别号码 "${lines[4]}" 解析失败。`);
@@ -196,7 +191,6 @@ export default function AdminUpdateTotoResultsPage() {
 
         const historicalResult: HistoricalResult = { drawNumber, date, numbers, additionalNumber };
         
-        // Validate with Zod
         const validation = HistoricalResultSchema.safeParse(historicalResult);
         if (!validation.success) {
             errors.push(`记录 ${index + 1} (期号 ${drawNumber}): 验证失败 - ${validation.error.issues.map(i => i.message).join(', ')}`);
@@ -223,26 +217,24 @@ export default function AdminUpdateTotoResultsPage() {
       toast({ title: "无有效结果", description: "未能从文本中解析出任何有效结果。", variant: "default" });
       return;
     }
-
-    // Merge with existing jsonData
+    
     let currentJsonDataArray: HistoricalResult[] = [];
     try {
       currentJsonDataArray = JSON.parse(jsonData);
       if (!Array.isArray(currentJsonDataArray)) currentJsonDataArray = [];
     } catch (e) {
-      // If jsonData is invalid, start with an empty array
       console.warn("Current jsonData is invalid, starting merge with empty array.");
     }
     
     const mergedDataMap = new Map<number, HistoricalResult>();
     currentJsonDataArray.forEach(res => mergedDataMap.set(res.drawNumber, res));
-    newResults.forEach(res => mergedDataMap.set(res.drawNumber, res)); // New results will overwrite existing ones with same drawNumber
+    newResults.forEach(res => mergedDataMap.set(res.drawNumber, res));
 
     const mergedArray = Array.from(mergedDataMap.values()).sort((a, b) => b.drawNumber - a.drawNumber);
 
     setJsonData(JSON.stringify(mergedArray, null, 2));
-    setPlainTextData(""); // Clear plain text input
-    handleValidateAndPrepare(); // Re-validate and update validatedJsonOutput
+    setPlainTextData(""); 
+    handleValidateAndPrepare(); 
     toast({ title: "解析并合并成功", description: `成功解析并合并 ${newResults.length} 条记录到当前数据中。请验证下方更新的JSON数据。` });
   };
 
@@ -257,10 +249,10 @@ export default function AdminUpdateTotoResultsPage() {
     }
     setIsSyncing(true);
     try {
-      if (!firebaseAuthInstance.app) {
+      if (!firebaseAuthInstance.app) { // Check if the app instance is available
           throw new Error("Firebase app not initialized for Functions.");
       }
-      const functions = getFunctions(firebaseAuthInstance.app);
+      const functions = getFunctions(firebaseAuthInstance.app); // Pass the app instance
       const syncTotoResultsCallable = httpsCallable(functions, 'syncTotoResultsCallable');
       
       const result: HttpsCallableResult<any> = await syncTotoResultsCallable({ jsonDataString: validatedJsonOutput });
@@ -282,7 +274,9 @@ export default function AdminUpdateTotoResultsPage() {
     } catch (error: any) {
       console.error("Error calling syncTotoResultsCallable Cloud Function:", error);
       let description = "调用云函数时发生未知错误。";
-      if (error.code && error.message) {
+      if (error.code === 'unauthenticated') {
+        description = "云函数调用失败：用户未经身份验证或会话已过期。请尝试重新登录后再试。如果问题持续，请确保您的Cloud Function已正确部署。";
+      } else if (error.code && error.message) {
         description = `错误 ${error.code}: ${error.message}`;
       } else if (error instanceof Error) {
         description = error.message;
@@ -555,6 +549,5 @@ export default function AdminUpdateTotoResultsPage() {
     </div>
   );
 }
-    
 
     
