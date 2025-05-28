@@ -4,15 +4,16 @@ import { zhCN, enUS } from "date-fns/locale"; // Import Chinese and English loca
 import type { HistoricalResult, TotoCombination } from "./types";
 
 export const getBallColor = (number: number, isAdditional: boolean = false): string => {
-  if (isAdditional) return "bg-destructive text-destructive-foreground";
-  return "bg-blue-600 text-white";
+  if (isAdditional) return "bg-destructive text-destructive-foreground"; // Typically red
+  return "bg-blue-600 text-white"; // Blue for main numbers
 };
 
 export const formatDateToLocale = (dateString: string, locale: Locale = zhCN) => {
   // console.log("[formatDateToLocale] Received dateString:", dateString, "Locale code:", locale ? locale.code : "undefined");
   try {
     if (!dateString) return "";
-    const date = new Date(dateString);
+    // Attempt to parse common date formats if needed, assuming YYYY-MM-DD is standard
+    const date = new Date(dateString + "T00:00:00"); // Ensure parsing as local date
     if (isNaN(date.getTime())) {
       // console.error("[formatDateToLocale] Invalid date string provided:", dateString);
       return dateString;
@@ -46,7 +47,9 @@ export function formatDateTimeToChinese(dateTimeString: string): string {
   // Example: "Thu, 29 May 2025, 6.30pm"
   let dateObj: Date;
   try {
-    dateObj = parse(dateTimeString, "EEE, dd MMM yyyy, h.mmaaa", new Date(), { locale: enUS });
+    // Handle common variations: "h.mmaaa" or "h:mmaaa"
+    const normalizedDateTimeString = dateTimeString.replace(/\./, ":");
+    dateObj = parse(normalizedDateTimeString, "EEE, dd MMM yyyy, h:mmaaa", new Date(), { locale: enUS });
     if (isNaN(dateObj.getTime())) {
       // If parsing fails, it's not the expected English format, return original
       return dateTimeString;
@@ -74,16 +77,20 @@ export function formatDateTimeToChinese(dateTimeString: string): string {
     formattedHours = 6; // Display as 6 for 12-hour format
   } else {
     // General AM/PM to Chinese period
-    if (hours >= 0 && hours < 12) {
-      timePeriod = "上午";
-      if (hours === 0) formattedHours = 12; // Midnight is 12 AM
-    } else {
-      formattedHours = hours === 12 ? 12 : hours - 12; // Noon is 12 PM, 13 becomes 1 PM
-      if (hours >= 12 && hours < 18) { 
+    if (hours >= 0 && hours < 6) { // Midnight to early morning
+        timePeriod = "凌晨";
+        if (hours === 0) formattedHours = 12; 
+    } else if (hours >= 6 && hours < 12) { // Morning
+        timePeriod = "上午";
+    } else if (hours === 12) { // Noon
+        timePeriod = "中午";
+        formattedHours = 12;
+    } else if (hours > 12 && hours < 18) { // Afternoon
         timePeriod = "下午";
-      } else { 
+        formattedHours = hours - 12;
+    } else { // Evening
         timePeriod = "晚上";
-      }
+        formattedHours = hours - 12;
     }
   }
   
@@ -109,14 +116,17 @@ export function calculateHitDetails(
   const matchedMainNumbers: number[] = [];
   let additionalMatched = false;
 
-  toolNumbers.forEach(toolNum => {
-    if (winningMainNumbersSet.has(toolNum)) {
-      matchedMainNumbers.push(toolNum);
-    }
-    if (toolNum === additionalWinningNumber) {
-      additionalMatched = true;
-    }
-  });
+  if (toolNumbers && toolNumbers.length > 0) {
+    toolNumbers.forEach(toolNum => {
+        if (winningMainNumbersSet.has(toolNum)) {
+        matchedMainNumbers.push(toolNum);
+        }
+        if (toolNum === additionalWinningNumber) {
+        additionalMatched = true;
+        }
+    });
+  }
+
 
   return {
     matchedMainNumbers: matchedMainNumbers.sort((a, b) => a - b),
@@ -127,3 +137,6 @@ export function calculateHitDetails(
     mainHitCount: matchedMainNumbers.length,
   };
 }
+
+// TOTO Number Range - also defined in types.ts, ensure consistency or import from there
+export const TOTO_NUMBER_RANGE = { min: 1, max: 49 };

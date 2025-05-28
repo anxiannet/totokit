@@ -2,21 +2,14 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { ArrowLeft, Target, Info, DatabaseZap, Save, Loader2 } from "lucide-react";
+import { ArrowLeft, Info } from "lucide-react";
 import type { HistoricalResult } from "@/lib/types";
 import { MOCK_HISTORICAL_DATA, OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types";
-import { FavoriteStarButton } from "@/components/toto/FavoriteStarButton";
 import { dynamicTools, type NumberPickingTool } from "@/lib/numberPickingAlgos";
 import { getPredictionForToolAndDraw } from "@/lib/actions";
 import { ToolDetailPageClient } from "@/components/toto/ToolDetailPageClient";
-import { auth } from "@/lib/firebase"; // Import server-side auth if needed for initial user state
+import { calculateHitDetails, TOTO_NUMBER_RANGE } from "@/lib/totoUtils";
+
 
 export async function generateStaticParams() {
   return dynamicTools.map((tool) => ({
@@ -24,11 +17,13 @@ export async function generateStaticParams() {
   }));
 }
 
+interface SingleNumberToolPageProps {
+  params: { toolId: string };
+}
+
 export default async function SingleNumberToolPage({
   params,
-}: {
-  params: { toolId: string };
-}) {
+}: SingleNumberToolPageProps) {
   const { toolId } = params;
   const tool = dynamicTools.find((t) => t.id === toolId);
 
@@ -49,26 +44,67 @@ export default async function SingleNumberToolPage({
     );
   }
 
-  // Fetch initial data on the server
+  // Fetch initial "official" prediction for the current draw
   const initialSavedPrediction = await getPredictionForToolAndDraw(tool.id, OFFICIAL_PREDICTIONS_DRAW_ID);
+
   const allHistoricalData: HistoricalResult[] = MOCK_HISTORICAL_DATA;
+
+  // Calculate "current prediction" based on latest 10 historical draws for admin to potentially save
   const absoluteLatestTenDrawsForDynamic: HistoricalResult[] = allHistoricalData.slice(0, 10);
   const dynamicallyGeneratedCurrentPrediction = tool.algorithmFn(absoluteLatestTenDrawsForDynamic);
-  
-  // Note: For user information in a Server Component that needs to be passed to a Client Component,
-  // you'd typically get it from a server-side auth session or similar mechanism.
-  // Firebase client SDK's `auth.currentUser` is client-side.
-  // For simplicity here, we're not deeply integrating server-side auth for passing user to client component,
-  // the ClientComponent will use its own `useAuth`. If you need user info here for other server logic,
-  // you'd use NextAuth.js or Firebase Admin SDK with cookies.
-  // For the isAdmin check, it's better done within the client component after auth state is resolved.
+
+  // Calculate historical performances for display
+  const recentTenHistoricalDrawsForAnalysis: HistoricalResult[] = allHistoricalData.slice(0, 10);
+  const historicalPerformancesToDisplay = recentTenHistoricalDrawsForAnalysis.map((targetDraw) => {
+    const originalIndex = allHistoricalData.findIndex(d => d.drawNumber === targetDraw.drawNumber);
+    if (originalIndex === -1) return null;
+
+    const precedingDrawsStartIndex = originalIndex + 1;
+    const precedingDrawsEndIndex = precedingDrawsStartIndex + 10;
+    
+    if (precedingDrawsEndIndex > allHistoricalData.length) return null; 
+    
+    const precedingTenDraws = allHistoricalData.slice(precedingDrawsStartIndex, precedingDrawsEndIndex);
+
+    let predictedNumbersForTargetDraw: number[] = [];
+    if (tool.algorithmFn) {
+        predictedNumbersForTargetDraw = tool.algorithmFn(precedingTenDraws);
+    }
+
+    const hitDetails = calculateHitDetails(predictedNumbersForTargetDraw, targetDraw);
+    const hitRate = targetDraw.numbers.length > 0 && predictedNumbersForTargetDraw.length > 0
+        ? (hitDetails.mainHitCount / Math.min(predictedNumbersForTargetDraw.length, TOTO_NUMBER_RANGE.max /* Using max as a safeguard, ideally predictedNumbers.length */ )) * 100
+        : 0;
+    const hasAnyHit = hitDetails.mainHitCount > 0 || hitDetails.matchedAdditionalNumberDetails.matched;
+
+    return {
+      targetDraw,
+      predictedNumbersForTargetDraw,
+      hitDetails,
+      hitRate,
+      hasAnyHit,
+    };
+  }).filter(Boolean) as Array<{
+    targetDraw: HistoricalResult;
+    predictedNumbersForTargetDraw: number[];
+    hitDetails: ReturnType<typeof calculateHitDetails>;
+    hitRate: number;
+    hasAnyHit: boolean;
+  }>;
+
+  const serializableTool = {
+    id: tool.id,
+    name: tool.name,
+    description: tool.description,
+  };
 
   return (
     <ToolDetailPageClient
-      tool={tool}
+      tool={serializableTool}
       initialSavedPrediction={initialSavedPrediction}
-      allHistoricalData={allHistoricalData}
       dynamicallyGeneratedCurrentPrediction={dynamicallyGeneratedCurrentPrediction}
+      historicalPerformancesToDisplay={historicalPerformancesToDisplay}
+      allHistoricalDataForSaving={allHistoricalData} // Pass all historical data only for admin save historical action
     />
   );
 }

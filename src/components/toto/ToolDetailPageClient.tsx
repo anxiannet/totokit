@@ -2,7 +2,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useCallback } from "react";
+import { use, useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -15,69 +15,85 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Target, Loader2, Save, AlertCircle, DatabaseZap, TrendingUp, TrendingDown, Info } from "lucide-react";
 import type { HistoricalResult, TotoCombination } from "@/lib/types";
-import { OFFICIAL_PREDICTIONS_DRAW_ID, TOTO_NUMBER_RANGE } from "@/lib/types";
+import { OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types";
 import { NumberPickingToolDisplay } from "@/components/toto/NumberPickingToolDisplay";
 import { FavoriteStarButton } from "@/components/toto/FavoriteStarButton";
 import {
-  calculateHitDetails,
   getBallColor as getOfficialBallColor,
   formatDateToLocale,
+  type HitDetails, // Assuming HitDetails is exported from totoUtils
 } from "@/lib/totoUtils";
 import { zhCN } from "date-fns/locale";
-import type { NumberPickingTool } from "@/lib/numberPickingAlgos";
+import type { NumberPickingTool as BaseNumberPickingTool } from "@/lib/numberPickingAlgos"; // For algoFn
+import { dynamicTools } from "@/lib/numberPickingAlgos"; // To find algoFn on client for saving historical
 import {
   saveToolPrediction,
-  getPredictionForToolAndDraw, // Keep for client-side re-fetch if needed
+  getPredictionForToolAndDraw,
   saveMultipleToolPredictions,
+  type ToolPredictionInput,
 } from "@/lib/actions";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
+// Simplified tool type for props, excluding functions
+interface SerializableTool {
+  id: string;
+  name: string;
+  description: string;
+}
+
+interface HistoricalPerformanceDisplayData {
+  targetDraw: HistoricalResult;
+  predictedNumbersForTargetDraw: number[];
+  hitDetails: HitDetails; // Use the HitDetails type from totoUtils
+  hitRate: number;
+  hasAnyHit: boolean;
+}
+
 interface ToolDetailPageClientProps {
-  tool: NumberPickingTool;
+  tool: SerializableTool;
   initialSavedPrediction: number[] | null;
-  allHistoricalData: HistoricalResult[];
   dynamicallyGeneratedCurrentPrediction: number[];
+  historicalPerformancesToDisplay: HistoricalPerformanceDisplayData[];
+  allHistoricalDataForSaving: HistoricalResult[]; // Pass all historical data for the admin "save historical" action
 }
 
 export function ToolDetailPageClient({
-  tool,
+  tool: serializableTool, // Renamed to avoid confusion with full tool object
   initialSavedPrediction,
-  allHistoricalData,
   dynamicallyGeneratedCurrentPrediction,
+  historicalPerformancesToDisplay,
+  allHistoricalDataForSaving,
 }: ToolDetailPageClientProps) {
   const { user } = useAuth();
   const { toast } = useToast();
 
   const [savedPredictionForTargetDraw, setSavedPredictionForTargetDraw] = useState<number[] | null>(initialSavedPrediction);
-  const [isLoadingSavedPrediction, setIsLoadingSavedPrediction] = useState(false); // Initially true if initialSavedPrediction is fetched async by parent
+  const [isLoadingSavedPrediction, setIsLoadingSavedPrediction] = useState(false);
   const [isSavingCurrentDraw, setIsSavingCurrentDraw] = useState(false);
   const [isSavingHistorical, setIsSavingHistorical] = useState(false);
 
   const isAdmin = user && user.email === "admin@totokit.com";
+  const fullTool = dynamicTools.find(t => t.id === serializableTool.id); // Find full tool for algoFn
 
   const fetchAndSetSavedPrediction = useCallback(async () => {
-    if (!tool) return;
+    if (!serializableTool) return;
     setIsLoadingSavedPrediction(true);
     try {
-      // This re-fetch can be useful if state needs to be updated after an action
-      const saved = await getPredictionForToolAndDraw(tool.id, OFFICIAL_PREDICTIONS_DRAW_ID);
+      const saved = await getPredictionForToolAndDraw(serializableTool.id, OFFICIAL_PREDICTIONS_DRAW_ID);
       setSavedPredictionForTargetDraw(saved);
     } catch (error) {
-      console.error(`Error fetching saved prediction for tool ${tool.id}, draw ${OFFICIAL_PREDICTIONS_DRAW_ID}:`, error);
+      console.error(`Error fetching saved prediction for tool ${serializableTool.id}, draw ${OFFICIAL_PREDICTIONS_DRAW_ID}:`, error);
       setSavedPredictionForTargetDraw(null);
       toast({ title: "错误", description: "加载已保存预测失败。", variant: "destructive" });
     } finally {
       setIsLoadingSavedPrediction(false);
     }
-  }, [tool, toast]);
-
-  // If initialSavedPrediction is passed, we might not need this initial fetch unless an update happens.
-  // For now, let's assume initialSavedPrediction is sufficient for the first render.
+  }, [serializableTool, toast]);
 
   const handleSaveCurrentDrawPrediction = async () => {
-    if (!tool || !isAdmin || !user?.uid) {
+    if (!serializableTool || !isAdmin || !user?.uid) {
       toast({ title: "错误", description: "只有管理员才能保存预测。", variant: "destructive" });
       return;
     }
@@ -88,18 +104,18 @@ export function ToolDetailPageClient({
     setIsSavingCurrentDraw(true);
     try {
       const predictionData: ToolPredictionInput = {
-        toolId: tool.id,
-        toolName: tool.name,
+        toolId: serializableTool.id,
+        toolName: serializableTool.name,
         targetDrawNumber: OFFICIAL_PREDICTIONS_DRAW_ID,
         targetDrawDate: "PENDING_DRAW", // Or generate a future date string
         predictedNumbers: dynamicallyGeneratedCurrentPrediction,
-        userId: user.uid, // Admin's UID
+        userId: user.uid,
       };
       const result = await saveToolPrediction(predictionData);
 
       if (result.success) {
         toast({ title: "成功", description: result.message || `预测已为第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期保存/更新。` });
-        fetchAndSetSavedPrediction(); // Re-fetch to update displayed saved prediction
+        fetchAndSetSavedPrediction();
       } else {
         toast({ title: "保存失败", description: result.message || "无法保存预测。", variant: "destructive" });
       }
@@ -111,7 +127,7 @@ export function ToolDetailPageClient({
   };
 
   const handleSaveHistoricalBacktests = async () => {
-    if (!tool || !isAdmin || !user?.uid) {
+    if (!fullTool || !isAdmin || !user?.uid) {
       toast({ title: "错误", description: "只有管理员才能执行此操作。", variant: "destructive" });
       return;
     }
@@ -119,26 +135,30 @@ export function ToolDetailPageClient({
     try {
       const predictionsToSave: ToolPredictionInput[] = [];
 
-      allHistoricalData.forEach((targetDraw, originalIndex) => {
-        if (originalIndex + 10 < allHistoricalData.length) {
-          const precedingTenDraws = allHistoricalData.slice(originalIndex + 1, originalIndex + 1 + 10);
+      allHistoricalDataForSaving.forEach((targetDraw, originalIndex) => {
+        // Check if there are enough preceding draws (10)
+        const precedingDrawsStartIndex = originalIndex + 1;
+        const precedingDrawsEndIndex = precedingDrawsStartIndex + 10;
+
+        if (precedingDrawsEndIndex <= allHistoricalDataForSaving.length) {
+          const precedingTenDraws = allHistoricalDataForSaving.slice(precedingDrawsStartIndex, precedingDrawsEndIndex);
           let predictedNumbersForTargetDraw: number[] = [];
-          if (tool.algorithmFn) {
-            predictedNumbersForTargetDraw = tool.algorithmFn(precedingTenDraws);
+          if (fullTool.algorithmFn) { // Use algoFn from the full tool object found on client
+            predictedNumbersForTargetDraw = fullTool.algorithmFn(precedingTenDraws);
           }
           if (predictedNumbersForTargetDraw.length > 0) {
             predictionsToSave.push({
-              toolId: tool.id,
-              toolName: tool.name,
+              toolId: fullTool.id,
+              toolName: fullTool.name,
               targetDrawNumber: targetDraw.drawNumber,
               targetDrawDate: targetDraw.date,
               predictedNumbers: predictedNumbersForTargetDraw,
-              userId: user.uid, // Admin's UID
+              userId: user.uid,
             });
           }
         }
       });
-
+      
       if (predictionsToSave.length > 0) {
         const result = await saveMultipleToolPredictions(predictionsToSave, user.uid);
         if (result.success) {
@@ -155,45 +175,6 @@ export function ToolDetailPageClient({
       setIsSavingHistorical(false);
     }
   };
-
-  const recentTenHistoricalDrawsForAnalysis: HistoricalResult[] = allHistoricalData.slice(0, 10);
-  const historicalPerformancesToDisplay = recentTenHistoricalDrawsForAnalysis.map((targetDraw) => {
-    const originalIndex = allHistoricalData.findIndex(d => d.drawNumber === targetDraw.drawNumber);
-    if (originalIndex === -1) return null;
-
-    const precedingDrawsStartIndex = originalIndex + 1;
-    const precedingDrawsEndIndex = precedingDrawsStartIndex + 10;
-    
-    if (precedingDrawsEndIndex > allHistoricalData.length) return null; 
-    
-    const precedingTenDraws = allHistoricalData.slice(precedingDrawsStartIndex, precedingDrawsEndIndex);
-
-    let predictedNumbersForTargetDraw: number[] = [];
-    if (tool.algorithmFn) {
-        predictedNumbersForTargetDraw = tool.algorithmFn(precedingTenDraws);
-    }
-
-    const hitDetails = calculateHitDetails(predictedNumbersForTargetDraw, targetDraw);
-    const hitRate = targetDraw.numbers.length > 0 && predictedNumbersForTargetDraw.length > 0
-        ? (hitDetails.mainHitCount / Math.min(predictedNumbersForTargetDraw.length, TOTO_NUMBER_RANGE.max)) * 100
-        : 0;
-    const hasAnyHit = hitDetails.mainHitCount > 0 || hitDetails.matchedAdditionalNumberDetails.matched;
-
-    return {
-      targetDraw,
-      predictedNumbersForTargetDraw,
-      hitDetails,
-      hitRate,
-      hasAnyHit,
-    };
-  }).filter(Boolean) as Array<{ // Type assertion
-    targetDraw: HistoricalResult;
-    predictedNumbersForTargetDraw: number[];
-    hitDetails: ReturnType<typeof calculateHitDetails>;
-    hitRate: number;
-    hasAnyHit: boolean;
-  }>;
-
 
   const OfficialDrawDisplay = ({ draw }: { draw: HistoricalResult }) => (
     <div className="flex flex-wrap gap-1.5 items-center">
@@ -219,22 +200,20 @@ export function ToolDetailPageClient({
   let showAdminSaveCurrentDrawButton = false;
 
   if (isLoadingSavedPrediction) {
-    // Loader will be shown below
+    // Loader will be shown
   } else if (savedPredictionForTargetDraw && savedPredictionForTargetDraw.length > 0) {
     displayNumbersForCurrentDrawSection = savedPredictionForTargetDraw;
     currentDrawSectionTitle = `第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期预测号码 (来自数据库):`;
     if (isAdmin) {
-      showAdminSaveCurrentDrawButton = true; // Admin can still choose to update
+      showAdminSaveCurrentDrawButton = true;
     }
-  } else { // No saved prediction found
+  } else {
     if (isAdmin) {
       displayNumbersForCurrentDrawSection = dynamicallyGeneratedCurrentPrediction;
       currentDrawSectionTitle = `当前动态生成号码 (可保存为第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期预测):`;
       showAdminSaveCurrentDrawButton = true;
     }
-    // Non-admins will see an alert if no saved prediction.
   }
-
 
   return (
     <div className="container mx-auto px-4 py-8 md:px-6 md:py-12">
@@ -251,11 +230,11 @@ export function ToolDetailPageClient({
         <CardHeader>
           <div className="flex justify-between items-start">
             <CardTitle className="flex items-center gap-2 text-xl">
-              {tool.name}
+              {serializableTool.name}
             </CardTitle>
-            <FavoriteStarButton toolId={tool.id} toolName={tool.name} />
+            <FavoriteStarButton toolId={serializableTool.id} toolName={serializableTool.name} />
           </div>
-          <CardDescription>{tool.description}</CardDescription>
+          <CardDescription>{serializableTool.description}</CardDescription>
         </CardHeader>
         <CardContent>
           {/* Section for Current/Official Prediction */}
@@ -327,11 +306,11 @@ export function ToolDetailPageClient({
             {historicalPerformancesToDisplay.length > 0 ? (
               <ScrollArea className="h-[calc(100vh-600px)] rounded-md border p-3 space-y-4 bg-background/50">
                 {historicalPerformancesToDisplay.map((performance) => {
-                  if (!performance) return null; // Should not happen with .filter(Boolean)
+                  if (!performance) return null;
                   const { targetDraw, predictedNumbersForTargetDraw, hitDetails, hitRate, hasAnyHit } = performance;
                   return (
                     <div
-                      key={`${tool.id}-${targetDraw.drawNumber}`}
+                      key={`${serializableTool.id}-${targetDraw.drawNumber}`}
                       className={`p-3 border rounded-lg ${
                         hasAnyHit
                           ? "border-green-500/60 bg-green-500/10"
