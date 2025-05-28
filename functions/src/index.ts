@@ -1,10 +1,9 @@
-
 // functions/src/index.ts
 // (确保您已经在此目录下运行了 npm install firebase-admin firebase-functions zod)
 
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
-import {z} from "zod"; // For data validation
+import { z } from "zod"; // For data validation
 
 // Initialize Firebase Admin SDK if not already initialized
 // This typically happens automatically when deployed to Firebase,
@@ -44,7 +43,9 @@ interface SyncRequestData {
  *   as the document ID.
  */
 export const syncTotoResultsCallable = functions.https.onCall(
-  async (data: SyncRequestData, context: functions.https.CallableContext) => {
+  async (data: any, context: functions.https.CallableContext): Promise<{ success: boolean; message: string; count: number; }> => {
+    const typedData = data as SyncRequestData;
+
     // 1. Check Authentication and Admin Claim
     // Ensure the user is authenticated.
     if (!context.auth) {
@@ -76,7 +77,7 @@ export const syncTotoResultsCallable = functions.https.onCall(
     );
 
     // 2. Validate Input Data
-    const jsonDataString = data.jsonDataString;
+    const jsonDataString = typedData.jsonDataString;
     if (!jsonDataString || typeof jsonDataString !== "string") {
       console.error(
         "syncTotoResultsCallable: Missing or invalid " +
@@ -134,7 +135,7 @@ export const syncTotoResultsCallable = functions.https.onCall(
       console.log(
         "syncTotoResultsCallable: No results to sync after parsing."
       );
-      return {success: true, message: "没有需要同步的开奖结果。", count: 0};
+      return { success: true, message: "没有需要同步的开奖结果。", count: 0 };
     }
 
     // 3. Sync to Firestore
@@ -150,7 +151,7 @@ export const syncTotoResultsCallable = functions.https.onCall(
       // Using {merge: true} will create the document if it doesn"t exist,
       // or update it if it does, merging new fields and overwriting
       // existing ones.
-      batch.set(resultDocRef, result, {merge: true});
+      batch.set(resultDocRef, result, { merge: true });
       syncedCount++;
     });
 
