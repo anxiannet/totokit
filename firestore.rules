@@ -1,3 +1,4 @@
+
 rules_version = '2';
 
 service cloud.firestore {
@@ -5,35 +6,32 @@ service cloud.firestore {
 
     // TOTO Historical Results
     // Allow anyone to read historical results.
-    // Only allow writes if the user is authenticated and has an 'isAdmin' custom claim.
-    // This rule is strict and best enforced by an Admin SDK operation (e.g., Cloud Function).
+    // WARNING: Write rule below is temporarily relaxed for development/testing.
+    // For production, admin-only writes should be enforced via Admin SDK
+    // in a secure backend environment (e.g., Cloud Function or API route).
     match /totoResults/{drawId} {
       allow read: if true;
-      allow write: if request.auth != null && request.auth.token.isAdmin == true;
+      allow write: if true; // TEMPORARILY RELAXED - SECURE FOR PRODUCTION
     }
 
     // Tool Predictions (Predictions made by specific tools for historical draws)
-    // Allow anyone to read these predictions.
-    // Writes are currently initiated by a Server Component; for now, allow creation.
-    // For production, consider if a more secure, authenticated (Admin SDK) process should write this.
+    // System can create these. Review for production.
     match /toolPredictions/{predictionId} {
       allow read: if true;
-      allow create: if true; // Allows Server Component to save predictions via Server Action (Client SDK)
-      allow update, delete: if false; // Or restrict to admin: request.auth != null && request.auth.token.isAdmin == true;
+      allow create: if true;
+      allow update, delete: if false;
     }
 
     // User Favorite Tools
     // Users can only read and write their own favorite tools document.
-    // This rule relies on a fresh auth context for the server action.
     match /userToolFavorites/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
     // Smart Pick AI Results
     // Allow authenticated users to create their own smart pick results if userId in doc matches.
-    // (This rule was adjusted to work with server actions where request.auth might be null initially)
     match /smartPickResults/{resultId} {
-      allow create: if request.resource.data.userId != null; // Allows create if triggered by an authenticated user who provides their UID
+      allow create: if request.resource.data.userId != null; // Simplified: if userId is present, allow.
       allow read: if request.auth != null && resource.data.userId == request.auth.uid;
       allow update, delete: if false;
     }
