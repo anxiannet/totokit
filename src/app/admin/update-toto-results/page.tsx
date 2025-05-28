@@ -20,8 +20,6 @@ import { Separator } from "@/components/ui/separator";
 
 const ClientSideHistoricalResultsArraySchema = z.array(AdminPageHistoricalResultSchema);
 
-type AdminClaimStatus = "loading" | "verified" | "not_found" | "error" | "not_admin_email";
-
 const monthMap: { [key: string]: string } = {
   Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06",
   Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12",
@@ -55,50 +53,13 @@ export default function AdminUpdateTotoResultsPage() {
   const [isSyncingHistorical, setIsSyncingHistorical] = useState(false);
   const [isCheckingAdmin, setIsCheckingAdmin] = useState(true);
   const [isAdminByEmail, setIsAdminByEmail] = useState(false);
-  const [adminClaimStatus, setAdminClaimStatus] = useState<AdminClaimStatus>("loading");
-  const [isCheckingClaim, setIsCheckingClaim] = useState(false);
 
   const [currentDrawInfoText, setCurrentDrawInfoText] = useState("");
   const [isUpdatingDrawInfo, setIsUpdatingDrawInfo] = useState(false);
   const [isLoadingDrawInfo, setIsLoadingDrawInfo] = useState(true);
 
   const adminEmail = "admin@totokit.com";
-  const adminUID = "mAvLawNGpGdKwPoHuMQyXlKpPNv1";
-
-  const checkAdminClaim = async (forceRefresh: boolean = false) => {
-    if (!user) {
-      setAdminClaimStatus("not_found");
-      return;
-    }
-    setIsCheckingClaim(true);
-    try {
-      const idTokenResult = await user.getIdTokenResult(forceRefresh);
-      if (idTokenResult.claims.isAdmin === true) {
-        setAdminClaimStatus("verified");
-        toast({
-          title: "管理员声明已验证",
-          description: "您的账户已成功验证管理员权限。",
-        });
-      } else {
-        setAdminClaimStatus("not_found");
-        toast({
-          title: "管理员声明未找到",
-          description: "您的账户没有管理员声明。如果您的权限最近已更新，请尝试完全退出并重新登录，然后再次刷新声明。",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      console.error("Error fetching ID token result:", error);
-      setAdminClaimStatus("error");
-      toast({
-        title: "检查声明失败",
-        description: "无法获取用户声明，请稍后再试。",
-        variant: "destructive",
-      });
-    } finally {
-      setIsCheckingClaim(false);
-    }
-  };
+  const adminUID = "mAvLawNGpGdKwPoHuMQyXlKpPNv1"; // Keep for user UID check
 
   const fetchCurrentDrawInfo = async () => {
     setIsLoadingDrawInfo(true);
@@ -107,7 +68,6 @@ export default function AdminUpdateTotoResultsPage() {
       if (info && info.currentDrawDateTime && info.currentJackpot) {
         setCurrentDrawInfoText(`${info.currentDrawDateTime}\n${info.currentJackpot}`);
       } else {
-        // Default fallback if nothing in Firestore
         setCurrentDrawInfoText("周四, 2025年5月29日, 傍晚6点30分\n$4,500,000");
       }
     } catch (error) {
@@ -128,11 +88,9 @@ export default function AdminUpdateTotoResultsPage() {
       setIsCheckingAdmin(false);
       if (user && user.email === adminEmail && user.uid === adminUID) {
         setIsAdminByEmail(true);
-        checkAdminClaim(); // Check custom claims
-        fetchCurrentDrawInfo(); // Fetch current draw info for admin
+        fetchCurrentDrawInfo();
       } else {
         setIsAdminByEmail(false);
-        setAdminClaimStatus("not_admin_email");
       }
     }
   }, [user, authLoading]);
@@ -150,29 +108,19 @@ export default function AdminUpdateTotoResultsPage() {
       setIsSyncingHistorical(false);
       return;
     }
-
-    if (adminClaimStatus !== "verified") {
-      toast({
-        title: "权限不足",
-        description: "需要已验证的管理员权限才能同步历史数据。",
-        variant: "destructive",
-      });
-      setValidationStatus("error");
-      setValidationMessage("权限不足：需要已验证的管理员权限才能同步历史数据。");
-      setIsSyncingHistorical(false);
-      return;
-    }
+    
     if (!user || user.uid !== adminUID) {
       toast({
-        title: "用户未登录或非管理员",
-        description: "管理员UID不匹配或未找到，无法执行同步操作。",
+        title: "权限不足",
+        description: "只有指定管理员才能执行此操作。",
         variant: "destructive",
       });
       setValidationStatus("error");
-      setValidationMessage("用户未登录或非管理员：管理员UID不匹配或未找到，无法执行同步操作。");
+      setValidationMessage("权限不足：只有指定管理员才能执行此操作。");
       setIsSyncingHistorical(false);
       return;
     }
+
 
     const entries = plainTextData.trim().split(/\n\s*\n/);
     const parsedResults: HistoricalResult[] = [];
@@ -251,6 +199,7 @@ export default function AdminUpdateTotoResultsPage() {
     const jsonDataToSync = JSON.stringify(sortedData, null, 2);
 
     try {
+      // Pass user.uid to the server action
       const syncResult = await syncHistoricalResultsToFirestore(jsonDataToSync, user.uid);
       if (syncResult.success) {
         toast({
@@ -271,20 +220,30 @@ export default function AdminUpdateTotoResultsPage() {
       }
     } catch (error: any) {
       console.error("Error calling syncHistoricalResultsToFirestore server action:", error);
+      let specificMessage = "历史结果同步出错: ";
+      if (error instanceof Error) {
+        specificMessage += error.message;
+        const firebaseError = error as any;
+        if (firebaseError.code === 'permission-denied' || firebaseError.code === 7) {
+          specificMessage += " (Firestore权限不足。请确认管理员声明已在客户端和服务端生效，且Firestore规则配置正确。可能需要重新登录以刷新权限。)";
+        }
+      } else {
+        specificMessage += "未知错误";
+      }
       toast({
         title: "历史结果同步出错",
-        description: error.message || "调用服务器操作时发生未知错误。",
+        description: specificMessage,
         variant: "destructive",
       });
       setValidationStatus("error");
-      setValidationMessage(`历史结果同步出错: ${error.message || "未知错误"}`);
+      setValidationMessage(specificMessage);
     } finally {
       setIsSyncingHistorical(false);
     }
   };
 
   const handleUpdateCurrentDrawInfo = async () => {
-    if (adminClaimStatus !== "verified" || !user || user.uid !== adminUID) {
+    if (!user || user.uid !== adminUID) {
       toast({ title: "权限不足", description: "需要管理员权限才能更新。", variant: "destructive" });
       return;
     }
@@ -293,12 +252,11 @@ export default function AdminUpdateTotoResultsPage() {
       return;
     }
 
-    // Client-side pre-processing
     const lines = currentDrawInfoText
       .trim()
       .split('\n')
       .map(line => line.trim())
-      .filter(line => line !== "" && line !== "本期开奖信息" && line !== "当前头奖预估");
+      .filter(line => line !== "" && line.toLowerCase() !== "本期开奖信息" && line.toLowerCase() !== "当前头奖预估");
 
     if (lines.length < 2) {
       toast({
@@ -314,11 +272,8 @@ export default function AdminUpdateTotoResultsPage() {
 
     setIsUpdatingDrawInfo(true);
     try {
-      const result = await updateCurrentDrawDisplayInfo(
-        extractedDrawTime,
-        extractedJackpot,
-        user.uid // adminUID
-      );
+      // Pass user.uid to the server action
+      const result = await updateCurrentDrawDisplayInfo({ currentDrawDateTime: extractedDrawTime, currentJackpot: extractedJackpot }, user.uid);
       if (result.success) {
         toast({ title: "本期开奖信息更新成功", description: result.message });
       } else {
@@ -367,61 +322,7 @@ export default function AdminUpdateTotoResultsPage() {
             返回主页
           </Link>
         </Button>
-        {user && user.email === adminEmail && (
-          <Button onClick={() => checkAdminClaim(true)} variant="outline" size="sm" disabled={isCheckingClaim}>
-            {isCheckingClaim ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-            刷新并检查管理员声明
-          </Button>
-        )}
       </div>
-
-      {user && user.email === adminEmail && (
-        <Card className="w-full mb-6">
-          <CardHeader>
-            <CardTitle>管理员状态 (用于 Firestore 操作)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isCheckingClaim ? (
-              <div className="flex items-center space-x-2">
-                <Loader2 className="h-5 w-5 animate-spin" />
-                <p>正在检查管理员声明...</p>
-              </div>
-            ) : adminClaimStatus === "verified" ? (
-              <Alert variant="default">
-                <CheckCircle className="h-5 w-5" />
-                <AlertTitle>管理员声明已验证</AlertTitle>
-                <AlertDescription>
-                  您的账户拥有执行 Firestore 操作的管理员权限。
-                </AlertDescription>
-              </Alert>
-            ) : adminClaimStatus === "not_found" ? (
-              <Alert variant="destructive">
-                <XCircle className="h-5 w-5" />
-                <AlertTitle>管理员声明未找到</AlertTitle>
-                <AlertDescription>
-                  您的账户没有管理员声明。如果您认为这是一个错误，或者您的权限最近已更新，请尝试完全退出并重新登录，然后再次刷新声明。Firestore 操作可能无法执行。
-                  <Button onClick={() => checkAdminClaim(true)} variant="link" className="p-0 h-auto ml-1 text-destructive hover:underline">
-                    (再次尝试刷新声明)
-                  </Button>
-                </AlertDescription>
-              </Alert>
-            ) : adminClaimStatus === "error" ? (
-              <Alert variant="destructive">
-                <XCircle className="h-5 w-5" />
-                <AlertTitle>检查声明时出错</AlertTitle>
-                <AlertDescription>
-                  获取您的管理员声明时发生错误。请稍后再试。Firestore 操作可能无法执行。
-                </AlertDescription>
-              </Alert>
-            ) : null}
-            {(adminClaimStatus === "not_found" || adminClaimStatus === "error") && (
-              <p className="text-xs text-muted-foreground mt-2">
-                注意：管理员声明验证与需要特定声明（如 Firestore 规则中的 `request.auth.token.isAdmin == true` 或检查特定UID）的操作相关。
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
 
       <Card className="w-full mb-6">
         <CardHeader>
@@ -449,7 +350,7 @@ export default function AdminUpdateTotoResultsPage() {
                 placeholder={"例如:\n周四, 2025年5月29日, 傍晚6点30分\n$4,500,000\n\n或包含标签的完整格式：\n本期开奖信息\n周四, 2025年5月29日, 傍晚6点30分\n当前头奖预估\n$4,500,000"}
                 rows={5}
                 className="mt-1 font-mono text-sm"
-                disabled={isUpdatingDrawInfo}
+                disabled={isUpdatingDrawInfo || !isAdminByEmail}
               />
             </div>
           )}
@@ -458,7 +359,7 @@ export default function AdminUpdateTotoResultsPage() {
           <Button
             onClick={handleUpdateCurrentDrawInfo}
             className="w-full"
-            disabled={isUpdatingDrawInfo || adminClaimStatus !== 'verified' || isLoadingDrawInfo}
+            disabled={isUpdatingDrawInfo || !isAdminByEmail || isLoadingDrawInfo}
           >
             {isUpdatingDrawInfo ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -467,6 +368,11 @@ export default function AdminUpdateTotoResultsPage() {
             )}
             更新本期开奖信息到 Firestore
           </Button>
+           {!isAdminByEmail && (
+            <p className="text-xs text-red-600 text-center mt-2">
+              需要管理员权限才能更新。
+            </p>
+          )}
         </CardFooter>
       </Card>
 
@@ -493,7 +399,7 @@ export default function AdminUpdateTotoResultsPage() {
               placeholder={`例如:\nThu, 22 May 2025\tDraw No. 4080\nWinning Numbers\n3 10 32 34 44 48\nAdditional Number\n29\n\n(多条记录请用空行分隔)`}
               rows={10}
               className="mt-2 font-mono text-sm"
-              disabled={isSyncingHistorical}
+              disabled={isSyncingHistorical || !isAdminByEmail}
             />
           </div>
 
@@ -502,7 +408,7 @@ export default function AdminUpdateTotoResultsPage() {
           <Button
             onClick={handleParseTextAndSyncToFirestore}
             className="w-full"
-            disabled={isSyncingHistorical || adminClaimStatus !== 'verified'}
+            disabled={isSyncingHistorical || !isAdminByEmail}
           >
             {isSyncingHistorical ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -511,9 +417,9 @@ export default function AdminUpdateTotoResultsPage() {
             )}
             解析文本并同步历史结果到 Firestore
           </Button>
-          {(adminClaimStatus !== 'verified') && (
+          {!isAdminByEmail && (
             <p className="text-xs text-red-600 text-center -mt-4">
-              需要已验证的管理员权限才能同步。
+              需要管理员权限才能同步。
             </p>
           )}
 
@@ -541,3 +447,4 @@ export default function AdminUpdateTotoResultsPage() {
     </div>
   );
 }
+
