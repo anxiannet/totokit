@@ -4,11 +4,11 @@
 import { generateNumberCombinations as genkitGenerateNumberCombinations } from "@/ai/flows/generate-number-combinations";
 import type { GenerateNumberCombinationsInput, GenerateNumberCombinationsOutput } from "@/ai/flows/generate-number-combinations";
 import type { WeightedCriterion, HistoricalResult, TotoCombination } from "./types";
-import { db, auth as firebaseClientAuthInstance } from "./firebase";
+import { db, auth as firebaseClientAuthInstance } from "./firebase"; // Ensure auth is imported
 import {
   collection, addDoc, serverTimestamp, query, where,
   getDocs, limit, doc, writeBatch, runTransaction,
-  arrayUnion, arrayRemove, getDoc, setDoc
+  arrayUnion, arrayRemove, getDoc, setDoc, orderBy
 } from "firebase/firestore";
 
 
@@ -120,9 +120,66 @@ export async function saveToolPrediction(
   }
 }
 
+export interface SmartPickResultInput {
+  userId: string | null;
+  idToken: string | null; // ID token for potential server-side verification if needed
+  drawId: string;
+  combinations: TotoCombination[];
+}
+
+export async function saveSmartPickResult(
+  data: SmartPickResultInput
+): Promise<{ success: boolean; message?: string; docId?: string }> {
+  if (!db) {
+    console.error("[SAVE_SMART_PICK] Firestore 'db' instance is not initialized.");
+    return { success: false, message: "Firestore 'db' instance is not initialized." };
+  }
+  
+  const clientAuthUid = firebaseClientAuthInstance.currentUser ? firebaseClientAuthInstance.currentUser.uid : null;
+
+  console.log(`[SAVE_SMART_PICK] Attempting to save smart pick.`);
+  console.log(`[SAVE_SMART_PICK] Input userId (data.userId): ${data.userId}`);
+  console.log(`[SAVE_SMART_PICK] Firebase SDK auth.currentUser.uid inside action: ${clientAuthUid}`);
+  console.log(`[SAVE_SMART_PICK] Input ID Token (present): ${!!data.idToken}`);
+
+
+  try {
+    // Transform combinations for Firestore: Array<number[]> to Array<{ numbers: number[] }>
+    const transformedCombinations = data.combinations.map(combo => ({ numbers: combo }));
+
+    const dataToSave = {
+      userId: data.userId,
+      drawId: data.drawId,
+      combinations: transformedCombinations,
+      createdAt: serverTimestamp(),
+    };
+
+    console.log(`[SAVE_SMART_PICK] Data being written to Firestore:`, JSON.stringify(dataToSave, null, 2));
+    console.log(`[SAVE_SMART_PICK] Target collection: smartPickResults`);
+
+    const docRef = await addDoc(collection(db, "smartPickResults"), dataToSave);
+    console.log(`[SAVE_SMART_PICK] Smart pick result saved successfully with ID: ${docRef.id} for draw ${data.drawId}, user: ${data.userId || 'anonymous'}`);
+    return { success: true, message: "智能选号结果已保存。", docId: docRef.id };
+  } catch (error: any) {
+    console.error("[SAVE_SMART_PICK] Error saving smart pick result to Firestore:", error);
+    let errorMessage = "保存智能选号结果失败: ";
+    if (error instanceof Error) {
+      errorMessage += error.message;
+      const firebaseError = error as any;
+      if (firebaseError.code === 'permission-denied' || firebaseError.code === 7 || firebaseError.code === 'PERMISSION_DENIED') {
+        errorMessage += ` (Firestore权限不足。尝试保存的userId: ${data.userId}. 服务器端SDK识别的用户UID: ${clientAuthUid}. 请确认Firestore安全规则已正确部署，并且客户端已重新登录以刷新权限。)`;
+      }
+    } else {
+      errorMessage += "未知错误";
+    }
+    return { success: false, message: errorMessage };
+  }
+}
+
+
 export async function syncHistoricalResultsToFirestore(
   jsonDataString: string,
-  adminUserId: string | null
+  adminUserId: string | null // Expecting admin's UID
 ): Promise<{ success: boolean; message: string; count?: number }> {
   console.log("[SYNC_FIRESTORE] Attempting to sync historical results to Firestore.");
   if (!db) {
@@ -151,7 +208,8 @@ export async function syncHistoricalResultsToFirestore(
         continue;
       }
       const resultDocRef = doc(db, "totoResults", String(result.drawNumber));
-      const dataToSet = { ...result, userId: adminUserId }; // Add adminUserId as userId
+      // Add the adminUserId as the userId field in each document
+      const dataToSet = { ...result, userId: adminUserId }; 
       batch.set(resultDocRef, dataToSet, { merge: true });
       count++;
     }
@@ -176,60 +234,6 @@ export async function syncHistoricalResultsToFirestore(
   }
 }
 
-export interface SmartPickResultInput {
-  userId: string | null;
-  idToken: string | null;
-  drawId: string;
-  combinations: TotoCombination[];
-}
-
-export async function saveSmartPickResult(
-  data: SmartPickResultInput
-): Promise<{ success: boolean; message?: string; docId?: string }> {
-  if (!db) {
-    console.error("[SAVE_SMART_PICK] Firestore 'db' instance is not initialized.");
-    return { success: false, message: "Firestore 'db' instance is not initialized." };
-  }
-
-  const clientAuthUid = firebaseClientAuthInstance.currentUser ? firebaseClientAuthInstance.currentUser.uid : null;
-
-  console.log(`[SAVE_SMART_PICK] Attempting to save smart pick.`);
-  console.log(`[SAVE_SMART_PICK] Input userId from client (data.userId): ${data.userId}`);
-  console.log(`[SAVE_SMART_PICK] Input ID Token (present): ${!!data.idToken}`);
-  console.log(`[SAVE_SMART_PICK] Firebase SDK auth.currentUser.uid inside action: ${clientAuthUid}`);
-
-
-  try {
-    const transformedCombinations = data.combinations.map(combo => ({ numbers: combo }));
-
-    const dataToSave = {
-      userId: data.userId, // This is request.resource.data.userId
-      drawId: data.drawId,
-      combinations: transformedCombinations,
-      createdAt: serverTimestamp(),
-    };
-
-    console.log(`[SAVE_SMART_PICK] Data being written to Firestore:`, JSON.stringify(dataToSave, null, 2));
-    console.log(`[SAVE_SMART_PICK] Target collection: smartPickResults`);
-
-    const docRef = await addDoc(collection(db, "smartPickResults"), dataToSave);
-    console.log(`[SAVE_SMART_PICK] Smart pick result saved successfully with ID: ${docRef.id} for draw ${data.drawId}, user: ${data.userId || 'anonymous'}`);
-    return { success: true, message: "智能选号结果已保存。", docId: docRef.id };
-  } catch (error) {
-    console.error("[SAVE_SMART_PICK] Error saving smart pick result to Firestore:", error);
-    let errorMessage = "保存智能选号结果失败: ";
-    if (error instanceof Error) {
-      errorMessage += error.message;
-      const firebaseError = error as any;
-      if (firebaseError.code === 'permission-denied' || firebaseError.code === 7 || firebaseError.code === 'PERMISSION_DENIED') {
-        errorMessage += ` (Firestore权限不足。尝试保存的userId: ${data.userId}. 服务器端SDK识别的用户UID: ${clientAuthUid}. 请确认Firestore安全规则已正确部署，并且客户端已重新登录以刷新权限。)`;
-      }
-    } else {
-      errorMessage += "未知错误";
-    }
-    return { success: false, message: errorMessage };
-  }
-}
 
 export async function updateCurrentDrawDisplayInfo(
   currentDrawDateTime: string,
@@ -253,7 +257,7 @@ export async function updateCurrentDrawDisplayInfo(
     await setDoc(docRef, {
       currentDrawDateTime,
       currentJackpot,
-      userId: adminUserId, // Ensure this matches the field name in your security rules
+      userId: adminUserId, 
       updatedAt: serverTimestamp(),
     }, { merge: true });
     console.log(`[UPDATE_DRAW_INFO] Current draw info updated by admin ${adminUserId}.`);
@@ -316,7 +320,7 @@ export async function getUserFavoriteTools(userId: string): Promise<string[]> {
 export async function toggleFavoriteTool(
   userId: string,
   toolId: string,
-  toolName?: string
+  toolName?: string // Optional toolName for better toast messages
 ): Promise<{ success: boolean; favorited: boolean; message?: string }> {
   if (!userId) {
     return { success: false, favorited: false, message: "用户未登录。" };
@@ -338,13 +342,15 @@ export async function toggleFavoriteTool(
       }
 
       if (currentFavorites.includes(toolId)) {
-        transaction.set(userFavDocRef, {
+        // Already favorited, so remove it
+        transaction.set(userFavDocRef, { 
           favoriteToolIds: arrayRemove(toolId),
-          updatedAt: serverTimestamp()
+          updatedAt: serverTimestamp() 
         }, { merge: true });
         isCurrentlyFavorited = false;
       } else {
-        transaction.set(userFavDocRef, {
+        // Not favorited, so add it
+        transaction.set(userFavDocRef, { 
           favoriteToolIds: arrayUnion(toolId),
           updatedAt: serverTimestamp()
         }, { merge: true });
@@ -356,5 +362,49 @@ export async function toggleFavoriteTool(
     console.error("Error toggling favorite tool:", error);
     const errorMessage = error instanceof Error ? error.message : "未知错误";
     return { success: false, favorited: false, message: `操作失败: ${errorMessage}` };
+  }
+}
+
+export async function getUserSmartPickResults(userId: string, drawId: string): Promise<TotoCombination[] | null> {
+  if (!userId) {
+    console.log("[GET_USER_SMART_PICKS] No userId provided.");
+    return null;
+  }
+  if (!db) {
+    console.error("[GET_USER_SMART_PICKS] Firestore 'db' instance is not initialized.");
+    return null;
+  }
+
+  console.log(`[GET_USER_SMART_PICKS] Fetching smart picks for userId: ${userId}, drawId: ${drawId}`);
+  try {
+    const q = query(
+      collection(db, "smartPickResults"),
+      where("userId", "==", userId),
+      where("drawId", "==", drawId),
+      orderBy("createdAt", "desc"),
+      limit(1)
+    );
+
+    const querySnapshot = await getDocs(q);
+
+    if (querySnapshot.empty) {
+      console.log(`[GET_USER_SMART_PICKS] No smart pick results found for userId: ${userId}, drawId: ${drawId}`);
+      return null;
+    }
+
+    const docData = querySnapshot.docs[0].data();
+    // Transform combinations back from Array<{ numbers: number[] }> to Array<number[]>
+    if (docData.combinations && Array.isArray(docData.combinations)) {
+      const combinations: TotoCombination[] = docData.combinations.map(
+        (comboObj: any) => comboObj.numbers || []
+      ).filter((combo: number[]) => combo.length > 0);
+      console.log(`[GET_USER_SMART_PICKS] Found ${combinations.length} combinations.`);
+      return combinations;
+    }
+    console.log("[GET_USER_SMART_PICKS] Found document, but combinations format is unexpected or missing.");
+    return null;
+  } catch (error) {
+    console.error(`[GET_USER_SMART_PICKS] Error fetching smart pick results for userId: ${userId}, drawId: ${drawId}:`, error);
+    return null;
   }
 }

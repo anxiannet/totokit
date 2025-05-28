@@ -4,25 +4,29 @@
 import { useState, useEffect } from 'react';
 import { PredictionConfigurator } from "@/components/toto/PredictionConfigurator";
 import { PredictionResultsDisplay } from "@/components/toto/PredictionResultsDisplay";
-import type { TotoCombination, HistoricalResult } from "@/lib/types";
+import type { TotoCombination } from "@/lib/types";
 import { CurrentAndLatestDrawInfo } from "@/components/toto/CurrentAndLatestDrawInfo";
 import { TopPerformingTools, type TopToolDisplayInfo } from "@/components/toto/TopPerformingTools";
 import { MOCK_HISTORICAL_DATA } from "@/lib/types";
 import { dynamicTools } from "@/lib/numberPickingAlgos";
 import { calculateHitDetails } from "@/lib/totoUtils";
+import { useAuth } from '@/hooks/useAuth'; // For user info
+import { getUserSmartPickResults } from '@/lib/actions'; // To fetch saved results
+import { useToast } from "@/hooks/use-toast";
 
 
 export default function TotoForecasterPage() {
+  const { user } = useAuth();
+  const { toast } = useToast();
   const [predictions, setPredictions] = useState<TotoCombination[]>([]);
   const [isGeneratingPredictions, setIsGeneratingPredictions] = useState<boolean>(false);
-  const [displayResultsArea, setDisplayResultsArea] = useState<boolean>(false);
+  const [displayResultsArea, setDisplayResultsArea] = useState<boolean>(false); 
   const [topPerformingTools, setTopPerformingTools] = useState<TopToolDisplayInfo[]>([]);
+
+  const CURRENT_DRAW_ID = "4082"; // Define current draw ID for fetching saved picks
 
   const handlePredictionsGenerated = (newPredictions: TotoCombination[]) => {
     setPredictions(newPredictions);
-    if (newPredictions.length > 0) {
-      // setDisplayResultsArea(true); // Already handled by onUsageStatusChange or isLoading
-    }
   };
   
   const handleLoadingChange = (isLoading: boolean) => {
@@ -38,14 +42,48 @@ export default function TotoForecasterPage() {
     }
   };
 
+  // Effect to fetch saved smart picks if user has used the feature for the current draw
+  useEffect(() => {
+    const fetchSavedPicks = async () => {
+      if (user && displayResultsArea && !isGeneratingPredictions && predictions.length === 0) {
+        // Only fetch if:
+        // 1. User is logged in
+        // 2. The results area is supposed to be displayed (meaning they've used it before or are about to use it)
+        // 3. We are not currently generating new AI predictions
+        // 4. We don't already have predictions loaded (e.g., from a fresh AI generation)
+        
+        console.log(`[TotoForecasterPage] Attempting to fetch saved smart picks for user ${user.uid}, draw ${CURRENT_DRAW_ID}`);
+        setIsGeneratingPredictions(true); // Show loader while fetching saved picks
+        try {
+          const savedPicks = await getUserSmartPickResults(user.uid, CURRENT_DRAW_ID);
+          if (savedPicks && savedPicks.length > 0) {
+            setPredictions(savedPicks);
+            toast({ title: "已加载您本期保存的选号" });
+          } else {
+             // toast({ title: "未找到您本期保存的选号", description:"您可能尚未为本期生成或保存号码。" });
+             // If no saved picks, PredictionResultsDisplay will show its empty state.
+             // No need to clear predictions if AI just generated them; this effect won't run due to predictions.length === 0 check.
+          }
+        } catch (error) {
+          console.error("Error fetching saved smart picks:", error);
+          toast({ title: "加载已保存选号失败", description: error instanceof Error ? error.message : "未知错误", variant: "destructive" });
+        } finally {
+          setIsGeneratingPredictions(false);
+        }
+      }
+    };
+
+    fetchSavedPicks();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, displayResultsArea]); // Rerun if user logs in/out or if displayResultsArea changes.
+
+
+  // Calculate top performing tools (existing logic)
   useEffect(() => {
     const allHistoricalData = MOCK_HISTORICAL_DATA;
-    const numOverallRecentDraws = 10; // Analyze past 10 draws for tool performance
+    const numOverallRecentDraws = 10; 
     
-    // Ensure we have enough data to select 10, or take what's available
     const overallRecentTenDraws = allHistoricalData.slice(0, Math.min(allHistoricalData.length, numOverallRecentDraws));
-    
-    // For current prediction, use the absolute latest 10 draws (or fewer if not available)
     const absoluteLatestTenDraws = allHistoricalData.slice(0, Math.min(allHistoricalData.length, 10));
   
     const toolPerformances: TopToolDisplayInfo[] = dynamicTools.map(tool => {
@@ -55,29 +93,15 @@ export default function TotoForecasterPage() {
       if (overallRecentTenDraws.length > 0) {
         overallRecentTenDraws.forEach(targetDraw => {
           const originalIndex = allHistoricalData.findIndex(d => d.drawNumber === targetDraw.drawNumber);
-          // This check should ideally not be -1 if overallRecentTenDraws comes from allHistoricalData
           if (originalIndex === -1) return; 
     
           const precedingDrawsStartIndex = originalIndex + 1;
-          // Ensure we don't go out of bounds with slice. Slice handles end > length gracefully.
           const precedingTenDrawsForTarget = allHistoricalData.slice(precedingDrawsStartIndex, precedingDrawsStartIndex + 10);
-    
-          let predictedNumbersForTargetDraw: number[] = [];
           
-          // Specific conditions for tools needing exact number of preceding draws
-          if (tool.id === "dynamicLastDrawRepeat" && precedingTenDrawsForTarget.length < 1 && originalIndex < allHistoricalData.length -1) {
-            // This case should be handled by algoLastDrawRepeat returning [] if data is insufficient
-            // but the check here prevents calling it if it's truly the last draw and no preceding exists.
-          } else if (tool.id === "dynamicSecondLastDrawRepeat" && precedingTenDrawsForTarget.length < 1 && originalIndex < allHistoricalData.length - 2) {
-            // Similar for second last.
-          }
-          // All algorithms in numberPickingAlgos.ts should handle cases where `precedingTenDrawsForTarget` might be shorter than 10.
-          predictedNumbersForTargetDraw = tool.algorithmFn(precedingTenDrawsForTarget);
-          
-    
+          let predictedNumbersForTargetDraw: number[] = tool.algorithmFn(precedingTenDrawsForTarget);
+              
           if (predictedNumbersForTargetDraw.length > 0 && targetDraw.numbers.length > 0) {
             const hitDetails = calculateHitDetails(predictedNumbersForTargetDraw, targetDraw);
-            // Use the more robust hit rate calculation
             const hitRate = (hitDetails.mainHitCount / Math.min(targetDraw.numbers.length, predictedNumbersForTargetDraw.length)) * 100;
             totalHitRate += hitRate;
             drawsAnalyzed++;
@@ -86,21 +110,19 @@ export default function TotoForecasterPage() {
       }
   
       const averageHitRate = drawsAnalyzed > 0 ? totalHitRate / drawsAnalyzed : 0;
-  
-      // Generate current prediction based on absolute latest 10 available draws
       const currentPrediction = tool.algorithmFn(absoluteLatestTenDraws);
   
       return {
-        ...tool, // Spread the base tool info (id, name, description, algorithmFn)
+        ...tool, 
         averageHitRate: parseFloat(averageHitRate.toFixed(1)),
         currentPrediction: currentPrediction,
       };
     });
   
     toolPerformances.sort((a, b) => b.averageHitRate - a.averageHitRate);
-    setTopPerformingTools(toolPerformances.slice(0, 3)); // Show top 3
+    setTopPerformingTools(toolPerformances.slice(0, 3)); 
   
-  }, []); // Empty dependency array: run once on mount
+  }, []); 
 
 
   return (
