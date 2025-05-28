@@ -43,7 +43,7 @@ interface SyncRequestData {
  *   as the document ID.
  */
 export const syncTotoResultsCallable = functions.https.onCall(
-  async (data: any, context: any): Promise<{ success: boolean; message: string; count: number; }> => { // Changed context type to any
+  async (data: any, context: any): Promise<{ success: boolean; message: string; count: number; }> => {
     const typedData = data as SyncRequestData;
 
     // 1. Check Authentication and Admin Claim
@@ -54,12 +54,12 @@ export const syncTotoResultsCallable = functions.https.onCall(
       );
       throw new functions.https.HttpsError(
         "unauthenticated",
-        "The function must be called while authenticated and context must be valid."
+        "The function must be called while authenticated."
       );
     }
 
     // Ensure the user has the "isAdmin" custom claim set to true.
-    // We've already checked context.auth exists.
+    // We"ve already checked context.auth exists.
     if (context.auth.token.isAdmin !== true) {
       const userEmail = context.auth.token.email || "N/A";
       console.warn(
@@ -117,7 +117,7 @@ export const syncTotoResultsCallable = functions.https.onCall(
         "syncTotoResultsCallable: Successfully validated " +
         `${resultsToSync.length} results for sync.`
       );
-    } catch (error: any) {
+    } catch (error: any) { // ESLint might warn about 'any' here
       console.error(
         "syncTotoResultsCallable: Error parsing or validating JSON data.",
         error
@@ -169,7 +169,7 @@ export const syncTotoResultsCallable = functions.https.onCall(
           `成功通过云函数同步/更新 ${syncedCount} 条开奖结果到 Firestore。`,
         count: syncedCount,
       };
-    } catch (error: any) {
+    } catch (error: any) { // ESLint might warn about 'any' here
       console.error(
         "syncTotoResultsCallable: Error committing batch to Firestore.",
         error
