@@ -6,20 +6,21 @@ service cloud.firestore {
 
     // TOTO Historical Results
     // Allow anyone to read historical results.
-    // WARNING: Write rule below is temporarily relaxed for development/testing.
-    // For production, admin-only writes should be enforced via Admin SDK
-    // in a secure backend environment (e.g., Cloud Function or API route).
+    // Only allow writes if the user is authenticated and has an 'isAdmin' custom claim.
+    // This rule will be checked by the Cloud Function before it performs Admin SDK writes.
     match /totoResults/{drawId} {
       allow read: if true;
-      allow write: if true; // TEMPORARILY RELAXED - SECURE FOR PRODUCTION
+      allow write: if request.auth != null && request.auth.token.isAdmin == true;
+      // Data validation for structure should happen in the Cloud Function.
     }
 
     // Tool Predictions (Predictions made by specific tools for historical draws)
-    // System can create these. Review for production.
+    // Allow anyone to read these predictions.
+    // System can create these. Review for production (e.g., only trusted server/admin).
     match /toolPredictions/{predictionId} {
       allow read: if true;
-      allow create: if true;
-      allow update, delete: if false;
+      allow create: if true; // Or restrict to admin: request.auth != null && request.auth.token.isAdmin == true
+      allow update, delete: if false; // Or allow admin
     }
 
     // User Favorite Tools
@@ -29,11 +30,11 @@ service cloud.firestore {
     }
 
     // Smart Pick AI Results
-    // Allow authenticated users to create their own smart pick results if userId in doc matches.
+    // Allow authenticated users to create their own smart pick results if the userId in doc matches.
     match /smartPickResults/{resultId} {
-      allow create: if request.resource.data.userId != null; // Simplified: if userId is present, allow.
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
       allow read: if request.auth != null && resource.data.userId == request.auth.uid;
-      allow update, delete: if false;
+      allow update, delete: if false; // Keep restricted for now
     }
 
     // Default deny all other access to prevent unintended access
@@ -42,3 +43,5 @@ service cloud.firestore {
     }
   }
 }
+
+    
