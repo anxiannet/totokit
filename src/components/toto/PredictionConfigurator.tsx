@@ -34,21 +34,6 @@ export function PredictionConfigurator({
   const isAdmin = user && user.email === "admin@totokit.com";
 
   useEffect(() => {
-    if (isAdmin) {
-      setHasUsedSmartPickThisDraw(false);
-      // For admin, we don't strictly need to call onUsageStatusChange based on localStorage,
-      // as they can use it multiple times. However, if the results area should show previously
-      // generated (but not necessarily "saved by usage limit") results, this might need adjustment.
-      // For now, admin always sees it as "not used" for limit purposes.
-      if (onUsageStatusChange && localStorage.getItem(`smartPickUsed_${CURRENT_DRAW_ID}_${user?.uid || 'guest'}`) === 'true') {
-         // Even for admin, if there's a record of usage for this specific user/guest, let the parent know.
-         // This helps if the parent wants to load *any* previous results.
-         console.log("[PredictionConfigurator] Admin detected, but also prior usage in localStorage. Notifying parent.");
-         onUsageStatusChange(true);
-      }
-      return;
-    }
-
     // For non-admins, check usage for this specific user or a guest session
     const usageKey = `smartPickUsed_${CURRENT_DRAW_ID}_${user?.uid || 'guest'}`;
     const alreadyUsed = localStorage.getItem(usageKey) === 'true';
@@ -62,20 +47,32 @@ export function PredictionConfigurator({
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, user]); // Re-run if admin status changes or user logs in/out
+  }, [user]); // Re-run if user logs in/out
 
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
 
-    if (hasUsedSmartPickThisDraw && !isAdmin) {
+    if (!isAdmin) {
       toast({
-        title: "已使用",
-        description: "您已使用本期免费智能选号。",
+        title: "权限不足",
+        description: "只有管理员才能使用智能选号功能。",
         variant: "default",
       });
       return;
     }
+
+    // Admin specific logic (no usage limit check for admin)
+    // Or if we wanted a one-time use for non-admins (currently disabled for non-admins)
+    // if (hasUsedSmartPickThisDraw && !isAdmin) {
+    //   toast({
+    //     title: "已使用",
+    //     description: "您已使用本期免费智能选号。",
+    //     variant: "default",
+    //   });
+    //   return;
+    // }
+
 
     setIsLoading(true);
     onLoadingChange(true);
@@ -151,7 +148,7 @@ export function PredictionConfigurator({
            toast({ title: "保存出错", description: `保存选号结果时发生错误：${err.message || '未知错误'}`, variant: "destructive"});
         });
 
-      if (!isAdmin) {
+      if (!isAdmin) { // Only set usage for non-admins, though they can't click the button anyway with current logic
         const usageKey = `smartPickUsed_${CURRENT_DRAW_ID}_${user?.uid || 'guest'}`;
         console.log(`[PredictionConfigurator] handleSubmit: Setting localStorage key ${usageKey} to true for non-admin.`);
         localStorage.setItem(usageKey, 'true');
@@ -169,7 +166,7 @@ export function PredictionConfigurator({
             <Button
               type="submit"
               className="flex-1"
-              disabled={isLoading || (hasUsedSmartPickThisDraw && !isAdmin)}
+              disabled={isLoading || !isAdmin} // Only admin can generate
             >
               {isLoading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -187,7 +184,7 @@ export function PredictionConfigurator({
           </div>
         </CardFooter>
       </form>
-      {hasUsedSmartPickThisDraw && !isAdmin && (
+      {hasUsedSmartPickThisDraw && !isAdmin && ( // Show message if non-admin has used their (now unavailable) free pick
         <div className="p-4 pt-0 text-sm">
           <Alert>
             <AlertCircle className="h-4 w-4" />
@@ -198,6 +195,17 @@ export function PredictionConfigurator({
           </Alert>
         </div>
       )}
+       {!isAdmin && !isLoading && ( // General message for non-admins if they haven't used any pick (button is disabled)
+         <div className="p-4 pt-0 text-sm">
+           <Alert variant="default">
+             <AlertCircle className="h-4 w-4" />
+             <AlertTitle>提示</AlertTitle>
+             <AlertDescription>
+               智能选号功能仅限管理员使用。
+             </AlertDescription>
+           </Alert>
+         </div>
+       )}
     </Card>
   );
 }
