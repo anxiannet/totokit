@@ -16,7 +16,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { syncHistoricalResultsToFirestore, updateCurrentDrawDisplayInfo, getCurrentDrawDisplayInfo } from "@/lib/actions";
 import { Separator } from "@/components/ui/separator";
-import { MOCK_HISTORICAL_DATA } from "@/lib/types";
 
 
 const ClientSideHistoricalResultsArraySchema = z.array(AdminPageHistoricalResultSchema);
@@ -109,7 +108,7 @@ export default function AdminUpdateTotoResultsPage() {
         setCurrentDrawInfoText(`${info.currentDrawDateTime}\n${info.currentJackpot}`);
       } else {
         // Default fallback if nothing in Firestore
-        setCurrentDrawInfoText("周四, 2025年5月29日, 傍晚6点30分\n$4,500,000 (估计)");
+        setCurrentDrawInfoText("周四, 2025年5月29日, 傍晚6点30分\n$4,500,000");
       }
     } catch (error) {
       console.error("Error fetching current draw info:", error);
@@ -118,7 +117,7 @@ export default function AdminUpdateTotoResultsPage() {
         description: "无法从数据库加载当前的开奖信息和头奖金额。",
         variant: "destructive"
       });
-      setCurrentDrawInfoText("周四, 2025年5月29日, 傍晚6点30分\n$4,500,000 (估计)");
+      setCurrentDrawInfoText("周四, 2025年5月29日, 傍晚6点30分\n$4,500,000");
     } finally {
       setIsLoadingDrawInfo(false);
     }
@@ -447,7 +446,7 @@ export default function AdminUpdateTotoResultsPage() {
                 id="currentDrawInfoText"
                 value={currentDrawInfoText}
                 onChange={(e) => setCurrentDrawInfoText(e.target.value)}
-                placeholder={"例如:\n周四, 2025年5月29日, 傍晚6点30分\n$4,500,000 (估计)\n\n或包含标签的完整格式：\n本期开奖信息\n周四, 2025年5月29日, 傍晚6点30分\n当前头奖预估\n$4,500,000 (估计)"}
+                placeholder={"例如:\n周四, 2025年5月29日, 傍晚6点30分\n$4,500,000\n\n或包含标签的完整格式：\n本期开奖信息\n周四, 2025年5月29日, 傍晚6点30分\n当前头奖预估\n$4,500,000"}
                 rows={5}
                 className="mt-1 font-mono text-sm"
                 disabled={isUpdatingDrawInfo}

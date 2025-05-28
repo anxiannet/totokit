@@ -10,18 +10,37 @@ import { MOCK_LATEST_RESULT, type HistoricalResult } from "@/lib/types";
 import { formatDateToLocale, getBallColor } from "@/lib/totoUtils";
 import { Separator } from "@/components/ui/separator";
 import { zhCN } from "date-fns/locale";
-// Removed: import { getCurrentDrawDisplayInfo } from "@/lib/actions"; // No longer fetching from Firestore
+import { getCurrentDrawDisplayInfo } from "@/lib/actions";
 
 export function CurrentAndLatestDrawInfo() {
   const latestResult: HistoricalResult | null = MOCK_LATEST_RESULT;
 
-  // Default values are already in Chinese descriptive format
   const [currentDrawDateTime, setCurrentDrawDateTime] = useState("周四, 2025年5月29日, 傍晚6点30分");
-  const [currentJackpot, setCurrentJackpot] = useState("$4,500,000 (估计)");
-  const [isLoadingDrawInfo, setIsLoadingDrawInfo] = useState(false); // Set to false as we are not fetching
+  const [currentJackpot, setCurrentJackpot] = useState("$4,500,000"); // Removed " (估计)"
+  const [isLoadingDrawInfo, setIsLoadingDrawInfo] = useState(true);
 
-  // useEffect to fetch from Firestore is removed as per previous changes.
-  // If this needs to be re-enabled, the fetching logic would go here.
+  useEffect(() => {
+    const fetchInfo = async () => {
+      setIsLoadingDrawInfo(true);
+      try {
+        const info = await getCurrentDrawDisplayInfo();
+        if (info && info.currentDrawDateTime && info.currentJackpot) {
+          setCurrentDrawDateTime(info.currentDrawDateTime);
+          setCurrentJackpot(info.currentJackpot);
+        } else {
+          // Fallback to default values already set in useState
+          console.warn("Current draw info not found in Firestore, using default values.");
+        }
+      } catch (error) {
+        console.error("Error fetching current draw info for display:", error);
+        // Fallback to default values already set in useState
+      } finally {
+        setIsLoadingDrawInfo(false);
+      }
+    };
+    fetchInfo();
+  }, []);
+
 
   return (
     <Card className="w-full mb-6 shadow-lg border-border">
@@ -30,16 +49,24 @@ export function CurrentAndLatestDrawInfo() {
           <CalendarDays className="h-5 w-5 text-primary" />
           本期开奖信息
         </CardTitle>
+        {isLoadingDrawInfo ? (
+           <div className="flex items-center space-x-2 mt-1">
+             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+             <p className="text-sm text-muted-foreground">加载开奖时间...</p>
+           </div>
+        ) : (
+          <p className="text-sm text-muted-foreground pt-1">{currentDrawDateTime}</p>
+        )}
       </CardHeader>
-      <CardContent className="pb-4">
+      <CardContent className="py-2">
        {isLoadingDrawInfo ? (
-          <div className="flex items-center justify-center p-4 bg-secondary/30 rounded-lg min-h-[90px]">
+          <div className="flex items-center justify-center p-4 bg-secondary/30 rounded-lg min-h-[70px]">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <p className="ml-2 text-muted-foreground">加载头奖金额...</p>
           </div>
         ) : (
-          <div className="p-4 bg-secondary/30 rounded-lg space-y-1 min-h-[90px]">
-            <p className="text-sm text-muted-foreground">{currentDrawDateTime}</p>
-            <p className="text-sm text-muted-foreground mt-2">当前头奖预估</p>
+          <div className="p-4 bg-secondary/30 rounded-lg space-y-1 min-h-[70px]">
+            <p className="text-sm text-muted-foreground">当前头奖预估</p>
             <p className="text-2xl font-bold text-primary">{currentJackpot}</p>
           </div>
         )}
