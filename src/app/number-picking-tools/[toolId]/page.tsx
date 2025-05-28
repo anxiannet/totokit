@@ -2,7 +2,7 @@
 "use client"; // Required for admin save button, useAuth, useState, useEffect
 
 import Link from "next/link";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, use } from "react"; // Import use
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -61,7 +61,7 @@ function AdminSavePredictionButton({
       return;
     }
     if (!predictedNumbers || predictedNumbers.length === 0) {
-      toast({ title: "提示", description: "没有可保存的预测号码 (动态生成为空)。", variant: "default" });
+      toast({ title: "提示", description: "沒有可保存的预测号码 (动态生成为空)。", variant: "default" });
       return;
     }
     setIsSaving(true);
@@ -104,9 +104,11 @@ function AdminSavePredictionButton({
 export default function SingleNumberToolPage({
   params,
 }: {
-  params: { toolId: string };
+  params: { toolId: string }; // Next.js may pass this as a Promise to Client Components
 }) {
-  const { toolId } = params;
+  const resolvedParams = use(params); // Unwrap the params Promise
+  const { toolId } = resolvedParams; // Access toolId from the resolved params
+
   const tool = dynamicTools.find((t) => t.id === toolId);
   const { user } = useAuth();
   const { toast } = useToast();
