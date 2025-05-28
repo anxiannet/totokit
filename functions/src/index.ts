@@ -29,6 +29,10 @@ const HistoricalResultSchema = z.object({
 const HistoricalResultsArraySchema = z.array(HistoricalResultSchema);
 type HistoricalResult = z.infer<typeof HistoricalResultSchema>;
 
+interface SyncRequestData {
+  jsonDataString?: string;
+}
+
 
 /**
  * HTTP Callable Cloud Function to sync TOTO results to Firestore.
@@ -40,7 +44,7 @@ type HistoricalResult = z.infer<typeof HistoricalResultSchema>;
  *   as the document ID.
  */
 export const syncTotoResultsCallable = functions.https.onCall(
-  async (data, context) => {
+  async (data: SyncRequestData, context: functions.https.CallableContext) => {
     // 1. Check Authentication and Admin Claim
     // Ensure the user is authenticated.
     if (!context.auth) {
@@ -111,7 +115,7 @@ export const syncTotoResultsCallable = functions.https.onCall(
         "syncTotoResultsCallable: Successfully validated " +
         `${resultsToSync.length} results for sync.`
       );
-    } catch (error: any) { // Explicitly typed as any for now
+    } catch (error: any) { // Explicitly typed as any for linter
       console.error(
         "syncTotoResultsCallable: Error parsing or validating JSON data.",
         error
@@ -162,7 +166,7 @@ export const syncTotoResultsCallable = functions.https.onCall(
           `成功通过云函数同步/更新 ${syncedCount} 条开奖结果到 Firestore。`,
         count: syncedCount,
       };
-    } catch (error: any) { // Explicitly typed as any for now
+    } catch (error: any) { // Explicitly typed as any for linter
       console.error(
         "syncTotoResultsCallable: Error committing batch to Firestore.",
         error
