@@ -4,12 +4,14 @@
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Info, Award, CheckCircle, XCircle } from "lucide-react";
+import { Award } from "lucide-react";
 import type { HitDetails, TotoCombination } from "@/lib/types";
 import { NumberPickingToolDisplay } from "./NumberPickingToolDisplay";
 import { MOCK_LATEST_RESULT } from '@/lib/types';
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
+import { getTotoSystemBetPrice } from '@/lib/totoUtils';
+
 
 export interface LastDrawToolPerformanceInfo {
   id: string;
@@ -108,7 +110,7 @@ export function LastDrawTopTools({ tools, latestDrawNumber }: LastDrawTopToolsPr
           </CardDescription>
         </CardHeader>
         <CardContent className="text-center text-muted-foreground py-8">
-          <Info className="mx-auto h-10 w-10 mb-3" />
+          <Award className="mx-auto h-10 w-10 mb-3 text-amber-500/70" />
           <p>暂无上期优秀工具数据或正在计算中。</p>
         </CardContent>
       </Card>
@@ -129,42 +131,57 @@ export function LastDrawTopTools({ tools, latestDrawNumber }: LastDrawTopToolsPr
       <CardContent className="pt-2 pb-4 px-0">
         <div
           ref={scrollContainerRef}
-          className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar h-[200px]" // Adjusted height
+          className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar h-[230px]"
         >
-          {tools.map((tool, index) => (
-            <div
-              key={tool.id}
-              ref={el => itemRefs.current[index] = el}
-              className="min-w-full snap-start flex-shrink-0 px-4 py-2 h-full" 
-            >
-              <Link href={`/number-picking-tools/${tool.id}`} className="block h-full focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded-lg">
-                <div className="p-4 border rounded-lg bg-card shadow-sm h-full flex flex-col justify-between hover:bg-muted/50 transition-colors cursor-pointer">
-                  <div>
-                    <div className="flex flex-row justify-between items-center mb-2 gap-2">
-                      <h3 className="text-md font-semibold text-primary truncate">
-                        {tool.name} ({tool.predictionForLastDraw.length}个)
-                      </h3>
-                      <Badge variant={tool.hitRateForLastDraw > 0 ? "default" : "secondary"} className="bg-green-600 hover:bg-green-700 text-white whitespace-nowrap flex-shrink-0">
-                        {tool.hitRateForLastDraw > 0 ? <CheckCircle className="mr-1.5 h-4 w-4" /> : <XCircle className="mr-1.5 h-4 w-4" />}
-                        上期命中率: {tool.hitRateForLastDraw.toFixed(1)}%
-                      </Badge>
-                    </div>
-                    <div className="mb-2">
-                      {chunkArray(tool.predictionForLastDraw, 9).map((chunk, chunkIndex) => (
-                        <div key={chunkIndex} className={cn("flex justify-center", chunkIndex > 0 ? "mt-1.5" : "")}>
-                          <NumberPickingToolDisplay
-                            numbers={chunk}
-                            historicalResultForHighlight={latestActualDraw}
-                          />
-                        </div>
-                      ))}
+          {tools.map((tool, index) => {
+            const predictionCount = tool.predictionForLastDraw.length;
+            const betPrice = getTotoSystemBetPrice(predictionCount);
+            return (
+              <div
+                key={tool.id}
+                ref={el => itemRefs.current[index] = el}
+                className="min-w-full snap-start flex-shrink-0 px-4 py-2 h-full" 
+              >
+                <Link href={`/number-picking-tools/${tool.id}`} className="block h-full focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded-lg">
+                  <div className="p-4 border rounded-lg bg-card shadow-sm h-full flex flex-col justify-between hover:bg-muted/50 transition-colors cursor-pointer">
+                    <div>
+                      <div className="flex flex-row justify-between items-center mb-1.5 gap-2">
+                        <h3 className="text-md font-semibold text-primary truncate">
+                           {tool.name} {predictionCount > 0 ? `(${predictionCount}个)` : ""}
+                        </h3>
+                        <Badge variant={tool.hitRateForLastDraw > 0 ? "default" : "secondary"} className="bg-green-600 hover:bg-green-700 text-white whitespace-nowrap flex-shrink-0">
+                          上期命中率: {tool.hitRateForLastDraw.toFixed(1)}%
+                        </Badge>
+                      </div>
+                      <div className="mb-1 min-h-[60px]">
+                        {tool.predictionForLastDraw.length > 0 ? (
+                          <div className="space-y-1">
+                            {chunkArray(tool.predictionForLastDraw, 9).map((chunk, chunkIndex) => (
+                              <div key={chunkIndex} className={cn("flex justify-center")}>
+                                <NumberPickingToolDisplay
+                                  numbers={chunk}
+                                  historicalResultForHighlight={latestActualDraw}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                           <p className="text-xs text-muted-foreground italic h-full flex items-center justify-center">
+                            未能生成上期预测。
+                          </p>
+                        )}
+                      </div>
+                      {betPrice !== null && predictionCount > 0 && (
+                        <p className="text-xs text-center text-muted-foreground mt-1.5">
+                          使用智能精选算法投注 {predictionCount} 个号码仅需 {betPrice} 新币
+                        </p>
+                      )}
                     </div>
                   </div>
-                  {/* Removed "详细分析" link text from here */}
-                </div>
-              </Link>
-            </div>
-          ))}
+                </Link>
+              </div>
+            );
+          })}
         </div>
         {tools.length > 1 && (
           <div className="flex justify-center space-x-2 mt-4">

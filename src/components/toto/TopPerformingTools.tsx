@@ -3,9 +3,8 @@
 
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button"; // Keep for potential future use or remove if truly unused
 import { Badge } from "@/components/ui/badge";
-import { Info, Loader2, Target, ExternalLink, CheckCircle, XCircle } from "lucide-react";
+import { Info, Target, Loader2 } from "lucide-react";
 import type { DynamicNumberPickingTool } from "@/lib/numberPickingAlgos";
 import { NumberPickingToolDisplay } from "./NumberPickingToolDisplay";
 import React, { useRef, useEffect, useState, useCallback } from 'react';
@@ -13,9 +12,12 @@ import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import { getPredictionsForDraw } from '@/lib/actions';
 import { OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types";
+import { getTotoSystemBetPrice } from '@/lib/totoUtils';
+
 
 export interface TopToolDisplayInfo extends DynamicNumberPickingTool {
   averageHitRate: number;
+  currentPredictionForDraw: number[];
 }
 
 interface TopPerformingToolsProps {
@@ -38,8 +40,8 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [isInteracting, setIsInteracting] = useState(false);
 
-  const { data: predictionsForTargetDrawMap = {}, isLoading: isLoadingPredictions } = useQuery<Record<string, number[]>, Error>({
-    queryKey: ["predictionsForDrawHomepage", OFFICIAL_PREDICTIONS_DRAW_ID],
+  const { data: officialPredictionsMap = {}, isLoading: isLoadingPredictions } = useQuery<Record<string, number[]>, Error>({
+    queryKey: ["allOfficialPredictionsForHomepageTopTools"],
     queryFn: () => getPredictionsForDraw(OFFICIAL_PREDICTIONS_DRAW_ID),
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
@@ -56,13 +58,9 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
         block: 'nearest',
         inline: 'start',
       });
-      setTimeout(() => setIsInteracting(false), 600); // Adjust timeout as needed
+      setTimeout(() => setIsInteracting(false), 600);
     }
   }, []);
-
-  useEffect(() => {
-    scrollToTool(activeIndex);
-  }, [activeIndex, scrollToTool]);
 
   useEffect(() => {
     if (isInteracting || !scrollContainerRef.current || tools.length === 0) return;
@@ -95,7 +93,11 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
         if (ref) observer.unobserve(ref);
       });
     };
-  }, [tools, activeIndex, isInteracting]);
+  }, [tools, activeIndex, isInteracting, scrollToTool]);
+
+  useEffect(() => {
+    scrollToTool(activeIndex);
+  }, [activeIndex, scrollToTool]);
 
 
   if (!tools || tools.length === 0) {
@@ -126,10 +128,13 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
       <CardContent className="pt-2 pb-4 px-0">
         <div
           ref={scrollContainerRef}
-          className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar h-[190px]" // Adjusted height
+          className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar h-[240px]"
         >
           {tools.map((tool, index) => {
-            const currentPredictionForDraw = predictionsForTargetDrawMap[tool.id] || [];
+            const predictionNumbers = officialPredictionsMap[tool.id] || tool.currentPredictionForDraw || [];
+            const predictionCount = predictionNumbers.length;
+            const betPrice = getTotoSystemBetPrice(predictionCount);
+
             return (
               <div
                 key={tool.id}
@@ -139,38 +144,41 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
                 <Link href={`/number-picking-tools/${tool.id}`} className="block h-full focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded-lg">
                   <div className="p-4 border rounded-lg bg-card shadow-sm h-full flex flex-col justify-between hover:bg-muted/50 transition-colors cursor-pointer">
                     <div>
-                      <div className="flex flex-row justify-between items-center mb-2 gap-2">
+                      <div className="flex flex-row justify-between items-center mb-1 gap-2">
                         <h3 className="text-md font-semibold text-primary truncate">
-                          {tool.name} ({currentPredictionForDraw.length}个)
+                          {tool.name} {predictionCount > 0 ? `(${predictionCount}个)` : ""}
                         </h3>
-                        <Badge variant={tool.averageHitRate > 0 ? "default" : "secondary"} className="whitespace-nowrap flex-shrink-0">
-                          {tool.averageHitRate > 0 ? <CheckCircle className="mr-1.5 h-4 w-4" /> : <XCircle className="mr-1.5 h-4 w-4" />}
+                        <Badge variant={"secondary"} className="whitespace-nowrap flex-shrink-0">
                           平均命中率：{tool.averageHitRate.toFixed(1)}%
                         </Badge>
                       </div>
-                      {isLoadingPredictions ? (
-                        <div className="flex items-center space-x-2 mb-3 h-[60px]"> {/* Placeholder height */}
-                          <Loader2 className="h-5 w-5 animate-spin" />
-                          <p className="text-xs text-muted-foreground italic">加载预测中...</p>
-                        </div>
-                      ) : currentPredictionForDraw.length > 0 ? (
-                        <div className="mb-3 space-y-1 max-h-[90px] overflow-y-auto no-scrollbar">
-                         {chunkArray(currentPredictionForDraw, 9).map((chunk, chunkIndex) => (
-                           <div key={chunkIndex} className={cn("flex justify-center")}>
-                             <NumberPickingToolDisplay numbers={chunk} />
-                           </div>
-                         ))}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-muted-foreground italic mb-3 h-[60px] flex items-center justify-center"> {/* Placeholder height */}
-                          此工具对第 {OFFICIAL_PREDICTIONS_DRAW_ID} 期的预测尚未生成。
+
+                      <div className="mb-1 min-h-[60px]">
+                        {isLoadingPredictions ? (
+                          <div className="flex items-center space-x-2 h-full justify-center">
+                            <Loader2 className="h-5 w-5 animate-spin" />
+                            <p className="text-xs text-muted-foreground italic">加载预测中...</p>
+                          </div>
+                        ) : predictionNumbers.length > 0 ? (
+                          <div className="space-y-1">
+                            {chunkArray(predictionNumbers, 9).map((chunk, chunkIndex) => (
+                              <div key={chunkIndex} className={cn("flex justify-center")}>
+                                <NumberPickingToolDisplay numbers={chunk} />
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground italic h-full flex items-center justify-center">
+                            该工具对第 {OFFICIAL_PREDICTIONS_DRAW_ID} 期的预测尚未生成。
+                          </p>
+                        )}
+                      </div>
+                       {betPrice !== null && predictionCount > 0 && (
+                        <p className="text-xs text-center text-muted-foreground mt-1.5">
+                          使用智能精选算法投注 {predictionCount} 个号码仅需 {betPrice} 新币
                         </p>
                       )}
                     </div>
-                     {/* Visual cue for clickability, can be removed if card style is enough */}
-                    {/* <div className="mt-auto text-xs text-primary/80 flex items-center justify-end">
-                      查看详情 <ExternalLink className="ml-1 h-3 w-3" />
-                    </div> */}
                   </div>
                 </Link>
               </div>
@@ -199,5 +207,3 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
     </Card>
   );
 }
-
-    

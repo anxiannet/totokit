@@ -140,3 +140,24 @@ export function calculateHitDetails(
 
 // TOTO Number Range - also defined in types.ts, ensure consistency or import from there
 export const TOTO_NUMBER_RANGE = { min: 1, max: 49 };
+
+export function getTotoSystemBetPrice(numberOfNumbers: number): number | null {
+  const priceMap: Record<number, number> = {
+    7: 4,
+    8: 4,
+    9: 5,
+    10: 6,
+    11: 7,
+    12: 8,
+    13: 9,
+    14: 10,
+    15: 10,
+    16: 11,
+    17: 12,
+    18: 13,
+    19: 14,
+    20: 15,
+    21: 16,
+  };
+  return priceMap[numberOfNumbers] || null;
+}
