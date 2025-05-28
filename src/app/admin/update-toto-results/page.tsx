@@ -4,7 +4,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
+// import { Input } from "@/components/ui/input"; // No longer needed for current draw info
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -16,6 +16,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { syncHistoricalResultsToFirestore, updateCurrentDrawDisplayInfo, getCurrentDrawDisplayInfo } from "@/lib/actions";
 import { Separator } from "@/components/ui/separator";
+import { MOCK_HISTORICAL_DATA } from "@/lib/types";
+
 
 const HistoricalResultSchema = z.object({
   drawNumber: z.number(),
@@ -35,14 +37,20 @@ const monthMap: { [key: string]: string } = {
 
 function parseDateFromText(dateStr: string): string {
   const parts = dateStr.split(" ");
-  if (parts.length < 4) return "";
+  if (parts.length < 4) return ""; // e.g., "Thu, 22 May 2025"
 
-  const dayPart = parts[1].replace(/,$/, "");
-  const day = dayPart.padStart(2, "0");
-  const month = monthMap[parts[2]];
-  const year = parts[3];
+  // Attempt to handle formats like "Day, DD Mon YYYY"
+  const dayPartCandidate = parts[1]; // "22" or "22,"
+  const monthPartCandidate = parts[2]; // "May"
+  const yearPartCandidate = parts[3]; // "2025"
 
-  if (!month || !year || !day) return "";
+  if (!dayPartCandidate || !monthPartCandidate || !yearPartCandidate) return "";
+
+  const day = dayPartCandidate.replace(/,$/, "").padStart(2, "0");
+  const month = monthMap[monthPartCandidate];
+  const year = yearPartCandidate;
+
+  if (!month || !year || !day || isNaN(parseInt(day)) || isNaN(parseInt(year))) return "";
   return `${year}-${month}-${day}`;
 }
 
@@ -59,8 +67,7 @@ export default function AdminUpdateTotoResultsPage() {
   const [adminClaimStatus, setAdminClaimStatus] = useState<AdminClaimStatus>("loading");
   const [isCheckingClaim, setIsCheckingClaim] = useState(false);
 
-  const [currentDrawDateTime, setCurrentDrawDateTime] = useState("");
-  const [currentJackpot, setCurrentJackpot] = useState("");
+  const [currentDrawInfoText, setCurrentDrawInfoText] = useState("");
   const [isUpdatingDrawInfo, setIsUpdatingDrawInfo] = useState(false);
   const [isLoadingDrawInfo, setIsLoadingDrawInfo] = useState(true);
 
@@ -106,13 +113,11 @@ export default function AdminUpdateTotoResultsPage() {
     setIsLoadingDrawInfo(true);
     try {
       const info = await getCurrentDrawDisplayInfo();
-      if (info) {
-        setCurrentDrawDateTime(info.currentDrawDateTime || "");
-        setCurrentJackpot(info.currentJackpot || "");
+      if (info && info.currentDrawDateTime && info.currentJackpot) {
+        setCurrentDrawInfoText(`${info.currentDrawDateTime}\n${info.currentJackpot}`);
       } else {
         // Fallback or defaults if not found in Firestore
-        setCurrentDrawDateTime("周四, 2025年5月29日, 傍晚6点30分");
-        setCurrentJackpot("$4,500,000 (估计)");
+        setCurrentDrawInfoText("周四, 2025年5月29日, 傍晚6点30分\n$4,500,000 (估计)");
       }
     } catch (error) {
       console.error("Error fetching current draw info:", error);
@@ -122,8 +127,7 @@ export default function AdminUpdateTotoResultsPage() {
         variant: "destructive"
       });
       // Fallback to defaults
-      setCurrentDrawDateTime("周四, 2025年5月29日, 傍晚6点30分");
-      setCurrentJackpot("$4,500,000 (估计)");
+      setCurrentDrawInfoText("周四, 2025年5月29日, 傍晚6点30分\n$4,500,000 (估计)");
     } finally {
       setIsLoadingDrawInfo(false);
     }
@@ -136,7 +140,7 @@ export default function AdminUpdateTotoResultsPage() {
       if (user && user.email === adminEmail) {
         setIsAdminByEmail(true);
         checkAdminClaim();
-        fetchCurrentDrawInfo(); // Fetch current draw info for admin
+        fetchCurrentDrawInfo();
       } else {
         setIsAdminByEmail(false);
         setAdminClaimStatus("not_admin_email");
@@ -202,7 +206,7 @@ export default function AdminUpdateTotoResultsPage() {
 
         const date = parseDateFromText(dateText);
         if (!date) {
-          parsingErrors.push(`记录 ${index + 1}: 日期 "${dateText}" 解析失败。`);
+          parsingErrors.push(`记录 ${index + 1}: 日期 "${dateText}" 解析失败。日期格式应为：星期, 日 月份 年份 (例如 Thu, 22 May 2025)。`);
           return;
         }
         const drawNumber = parseInt(drawNoText, 10);
@@ -295,15 +299,15 @@ export default function AdminUpdateTotoResultsPage() {
       toast({ title: "权限不足", description: "需要管理员权限才能更新。", variant: "destructive" });
       return;
     }
-    if (!currentDrawDateTime.trim() || !currentJackpot.trim()) {
-      toast({ title: "输入不完整", description: "请输入开奖日期/时间和预估头奖。", variant: "destructive" });
+    if (!currentDrawInfoText.trim()) {
+      toast({ title: "输入不完整", description: "请输入本期开奖信息。", variant: "destructive" });
       return;
     }
 
     setIsUpdatingDrawInfo(true);
     try {
       const result = await updateCurrentDrawDisplayInfo(
-        { currentDrawDateTime, currentJackpot },
+        currentDrawInfoText,
         user.uid
       );
       if (result.success) {
@@ -416,7 +420,7 @@ export default function AdminUpdateTotoResultsPage() {
             更新本期开奖信息 (首页显示)
           </CardTitle>
           <CardDescription>
-            在这里更新将在首页显示的“本期开奖”日期/时间和“预估头奖”金额。
+            在此处粘贴或编辑将在首页显示的“本期开奖”日期/时间和“预估头奖”金额。请确保第一行为日期/时间，第二行为头奖金额。
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -426,28 +430,18 @@ export default function AdminUpdateTotoResultsPage() {
               <p>正在加载当前开奖信息...</p>
             </div>
           ) : (
-            <>
-              <div>
-                <Label htmlFor="currentDrawDateTime">本期开奖日期/时间</Label>
-                <Input
-                  id="currentDrawDateTime"
-                  value={currentDrawDateTime}
-                  onChange={(e) => setCurrentDrawDateTime(e.target.value)}
-                  placeholder="例如: 周四, 2025年5月29日, 傍晚6点30分"
-                  disabled={isUpdatingDrawInfo}
-                />
-              </div>
-              <div>
-                <Label htmlFor="currentJackpot">本期预估头奖</Label>
-                <Input
-                  id="currentJackpot"
-                  value={currentJackpot}
-                  onChange={(e) => setCurrentJackpot(e.target.value)}
-                  placeholder="例如: $4,500,000 (估计)"
-                  disabled={isUpdatingDrawInfo}
-                />
-              </div>
-            </>
+            <div>
+              <Label htmlFor="currentDrawInfoText">本期开奖信息 (纯文本)</Label>
+              <Textarea
+                id="currentDrawInfoText"
+                value={currentDrawInfoText}
+                onChange={(e) => setCurrentDrawInfoText(e.target.value)}
+                placeholder="例如:\n周四, 2025年5月29日, 傍晚6点30分\n$4,500,000 (估计)"
+                rows={3}
+                className="mt-1 font-mono text-sm"
+                disabled={isUpdatingDrawInfo}
+              />
+            </div>
           )}
         </CardContent>
         <CardFooter>

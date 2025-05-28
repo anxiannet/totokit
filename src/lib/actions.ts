@@ -130,6 +130,7 @@ export async function syncHistoricalResultsToFirestore(
     console.error("[SYNC_FIRESTORE] Admin user ID not provided. Sync aborted.");
     return { success: false, message: "管理员未登录或UID无效，无法同步。" };
   }
+  console.log(`[SYNC_FIRESTORE] Admin user ID: ${adminUserId} initiated sync.`);
 
   try {
     const results: HistoricalResult[] = JSON.parse(jsonDataString);
@@ -146,7 +147,7 @@ export async function syncHistoricalResultsToFirestore(
         continue;
       }
       const resultDocRef = doc(db, "totoResults", String(result.drawNumber));
-      const dataToSet = { ...result, userId: adminUserId };
+      const dataToSet = { ...result, userId: adminUserId }; // Add adminUserId to each document
       batch.set(resultDocRef, dataToSet, { merge: true }); 
       count++;
     }
@@ -227,7 +228,7 @@ export async function saveSmartPickResult(
 }
 
 export async function updateCurrentDrawDisplayInfo(
-  data: { currentDrawDateTime: string; currentJackpot: string },
+  plainTextInfo: string,
   adminUserId: string | null
 ): Promise<{ success: boolean; message?: string }> {
   if (!db) {
@@ -237,10 +238,22 @@ export async function updateCurrentDrawDisplayInfo(
     return { success: false, message: "管理员未登录，无法更新。" };
   }
 
+  const lines = plainTextInfo.trim().split('\n');
+  if (lines.length < 2) {
+    return { success: false, message: "输入格式错误。请确保第一行为日期/时间，第二行为头奖金额。" };
+  }
+  const currentDrawDateTime = lines[0].trim();
+  const currentJackpot = lines[1].trim();
+
+  if (!currentDrawDateTime || !currentJackpot) {
+     return { success: false, message: "日期/时间或头奖金额不能为空。" };
+  }
+
   try {
     const docRef = doc(db, "appSettings", "currentDrawInfo");
     await setDoc(docRef, {
-      ...data,
+      currentDrawDateTime,
+      currentJackpot,
       updatedBy: adminUserId,
       updatedAt: serverTimestamp(),
     }, { merge: true });
