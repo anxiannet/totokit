@@ -148,9 +148,7 @@ export function LastDrawTopTools({ tools, latestDrawNumber }: LastDrawTopToolsPr
                     </Badge>
                   </div>
                   <div className="mb-2">
-                    <p className="text-xs text-muted-foreground mb-1">
-                      针对上期 (第 {latestDrawNumber || "N/A"} 期) 预测号码 ({tool.predictionForLastDraw.length} 个):
-                    </p>
+                    {/* Removed descriptive text line */}
                     {chunkArray(tool.predictionForLastDraw, 9).map((chunk, chunkIndex) => (
                       <div key={chunkIndex} className={cn("flex justify-center", chunkIndex > 0 ? "mt-1.5" : "")}>
                         <NumberPickingToolDisplay
@@ -160,30 +158,6 @@ export function LastDrawTopTools({ tools, latestDrawNumber }: LastDrawTopToolsPr
                       </div>
                     ))}
                   </div>
-                   {/* Removed hit details display block
-                   {tool.hitDetailsForLastDraw && (
-                    <div className="text-xs space-y-0.5 text-foreground/90 mt-1">
-                      <p>
-                        命中正码:{" "}
-                        <span className="font-semibold">
-                          {tool.hitDetailsForLastDraw.mainHitCount}
-                        </span>{" "}
-                        个
-                        {tool.hitDetailsForLastDraw.matchedMainNumbers.length > 0
-                          ? ` (${tool.hitDetailsForLastDraw.matchedMainNumbers.join(", ")})`
-                          : ""}
-                      </p>
-                      <p>
-                        特别号码 ({latestActualDraw?.additionalNumber}):{" "}
-                        {tool.hitDetailsForLastDraw.matchedAdditionalNumberDetails?.matched ? (
-                          <span className="font-semibold text-yellow-600">命中</span>
-                        ) : (
-                          <span className="text-muted-foreground">未命中</span>
-                        )}
-                      </p>
-                    </div>
-                  )}
-                  */}
                 </div>
                 <Button asChild variant="outline" size="sm" className="w-full mt-3 text-xs sm:text-sm">
                   <Link href={`/number-picking-tools/${tool.id}`}>
