@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,38 +10,18 @@ import { MOCK_LATEST_RESULT, type HistoricalResult } from "@/lib/types";
 import { formatDateToLocale, getBallColor } from "@/lib/totoUtils";
 import { Separator } from "@/components/ui/separator";
 import { zhCN } from "date-fns/locale";
-import { getCurrentDrawDisplayInfo } from '@/lib/actions'; // Import the action
+// Removed: import { getCurrentDrawDisplayInfo } from "@/lib/actions"; // No longer fetching from Firestore
 
 export function CurrentAndLatestDrawInfo() {
   const latestResult: HistoricalResult | null = MOCK_LATEST_RESULT;
 
-  // Set initial state to the user's desired default display
+  // Default values are already in Chinese descriptive format
   const [currentDrawDateTime, setCurrentDrawDateTime] = useState("周四, 2025年5月29日, 傍晚6点30分");
   const [currentJackpot, setCurrentJackpot] = useState("$4,500,000 (估计)");
-  const [isLoadingDrawInfo, setIsLoadingDrawInfo] = useState(true);
+  const [isLoadingDrawInfo, setIsLoadingDrawInfo] = useState(false); // Set to false as we are not fetching
 
-  useEffect(() => {
-    const fetchInfo = async () => {
-      setIsLoadingDrawInfo(true);
-      try {
-        const info = await getCurrentDrawDisplayInfo();
-        if (info && info.currentDrawDateTime && info.currentJackpot) {
-          setCurrentDrawDateTime(info.currentDrawDateTime);
-          setCurrentJackpot(info.currentJackpot);
-        } else {
-          console.warn("Current draw info not found or incomplete in Firestore, using hardcoded defaults.");
-          // Defaults are already set by useState initial values
-        }
-      } catch (error) {
-        console.error("Failed to fetch current draw info from Firestore:", error);
-        // Keep defaults on error, which are already set by useState
-      } finally {
-        setIsLoadingDrawInfo(false);
-      }
-    };
-    fetchInfo();
-  }, []);
-
+  // useEffect to fetch from Firestore is removed as per previous changes.
+  // If this needs to be re-enabled, the fetching logic would go here.
 
   return (
     <Card className="w-full mb-6 shadow-lg border-border">

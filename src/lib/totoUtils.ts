@@ -9,14 +9,24 @@ export const getBallColor = (number: number, isAdditional: boolean = false): str
 };
 
 export const formatDateToLocale = (dateString: string, locale: Locale = zhCN) => {
+  // console.log("[formatDateToLocale] Received dateString:", dateString, "Locale code:", locale ? locale.code : "undefined"); // Diagnostic log
   try {
-    if (locale.code === 'zh-CN') {
-      return format(new Date(dateString), "yyyy年M月d日", { locale });
+    if (!dateString) return ""; // Handle empty date string
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) { // Check for invalid date
+      // console.error("[formatDateToLocale] Invalid date string provided:", dateString);
+      return dateString; // Return original string if date is invalid
     }
-    return format(new Date(dateString), "PPP", { locale });
+
+    if (locale && locale.code === "zh-CN") {
+      // console.log("[formatDateToLocale] Using zh-CN format for date:", dateString);
+      return format(date, "yyyy年M月d日", { locale });
+    }
+    // console.log("[formatDateToLocale] Using default PPP format for locale:", locale ? locale.code : "undefined", "for date:", dateString);
+    return format(date, "PPP", { locale }); // Fallback to PPP for other locales
   } catch (e) {
     console.error("Error formatting date:", e);
-    return dateString;
+    return dateString; // Return original string on error
   }
 };
 
@@ -48,7 +58,7 @@ export function calculateHitDetails(
   return {
     matchedMainNumbers: matchedMainNumbers.sort((a, b) => a - b),
     matchedAdditionalNumberDetails: {
-        number: additionalWinningNumber, // Return the actual additional number from historical result
+        number: additionalWinningNumber,
         matched: additionalMatched
     },
     mainHitCount: matchedMainNumbers.length,
