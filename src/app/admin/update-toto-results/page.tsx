@@ -127,7 +127,7 @@ export default function AdminUpdateTotoResultsPage() {
       if (validationResult.success) {
         const sortedData = [...validationResult.data].sort((a, b) => b.drawNumber - a.drawNumber);
         setValidationStatus("success");
-        setValidationMessage("JSON数据有效！请按照以下步骤更新应用数据，或通过服务器操作同步到Firestore。");
+        setValidationMessage("JSON数据有效！现在您可以通过服务器操作将其同步到 Firestore。");
         setValidatedJsonOutput(JSON.stringify(sortedData, null, 2));
         setJsonData(JSON.stringify(sortedData, null, 2));
       } else {
@@ -379,7 +379,7 @@ export default function AdminUpdateTotoResultsPage() {
         <CardHeader>
           <CardTitle>管理员：手动更新TOTO开奖结果</CardTitle>
           <CardDescription>
-            您可以在下方粘贴**完整JSON数组**或**纯文本格式**的新开奖结果。系统将验证数据、合并（如果使用文本输入）并提供更新项目文件的说明，或通过服务器操作同步到 Firestore。
+            您可以在下方粘贴**完整JSON数组**或**纯文本格式**的新开奖结果。系统将验证数据、合并（如果使用文本输入）并提供通过服务器操作同步到 Firestore 的选项。
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -419,7 +419,7 @@ export default function AdminUpdateTotoResultsPage() {
                 确保数据是一个包含所有历史结果的JSON数组，且每个对象都符合 `HistoricalResult` 结构。建议按 `drawNumber` 降序排列。
               </p>
                <Button onClick={handleValidateAndPrepare} className="w-full mt-3">
-                验证并准备更新指令
+                验证JSON数据
               </Button>
             </div>
           </div>
@@ -442,55 +442,31 @@ export default function AdminUpdateTotoResultsPage() {
 
           {validatedJsonOutput && validationStatus === "success" && (
             <div className="mt-6 space-y-4 p-4 border rounded-md bg-muted/50">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                 <Button 
-                  onClick={handleSyncDirectlyToFirestore} 
-                  disabled={isSyncing || adminClaimStatus !== 'verified'}
-                  className="w-full"
-                >
-                  {isSyncing ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <CloudUpload className="mr-2 h-4 w-4" />
-                  )}
-                  同步到 Firestore (服务器操作)
-                </Button>
-              </div>
+              <Button 
+                onClick={handleSyncDirectlyToFirestore} 
+                disabled={isSyncing || adminClaimStatus !== 'verified'}
+                className="w-full"
+              >
+                {isSyncing ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <CloudUpload className="mr-2 h-4 w-4" />
+                )}
+                同步到 Firestore (服务器操作)
+              </Button>
               {(adminClaimStatus !== 'verified') && (
                 <p className="text-xs text-red-600 text-center mt-2">
                   需要已验证的管理员权限才能通过服务器操作同步到 Firestore。
                 </p>
               )}
-
-              <h3 className="text-md font-semibold mt-4">1. 更新 `src/data/totoResults.json` 文件:</h3>
-              <p className="text-sm">复制以下已验证和排序的JSON数据，并用它替换掉 <code>src/data/totoResults.json</code> 文件的全部内容。</p>
-              <Textarea
-                value={validatedJsonOutput}
-                readOnly
-                rows={10}
-                className="font-mono text-xs bg-white dark:bg-background"
-              />
-              
-              <h3 className="text-md font-semibold mt-4">2. 更新 `src/lib/types.ts` 文件:</h3>
-              <p className="text-sm">
-                打开 <code>src/lib/types.ts</code> 文件，并进行如下修改：
-              </p>
-              <ul className="list-disc list-inside text-sm space-y-1 pl-4">
-                <li>将 <code>MOCK_HISTORICAL_DATA</code> 常量的值替换为上述复制的JSON数据 (在代码中它应该是一个JavaScript数组，而不是JSON字符串)。</li>
-                <li>确保 <code>MOCK_LATEST_RESULT</code> 常量指向更新后的 <code>MOCK_HISTORICAL_DATA</code> 数组中的第一个元素 (即最新的开奖结果)。例如: <code>export const MOCK_LATEST_RESULT: HistoricalResult = MOCK_HISTORICAL_DATA[0];</code></li>
-              </ul>
-
-              <h3 className="text-md font-semibold mt-4">3. 重启应用:</h3>
-              <p className="text-sm">
-                为了使这些本地文件更改生效，您需要重新启动您的Next.js开发服务器 (通常是停止并重新运行 <code>npm run dev</code>) 或重新部署您的应用。
-              </p>
+              {/* Removed manual update instructions section */}
             </div>
           )}
           
         </CardContent>
         <CardFooter>
           <p className="text-xs text-muted-foreground text-center w-full">
-            此页面用于辅助手动更新本地数据文件或通过服务器操作同步到 Firestore。
+            此页面用于辅助手动更新开奖结果数据并同步到 Firestore。
           </p>
         </CardFooter>
       </Card>
