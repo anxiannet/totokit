@@ -3,11 +3,10 @@
 
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/button"; // Keep for potential future use or remove if truly unused
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ExternalLink, Info, Loader2, Target } from "lucide-react"; // Removed Percent
-import type { DynamicNumberPickingTool } from "@/lib/numberPickingAlgos"; // Renamed for clarity
+import { Info, Loader2, Target, ExternalLink, CheckCircle, XCircle } from "lucide-react";
+import type { DynamicNumberPickingTool } from "@/lib/numberPickingAlgos";
 import { NumberPickingToolDisplay } from "./NumberPickingToolDisplay";
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
@@ -17,7 +16,6 @@ import { OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types";
 
 export interface TopToolDisplayInfo extends DynamicNumberPickingTool {
   averageHitRate: number;
-  // currentPrediction: number[]; // This will now be fetched via useQuery
 }
 
 interface TopPerformingToolsProps {
@@ -38,14 +36,13 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [isInteracting, setIsInteracting] = useState(false); // To prevent observer firing during programmatic scroll
+  const [isInteracting, setIsInteracting] = useState(false);
 
   const { data: predictionsForTargetDrawMap = {}, isLoading: isLoadingPredictions } = useQuery<Record<string, number[]>, Error>({
     queryKey: ["predictionsForDrawHomepage", OFFICIAL_PREDICTIONS_DRAW_ID],
     queryFn: () => getPredictionsForDraw(OFFICIAL_PREDICTIONS_DRAW_ID),
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
-
 
   useEffect(() => {
     itemRefs.current = itemRefs.current.slice(0, tools.length);
@@ -59,24 +56,20 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
         block: 'nearest',
         inline: 'start',
       });
-      // Reset isInteracting after scroll animation duration (approx)
-      setTimeout(() => setIsInteracting(false), 600);
+      setTimeout(() => setIsInteracting(false), 600); // Adjust timeout as needed
     }
   }, []);
 
-  // Effect to scroll when activeIndex changes (e.g., by dot click)
   useEffect(() => {
     scrollToTool(activeIndex);
   }, [activeIndex, scrollToTool]);
 
-
-  // Effect to update activeIndex based on scroll position (IntersectionObserver)
   useEffect(() => {
     if (isInteracting || !scrollContainerRef.current || tools.length === 0) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (isInteracting) return; // Don't update if scroll was programmatic
+        if (isInteracting) return;
 
         entries.forEach((entry) => {
           if (entry.isIntersecting && entry.intersectionRatio >= 0.75) {
@@ -89,7 +82,7 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
       },
       {
         root: scrollContainerRef.current,
-        threshold: 0.75, // Trigger when 75% of the item is visible
+        threshold: 0.75,
       }
     );
 
@@ -102,7 +95,7 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
         if (ref) observer.unobserve(ref);
       });
     };
-  }, [tools, activeIndex, isInteracting]); // Add tools dependency
+  }, [tools, activeIndex, isInteracting]);
 
 
   if (!tools || tools.length === 0) {
@@ -123,97 +116,88 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
   }
 
   return (
-    <Card className="mt-6 shadow-lg">
+    <Card className="mt-6 shadow-lg overflow-hidden">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-xl font-semibold">
           <Info className="h-6 w-6 text-primary" />
           近期热门工具
         </CardTitle>
       </CardHeader>
-      <CardContent className="pt-2 pb-4 px-0 sm:px-0 md:px-0">
-        <Tabs
-          value={tools[activeIndex]?.id || (tools[0] ? tools[0].id : '')}
-          onValueChange={(value) => {
-            const newIndex = tools.findIndex(tool => tool.id === value);
-            if (newIndex !== -1) {
-              setActiveIndex(newIndex);
-            }
-          }}
-          className="w-full"
+      <CardContent className="pt-2 pb-4 px-0">
+        <div
+          ref={scrollContainerRef}
+          className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar h-[190px]" // Adjusted height
         >
-          <TabsList className="flex overflow-x-auto whitespace-nowrap no-scrollbar mb-4 h-auto p-1 mx-2 sm:mx-4 rounded-lg bg-muted">
-            {tools.map((tool, index) => (
-              <TabsTrigger
+          {tools.map((tool, index) => {
+            const currentPredictionForDraw = predictionsForTargetDrawMap[tool.id] || [];
+            return (
+              <div
                 key={tool.id}
-                value={tool.id}
-                className={cn(
-                    "text-xs sm:text-sm px-3 py-1.5 h-auto flex-shrink-0 data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm",
-                    activeIndex === index ? "font-semibold" : ""
-                )}
-                onClick={() => {
-                    setIsInteracting(true); // Indicate programmatic change
-                    setActiveIndex(index);
-                }}
+                ref={el => itemRefs.current[index] = el}
+                className="min-w-full snap-start flex-shrink-0 px-4 py-2 h-full"
               >
-                {tool.name}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
-          <div
-            ref={scrollContainerRef}
-            className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar"
-          >
-            {tools.map((tool, index) => {
-              const currentPredictionForDraw = predictionsForTargetDrawMap[tool.id] || [];
-              return (
-                <div
-                  key={tool.id}
-                  ref={el => itemRefs.current[index] = el}
-                  className="min-w-full snap-start flex-shrink-0 px-4 py-2" 
-                >
-                  <div className="border p-4 rounded-lg bg-card shadow-sm min-h-[150px] flex flex-col justify-between">
+                <Link href={`/number-picking-tools/${tool.id}`} className="block h-full focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded-lg">
+                  <div className="p-4 border rounded-lg bg-card shadow-sm h-full flex flex-col justify-between hover:bg-muted/50 transition-colors cursor-pointer">
                     <div>
-                      <div className="flex flex-wrap justify-between items-center mb-3 gap-2">
-                          <h5 className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                            <Target className="mr-1 h-4 w-4 text-primary/80" />
-                            第 {OFFICIAL_PREDICTIONS_DRAW_ID} 期预测 ({currentPredictionForDraw.length} 个):
-                          </h5>
-                          <Badge variant="secondary" className="text-xs sm:text-sm">
-                           平均命中率：{tool.averageHitRate.toFixed(1)}%
-                          </Badge>
+                      <div className="flex flex-row justify-between items-center mb-2 gap-2">
+                        <h3 className="text-md font-semibold text-primary truncate">
+                          {tool.name} ({currentPredictionForDraw.length}个)
+                        </h3>
+                        <Badge variant={tool.averageHitRate > 0 ? "default" : "secondary"} className="whitespace-nowrap flex-shrink-0">
+                          {tool.averageHitRate > 0 ? <CheckCircle className="mr-1.5 h-4 w-4" /> : <XCircle className="mr-1.5 h-4 w-4" />}
+                          平均命中率：{tool.averageHitRate.toFixed(1)}%
+                        </Badge>
                       </div>
-
                       {isLoadingPredictions ? (
-                        <div className="flex items-center space-x-2 mb-3">
+                        <div className="flex items-center space-x-2 mb-3 h-[60px]"> {/* Placeholder height */}
                           <Loader2 className="h-5 w-5 animate-spin" />
-                           <p className="text-xs text-muted-foreground italic">加载预测中...</p>
+                          <p className="text-xs text-muted-foreground italic">加载预测中...</p>
                         </div>
                       ) : currentPredictionForDraw.length > 0 ? (
-                          <div className="mb-3">
-                           {chunkArray(currentPredictionForDraw, 9).map((chunk, chunkIndex) => ( // Changed chunk size to 9
-                             <div key={chunkIndex} className={cn("flex justify-center", chunkIndex > 0 ? "mt-1.5" : "")}>
-                               <NumberPickingToolDisplay numbers={chunk} />
-                             </div>
-                           ))}
-                          </div>
+                        <div className="mb-3 space-y-1 max-h-[90px] overflow-y-auto no-scrollbar">
+                         {chunkArray(currentPredictionForDraw, 9).map((chunk, chunkIndex) => (
+                           <div key={chunkIndex} className={cn("flex justify-center")}>
+                             <NumberPickingToolDisplay numbers={chunk} />
+                           </div>
+                         ))}
+                        </div>
                       ) : (
-                        <p className="text-xs text-muted-foreground italic mb-3">此工具对第 {OFFICIAL_PREDICTIONS_DRAW_ID} 期的预测尚未生成。</p>
+                        <p className="text-xs text-muted-foreground italic mb-3 h-[60px] flex items-center justify-center"> {/* Placeholder height */}
+                          此工具对第 {OFFICIAL_PREDICTIONS_DRAW_ID} 期的预测尚未生成。
+                        </p>
                       )}
                     </div>
-                    <Button asChild variant="outline" size="sm" className="w-full mt-auto text-xs sm:text-sm">
-                        <Link href={`/number-picking-tools/${tool.id}`}>
-                            查看详细分析与历史表现
-                            <ExternalLink className="ml-1.5 h-3.5 w-3.5 sm:ml-2 sm:h-4 sm:w-4" />
-                        </Link>
-                     </Button>
+                     {/* Visual cue for clickability, can be removed if card style is enough */}
+                    {/* <div className="mt-auto text-xs text-primary/80 flex items-center justify-end">
+                      查看详情 <ExternalLink className="ml-1 h-3 w-3" />
+                    </div> */}
                   </div>
-                </div>
-              );
-            })}
+                </Link>
+              </div>
+            );
+          })}
+        </div>
+        {tools.length > 1 && (
+          <div className="flex justify-center space-x-2 mt-4">
+            {tools.map((_, index) => (
+              <button
+                key={`dot-${index}`}
+                onClick={() => {
+                  setIsInteracting(true);
+                  setActiveIndex(index);
+                }}
+                aria-label={`切换到工具 ${index + 1}`}
+                className={cn(
+                  "h-2 w-2 rounded-full transition-colors",
+                  activeIndex === index ? "bg-primary" : "bg-muted hover:bg-muted-foreground/50"
+                )}
+              />
+            ))}
           </div>
-        </Tabs>
+        )}
       </CardContent>
     </Card>
   );
 }
+
+    
