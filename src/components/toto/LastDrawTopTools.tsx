@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ExternalLink, Info, Award, CheckCircle, XCircle } from "lucide-react";
-import type { HitDetails, TotoCombination, HistoricalResult } from "@/lib/types"; // Added HistoricalResult
+import type { HitDetails, TotoCombination } from "@/lib/types";
 import { NumberPickingToolDisplay } from "./NumberPickingToolDisplay";
 import { MOCK_LATEST_RESULT } from '@/lib/types';
 import React, { useRef, useEffect, useState, useCallback } from 'react';
@@ -23,16 +23,25 @@ export interface LastDrawToolPerformanceInfo {
 interface LastDrawTopToolsProps {
   tools: LastDrawToolPerformanceInfo[];
   latestDrawNumber?: number;
-  // latestActualDraw?: HistoricalResult | null; // Prop to pass the actual draw for highlighting
+}
+
+// Helper function to chunk an array
+function chunkArray<T>(array: T[], size: number): T[][] {
+  const result: T[][] = [];
+  if (!array || array.length === 0) return result;
+  for (let i = 0; i < array.length; i += size) {
+    result.push(array.slice(i, i + size));
+  }
+  return result;
 }
 
 export function LastDrawTopTools({ tools, latestDrawNumber }: LastDrawTopToolsProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [isInteracting, setIsInteracting] = useState(false); // To prevent observer firing during programmatic scroll
+  const [isInteracting, setIsInteracting] = useState(false);
 
-  const latestActualDraw = MOCK_LATEST_RESULT; // Use the mock for highlighting as before
+  const latestActualDraw = MOCK_LATEST_RESULT;
 
   useEffect(() => {
     itemRefs.current = itemRefs.current.slice(0, tools.length);
@@ -46,24 +55,20 @@ export function LastDrawTopTools({ tools, latestDrawNumber }: LastDrawTopToolsPr
         block: 'nearest',
         inline: 'start',
       });
-      // Reset isInteracting after scroll animation duration (approx)
       setTimeout(() => setIsInteracting(false), 600);
     }
   }, []);
 
-  // Effect to scroll when activeIndex changes (e.g., by dot click)
   useEffect(() => {
     scrollToTool(activeIndex);
   }, [activeIndex, scrollToTool]);
 
-
-  // Effect to update activeIndex based on scroll position (IntersectionObserver)
   useEffect(() => {
     if (isInteracting || !scrollContainerRef.current || tools.length === 0) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (isInteracting) return; // Don't update if scroll was programmatic
+        if (isInteracting) return;
 
         entries.forEach((entry) => {
           if (entry.isIntersecting && entry.intersectionRatio >= 0.75) {
@@ -76,7 +81,7 @@ export function LastDrawTopTools({ tools, latestDrawNumber }: LastDrawTopToolsPr
       },
       {
         root: scrollContainerRef.current,
-        threshold: 0.75, // Trigger when 75% of the item is visible
+        threshold: 0.75,
       }
     );
 
@@ -89,7 +94,7 @@ export function LastDrawTopTools({ tools, latestDrawNumber }: LastDrawTopToolsPr
         if (ref) observer.unobserve(ref);
       });
     };
-  }, [tools, activeIndex, isInteracting]); // Add tools dependency
+  }, [tools, activeIndex, isInteracting]);
 
   if (!tools || tools.length === 0) {
     return (
@@ -112,7 +117,7 @@ export function LastDrawTopTools({ tools, latestDrawNumber }: LastDrawTopToolsPr
   }
 
   return (
-    <Card className="mt-6 shadow-lg overflow-hidden"> {/* Added overflow-hidden */}
+    <Card className="mt-6 shadow-lg overflow-hidden">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-xl font-semibold">
           <Award className="h-6 w-6 text-amber-500" />
@@ -122,7 +127,7 @@ export function LastDrawTopTools({ tools, latestDrawNumber }: LastDrawTopToolsPr
           根据最新一期开奖结果计算的工具表现，按命中率从高到低排列。左右滑动查看。
         </CardDescription>
       </CardHeader>
-      <CardContent className="pt-2 pb-4 px-0"> {/* Removed horizontal padding for full width scroll */}
+      <CardContent className="pt-2 pb-4 px-0">
         <div
           ref={scrollContainerRef}
           className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar"
@@ -131,7 +136,7 @@ export function LastDrawTopTools({ tools, latestDrawNumber }: LastDrawTopToolsPr
             <div
               key={tool.id}
               ref={el => itemRefs.current[index] = el}
-              className="min-w-full snap-start flex-shrink-0 px-4 py-2" // Added padding inside each item
+              className="min-w-full snap-start flex-shrink-0 px-4 py-2"
             >
               <div className="p-4 border rounded-lg bg-card shadow-sm h-full flex flex-col justify-between">
                 <div>
@@ -146,10 +151,14 @@ export function LastDrawTopTools({ tools, latestDrawNumber }: LastDrawTopToolsPr
                     <p className="text-xs text-muted-foreground mb-1">
                       针对上期 (第 {latestDrawNumber || "N/A"} 期) 预测号码 ({tool.predictionForLastDraw.length} 个):
                     </p>
-                    <NumberPickingToolDisplay
-                      numbers={tool.predictionForLastDraw}
-                      historicalResultForHighlight={latestActualDraw}
-                    />
+                    {chunkArray(tool.predictionForLastDraw, 9).map((chunk, chunkIndex) => (
+                      <div key={chunkIndex} className={cn("flex justify-center", chunkIndex > 0 ? "mt-1.5" : "")}>
+                        <NumberPickingToolDisplay
+                          numbers={chunk}
+                          historicalResultForHighlight={latestActualDraw}
+                        />
+                      </div>
+                    ))}
                   </div>
                    {tool.hitDetailsForLastDraw && (
                     <div className="text-xs space-y-0.5 text-foreground/90 mt-1">
@@ -184,16 +193,14 @@ export function LastDrawTopTools({ tools, latestDrawNumber }: LastDrawTopToolsPr
             </div>
           ))}
         </div>
-        {/* Dot Indicators */}
         {tools.length > 1 && (
           <div className="flex justify-center space-x-2 mt-4">
             {tools.map((_, index) => (
               <button
                 key={`dot-${index}`}
                 onClick={() => {
-                  setIsInteracting(true); // Indicate programmatic change
+                  setIsInteracting(true);
                   setActiveIndex(index);
-                  // scrollToTool(index); // scrollToTool is called by useEffect based on activeIndex change
                 }}
                 aria-label={`切换到工具 ${index + 1}`}
                 className={cn(
