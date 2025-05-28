@@ -13,9 +13,6 @@ import { ArrowLeft, CheckCircle, XCircle, Info, Loader2, ShieldAlert, RefreshCw,
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-// Removed: import { getIdTokenResult } from "firebase/auth"; // Not directly used in this simplified check
-// import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions"; // No longer needed for Cloud Function call
-// import { auth as firebaseAuthInstance } from "@/lib/firebase"; // No longer needed for Cloud Function call specifically
 import { syncHistoricalResultsToFirestore } from "@/lib/actions";
 import { Separator } from "@/components/ui/separator";
 
@@ -38,11 +35,11 @@ const monthMap: { [key: string]: string } = {
 };
 
 function parseDateFromText(dateStr: string): string {
-  // Example input: "Thu, 22 May 2025"
-  const parts = dateStr.split(" "); // ["Thu,", "22", "May", "2025"]
-  if (parts.length < 4) return ""; // Basic validation
+  const parts = dateStr.split(" "); 
+  if (parts.length < 4) return ""; 
 
-  const day = parts[1].padStart(2, "0");
+  const dayPart = parts[1].replace(/,$/, ""); // Remove comma if present
+  const day = dayPart.padStart(2, "0");
   const month = monthMap[parts[2]];
   const year = parts[3];
 
@@ -78,6 +75,10 @@ export default function AdminUpdateTotoResultsPage() {
       console.log("ID Token Claims:", idTokenResult.claims);
       if (idTokenResult.claims.isAdmin === true) {
         setAdminClaimStatus("verified");
+        toast({
+          title: "管理员声明已验证",
+          description: "您的账户已成功验证管理员权限。",
+        });
       } else {
         setAdminClaimStatus("not_found");
         toast({
@@ -248,9 +249,17 @@ export default function AdminUpdateTotoResultsPage() {
       });
       return;
     }
+    if (!user || !user.uid) {
+      toast({
+        title: "用户未登录",
+        description: "管理员UID未找到，无法执行同步操作。",
+        variant: "destructive",
+      });
+      return;
+    }
     setIsSyncing(true);
     try {
-      const result = await syncHistoricalResultsToFirestore(validatedJsonOutput);
+      const result = await syncHistoricalResultsToFirestore(validatedJsonOutput, user.uid);
       if (result.success) {
         toast({
           title: "同步成功 (服务器操作)",
@@ -343,6 +352,9 @@ export default function AdminUpdateTotoResultsPage() {
                 <AlertTitle>管理员声明未找到</AlertTitle>
                 <AlertDescription>
                   您的账户没有管理员声明。如果您认为这是一个错误，或者您的权限最近已更新，请尝试完全退出并重新登录，然后再次刷新声明。Firestore 操作可能无法执行。
+                  <Button onClick={() => checkAdminClaim(true)} variant="link" className="p-0 h-auto ml-1 text-destructive hover:underline">
+                     (再次尝试刷新声明)
+                  </Button>
                 </AlertDescription>
               </Alert>
             ) : adminClaimStatus === "error" ? (
@@ -356,7 +368,7 @@ export default function AdminUpdateTotoResultsPage() {
             ) : null }
              {(adminClaimStatus === "not_found" || adminClaimStatus === "error") && (
                 <p className="text-xs text-muted-foreground mt-2">
-                  注意：管理员声明验证仅与需要特定声明（如 Cloud Function 中的 `context.auth.token.isAdmin == true` 或 Firestore 规则中的 `request.auth.token.isAdmin == true`）的操作相关。
+                  注意：管理员声明验证与需要特定声明（如 Cloud Function 中的 `context.auth.token.isAdmin == true` 或 Firestore 规则中的 `request.auth.token.isAdmin == true`）的操作相关。服务器操作也可能依赖此进行权限检查。
                 </p>
             )}
           </CardContent>
@@ -485,6 +497,5 @@ export default function AdminUpdateTotoResultsPage() {
     </div>
   );
 }
-    
 
     

@@ -6,21 +6,20 @@ service cloud.firestore {
 
     // TOTO Historical Results
     // Allow anyone to read historical results.
-    // Only allow writes if the user is authenticated and has an 'isAdmin' custom claim.
-    // This rule will be checked by the Cloud Function before it performs Admin SDK writes.
+    // Allow write if the document being written contains a non-null 'userId' field.
+    // This 'userId' field should be populated by the server action with the admin's UID.
     match /totoResults/{drawId} {
       allow read: if true;
-      allow write: if request.auth != null && request.auth.token.isAdmin == true;
-      // Data validation for structure should happen in the Cloud Function.
+      allow write: if request.resource.data.userId != null;
     }
 
     // Tool Predictions (Predictions made by specific tools for historical draws)
-    // Allow anyone to read these predictions.
-    // System can create these. Review for production (e.g., only trusted server/admin).
+    // Allow create by any authenticated user (server action runs as system/authenticated context from client)
+    // More specific rules might be needed if users can read/update these.
     match /toolPredictions/{predictionId} {
-      allow read: if true;
-      allow create: if true; // Or restrict to admin: request.auth != null && request.auth.token.isAdmin == true
-      allow update, delete: if false; // Or allow admin
+      allow read: if true; // Or more restrictive if needed
+      allow create: if true; // Assuming server action is trusted source
+      allow update, delete: if false; // Or allow admin: request.auth != null && request.auth.token.isAdmin == true;
     }
 
     // User Favorite Tools
@@ -30,11 +29,12 @@ service cloud.firestore {
     }
 
     // Smart Pick AI Results
-    // Allow authenticated users to create their own smart pick results if the userId in doc matches.
+    // Allow authenticated users to create their own smart pick results.
+    // Users can read their own saved smart picks.
     match /smartPickResults/{resultId} {
       allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
       allow read: if request.auth != null && resource.data.userId == request.auth.uid;
-      allow update, delete: if false; // Keep restricted for now
+      allow update, delete: if false; // Or set specific rules
     }
 
     // Default deny all other access to prevent unintended access

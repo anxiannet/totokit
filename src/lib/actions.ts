@@ -108,7 +108,7 @@ export async function saveToolPrediction(
       ...data,
       createdAt: serverTimestamp(),
     });
-    console.log(`[SAVE_TOOL_PREDICTION] Tool prediction saved successfully with ID: ${docRef.id} for tool: ${data.toolId}, draw: ${data.targetDrawNumber}`); // Corrected log to use data.targetDrawNumber
+    console.log(`[SAVE_TOOL_PREDICTION] Tool prediction saved successfully with ID: ${docRef.id} for tool: ${data.toolId}, draw: ${data.targetDrawNumber}`);
     return { success: true, message: "Tool prediction saved successfully.", predictionId: docRef.id };
   } catch (error) {
     console.error("[SAVE_TOOL_PREDICTION] Error saving tool prediction to Firestore:", error);
@@ -118,13 +118,20 @@ export async function saveToolPrediction(
 }
 
 export async function syncHistoricalResultsToFirestore(
-  jsonDataString: string
+  jsonDataString: string,
+  adminUserId: string | null // Added adminUserId parameter
 ): Promise<{ success: boolean; message: string; count?: number }> {
   console.log("[SYNC_FIRESTORE] Attempting to sync historical results to Firestore.");
   if (!db) {
     console.error("[SYNC_FIRESTORE] Firestore 'db' instance is not initialized.");
     return { success: false, message: "Firestore 'db' instance is not initialized."};
   }
+
+  if (!adminUserId) {
+    console.error("[SYNC_FIRESTORE] Admin user ID not provided. Sync aborted.");
+    return { success: false, message: "管理员未登录或UID无效，无法同步。" };
+  }
+
   try {
     const results: HistoricalResult[] = JSON.parse(jsonDataString);
     if (!Array.isArray(results)) {
@@ -140,12 +147,14 @@ export async function syncHistoricalResultsToFirestore(
         continue;
       }
       const resultDocRef = doc(db, "totoResults", String(result.drawNumber));
-      batch.set(resultDocRef, result, { merge: true }); 
+      // Add the adminUserId to the document being written
+      const dataToSet = { ...result, userId: adminUserId };
+      batch.set(resultDocRef, dataToSet, { merge: true }); 
       count++;
     }
 
     await batch.commit();
-    console.log(`[SYNC_FIRESTORE] Successfully synced ${count} historical results to Firestore.`);
+    console.log(`[SYNC_FIRESTORE] Successfully synced ${count} historical results to Firestore by admin ${adminUserId}.`);
     return { success: true, message: `成功同步 ${count} 条开奖结果到 Firestore。`, count };
   } catch (error) {
     console.error("[SYNC_FIRESTORE] Error syncing historical results to Firestore:", error);
@@ -246,29 +255,19 @@ export async function saveSmartPickResult(
     console.error("[SAVE_SMART_PICK] Firestore 'db' instance is not initialized.");
     return { success: false, message: "Firestore 'db' instance is not initialized." };
   }
-
+  
   const currentUserInAction = firebaseClientAuthInstance.currentUser;
   const actionAuthUid = currentUserInAction ? currentUserInAction.uid : null;
 
   console.log(`[SAVE_SMART_PICK] Attempting to save smart pick.`);
-  console.log(`[SAVE_SMART_PICK] Data received from client - userId: ${data.userId}, drawId: ${data.drawId}, idToken (present): ${!!data.idToken}`);
-  console.log(`[SAVE_SMART_PICK] Auth state in server action - firebaseClientAuthInstance.currentUser.uid: ${actionAuthUid}`);
-
-  if (data.userId && actionAuthUid && data.userId !== actionAuthUid) {
-    console.error(`[SAVE_SMART_PICK] CRITICAL MISMATCH: userId from client (${data.userId}) does NOT match UID from auth instance in server action (${actionAuthUid}). This will likely cause Firestore rule failure if rules depend on request.auth.uid matching resource.data.userId.`);
-  }
-  if (data.userId && !actionAuthUid) {
-      console.warn(`[SAVE_SMART_PICK] Auth Warning: Client sent userId '${data.userId}', but server action's auth instance has no current user. 'request.auth' in Firestore rules will likely be null.`);
-  }
-  if (!data.userId && actionAuthUid) {
-      // This is less common but possible if client somehow loses auth state before sending but server action retains an older one.
-      console.warn(`[SAVE_SMART_PICK] Auth Warning: Client did not send userId (anonymous pick), but server action's auth instance HAS a current user ('${actionAuthUid}'). This could be an edge case or indicate inconsistent state.`);
-  }
+  console.log(`[SAVE_SMART_PICK] Input userId from client: ${data.userId}`);
+  console.log(`[SAVE_SMART_PICK] Firebase SDK auth.currentUser.uid inside action: ${actionAuthUid}`);
+  console.log(`[SAVE_SMART_PICK] ID Token (present): ${!!data.idToken}`);
   
   try {
     const transformedCombinations = data.combinations.map(combo => ({ numbers: combo }));
     const dataToSave = {
-      userId: data.userId, // This becomes request.resource.data.userId
+      userId: data.userId, 
       drawId: data.drawId,
       combinations: transformedCombinations,
       createdAt: serverTimestamp(),
@@ -294,3 +293,5 @@ export async function saveSmartPickResult(
     return { success: false, message: errorMessage };
   }
 }
+
+    
