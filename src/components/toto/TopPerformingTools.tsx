@@ -26,7 +26,7 @@ interface TopPerformingToolsProps {
 // Helper function to chunk an array
 function chunkArray<T>(array: T[], size: number): T[][] {
   const result: T[][] = [];
-  if (!array) return result;
+  if (!array || array.length === 0) return result;
   for (let i = 0; i < array.length; i += size) {
     result.push(array.slice(i, i + size));
   }
@@ -46,38 +46,42 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
 
   const scrollToTool = useCallback((index: number) => {
     if (itemRefs.current[index] && scrollContainerRef.current) {
-      setIsInteracting(true);
+      setIsInteracting(true); // Indicate user interaction or programmatic scroll start
       itemRefs.current[index]?.scrollIntoView({
         behavior: 'smooth',
-        block: 'nearest',
-        inline: 'start',
+        block: 'nearest', // Ensure the item aligns to the nearest edge in its scroll container.
+        inline: 'start',  // Align the start of the item with the start of the scroll container.
       });
-      setTimeout(() => setIsInteracting(false), 600); 
+      // Set a timeout to reset isInteracting after the scroll likely completes
+      setTimeout(() => setIsInteracting(false), 600); // Adjust timeout as needed
     }
   }, []);
 
   useEffect(() => {
+    // Programmatically scroll when activeIndex changes due to tab click
     scrollToTool(activeIndex);
   }, [activeIndex, scrollToTool]);
 
   useEffect(() => {
-    if (isInteracting) return; 
+    if (isInteracting) return; // Don't observe while programmatically scrolling or during user interaction
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (isInteracting) return;
+        if (isInteracting) return; // Double check, in case timeout hasn't cleared
         entries.forEach((entry) => {
-          if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.5) { // Check if >50% visible
             const index = itemRefs.current.findIndex(ref => ref === entry.target);
             if (index !== -1 && activeIndex !== index) {
-              setActiveIndex(index);
+              // Update activeIndex based on swipe/scroll only if not already active
+              // This check prevents re-triggering scroll if user just clicked a tab
+               setActiveIndex(index);
             }
           }
         });
       },
       {
-        root: scrollContainerRef.current,
-        threshold: 0.5, 
+        root: scrollContainerRef.current, // The scrollable container
+        threshold: 0.5, // Trigger when 50% of the item is visible
       }
     );
 
@@ -90,7 +94,7 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
         if (ref) observer.unobserve(ref);
       });
     };
-  }, [tools, activeIndex, isInteracting]);
+  }, [tools, activeIndex, isInteracting]); // Re-run observer setup if tools, activeIndex, or isInteracting changes
 
 
   if (!tools || tools.length === 0) {
@@ -114,17 +118,18 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
     <Card className="mt-6 shadow-lg">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-xl font-semibold">
-          <Info className="h-6 w-6 text-primary" /> {/* Changed icon from TrendingUp */}
+          <Info className="h-6 w-6 text-primary" />
           近期热门工具
         </CardTitle>
       </CardHeader>
       <CardContent className="pt-2 pb-4 px-0 sm:px-0 md:px-0">
         <Tabs
-          value={tools[activeIndex]?.id || tools[0]?.id}
+          value={tools[activeIndex]?.id || (tools[0] ? tools[0].id : '')}
           onValueChange={(value) => {
             const newIndex = tools.findIndex(tool => tool.id === value);
             if (newIndex !== -1) {
               setActiveIndex(newIndex);
+              // scrollToTool(newIndex); // Scroll handled by useEffect on activeIndex change
             }
           }}
           className="w-full"
@@ -138,7 +143,7 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
                     "text-xs sm:text-sm px-3 py-1.5 h-auto flex-shrink-0 data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm",
                     activeIndex === index ? "font-semibold" : ""
                 )}
-                onClick={() => setActiveIndex(index)}
+                onClick={() => setActiveIndex(index)} // Ensure tab click updates activeIndex
               >
                 {tool.name}
               </TabsTrigger>
@@ -169,8 +174,8 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
                     
                     {tool.currentPrediction.length > 0 ? (
                         <div className="mb-3">
-                         {chunkArray(tool.currentPrediction, 6).map((chunk, chunkIndex) => (
-                           <div key={chunkIndex} className={chunkIndex > 0 ? "mt-1.5" : ""}> {/* Add margin top for subsequent lines */}
+                         {chunkArray(tool.currentPrediction, 7).map((chunk, chunkIndex) => ( // Chunk size changed to 7
+                           <div key={chunkIndex} className={cn("flex justify-center", chunkIndex > 0 ? "mt-1.5" : "")}> {/* Centering wrapper */}
                              <NumberPickingToolDisplay numbers={chunk} />
                            </div>
                          ))}
@@ -194,3 +199,5 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
     </Card>
   );
 }
+
+    
