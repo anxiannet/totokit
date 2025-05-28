@@ -9,10 +9,11 @@ import { dynamicTools } from "@/lib/numberPickingAlgos";
 import { 
   getPredictionForToolAndDraw, 
   getAllHistoricalResultsFromFirestore,
-  saveMultipleToolPredictions,
-  calculateHistoricalPerformances
+  // saveMultipleToolPredictions, // This is now handled client-side if admin clicks save
+  // calculateHistoricalPerformances // This is now a server action called by client
 } from "@/lib/actions";
 import { ToolDetailPageClient, type HistoricalPerformanceDisplayData } from "@/components/toto/ToolDetailPageClient";
+import { OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types"; // Import the constant
 
 
 export async function generateStaticParams() {
@@ -50,13 +51,15 @@ export default async function SingleNumberToolPage({
   }
 
   // Fetch all historical data from Firestore for display and analysis
+  // This is passed to the client component, which can then pass it to the
+  // calculateHistoricalPerformances server action if the user requests it.
   const allHistoricalDataFromDb = await getAllHistoricalResultsFromFirestore();
   
   // Fetch the prediction saved by admin for the OFFICIAL_PREDICTIONS_DRAW_ID
   const initialSavedPrediction = await getPredictionForToolAndDraw(tool.id, OFFICIAL_PREDICTIONS_DRAW_ID);
   
-  // We will no longer pre-calculate dynamicallyGeneratedCurrentPrediction here.
-  // This will be handled on demand by the client component via a server action if needed.
+  // dynamicallyGeneratedCurrentPrediction is no longer pre-calculated here.
+  // It will be calculated on demand by the client component via a server action if needed.
 
   const serializableTool = {
     id: tool.id,
@@ -70,8 +73,9 @@ export default async function SingleNumberToolPage({
     <ToolDetailPageClient
       tool={serializableTool}
       initialSavedPrediction={initialSavedPrediction}
-      // dynamicallyGeneratedCurrentPrediction will be null/fetched on demand now
+      // dynamicallyGeneratedCurrentPrediction will be fetched on demand via calculateSingleToolPrediction action
       allHistoricalDataForPerformanceAnalysis={allHistoricalDataFromDb} 
     />
   );
 }
+
