@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { CalendarDays, Trophy, ArrowRight, Loader2 } from "lucide-react";
 import { MOCK_LATEST_RESULT, type HistoricalResult } from "@/lib/types";
-import { formatDateToLocale, getBallColor } from "@/lib/totoUtils";
+import { formatDateTimeToChinese, formatDateToLocale, getBallColor } from "@/lib/totoUtils"; // Updated import
 import { Separator } from "@/components/ui/separator";
 import { zhCN } from "date-fns/locale";
 import { getCurrentDrawDisplayInfo } from "@/lib/actions";
@@ -15,8 +15,9 @@ import { getCurrentDrawDisplayInfo } from "@/lib/actions";
 export function CurrentAndLatestDrawInfo() {
   const latestResult: HistoricalResult | null = MOCK_LATEST_RESULT;
 
+  // Default to Chinese format for initial state and fallback
   const [currentDrawDateTime, setCurrentDrawDateTime] = useState("周四, 2025年5月29日, 傍晚6点30分");
-  const [currentJackpot, setCurrentJackpot] = useState("$4,500,000"); // Removed " (估计)"
+  const [currentJackpot, setCurrentJackpot] = useState("$4,500,000");
   const [isLoadingDrawInfo, setIsLoadingDrawInfo] = useState(true);
 
   useEffect(() => {
@@ -25,15 +26,17 @@ export function CurrentAndLatestDrawInfo() {
       try {
         const info = await getCurrentDrawDisplayInfo();
         if (info && info.currentDrawDateTime && info.currentJackpot) {
-          setCurrentDrawDateTime(info.currentDrawDateTime);
+          // Attempt to format the fetched date/time string to Chinese if it matches specific English pattern
+          const formattedDateTime = formatDateTimeToChinese(info.currentDrawDateTime);
+          setCurrentDrawDateTime(formattedDateTime);
           setCurrentJackpot(info.currentJackpot);
         } else {
-          // Fallback to default values already set in useState
-          console.warn("Current draw info not found in Firestore, using default values.");
+          console.warn("Current draw info not found in Firestore, using default display values.");
+          // Default values are already set in useState
         }
       } catch (error) {
         console.error("Error fetching current draw info for display:", error);
-        // Fallback to default values already set in useState
+        // Fallback to default values (already set in useState)
       } finally {
         setIsLoadingDrawInfo(false);
       }
@@ -55,6 +58,7 @@ export function CurrentAndLatestDrawInfo() {
              <p className="text-sm text-muted-foreground">加载开奖时间...</p>
            </div>
         ) : (
+          // Display the (potentially formatted) currentDrawDateTime
           <p className="text-sm text-muted-foreground pt-1">{currentDrawDateTime}</p>
         )}
       </CardHeader>
