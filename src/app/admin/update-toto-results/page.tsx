@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import type { HistoricalResult } from "@/lib/types";
+import { HistoricalResultSchema as AdminPageHistoricalResultSchema } from "@/lib/types"; // Renamed for clarity
 import { z } from "zod";
 import { ArrowLeft, CheckCircle, XCircle, Info, Loader2, ShieldAlert, RefreshCw, CloudUpload, FileText, Edit3 } from "lucide-react";
 import Link from "next/link";
@@ -18,14 +19,7 @@ import { Separator } from "@/components/ui/separator";
 import { MOCK_HISTORICAL_DATA } from "@/lib/types";
 
 
-const HistoricalResultSchema = z.object({
-  drawNumber: z.number(),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),
-  numbers: z.array(z.number().min(1).max(49)).length(6, "Must have 6 winning numbers"),
-  additionalNumber: z.number().min(1).max(49),
-});
-
-const HistoricalResultsArraySchema = z.array(HistoricalResultSchema);
+const ClientSideHistoricalResultsArraySchema = z.array(AdminPageHistoricalResultSchema);
 
 type AdminClaimStatus = "loading" | "verified" | "not_found" | "error" | "not_admin_email";
 
@@ -36,11 +30,11 @@ const monthMap: { [key: string]: string } = {
 
 function parseDateFromText(dateStr: string): string {
   const parts = dateStr.split(" ");
-  if (parts.length < 4) return ""; // e.g., "Thu, 22 May 2025"
+  if (parts.length < 4) return "";
 
-  const dayPartCandidate = parts[1]; 
-  const monthPartCandidate = parts[2]; 
-  const yearPartCandidate = parts[3]; 
+  const dayPartCandidate = parts[1];
+  const monthPartCandidate = parts[2];
+  const yearPartCandidate = parts[3];
 
   if (!dayPartCandidate || !monthPartCandidate || !yearPartCandidate) return "";
 
@@ -59,7 +53,7 @@ export default function AdminUpdateTotoResultsPage() {
   const [plainTextData, setPlainTextData] = useState("");
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [validationStatus, setValidationStatus] = useState<"success" | "error" | "info" | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isSyncingHistorical, setIsSyncingHistorical] = useState(false);
   const [isCheckingAdmin, setIsCheckingAdmin] = useState(true);
   const [isAdminByEmail, setIsAdminByEmail] = useState(false);
   const [adminClaimStatus, setAdminClaimStatus] = useState<AdminClaimStatus>("loading");
@@ -69,8 +63,8 @@ export default function AdminUpdateTotoResultsPage() {
   const [isUpdatingDrawInfo, setIsUpdatingDrawInfo] = useState(false);
   const [isLoadingDrawInfo, setIsLoadingDrawInfo] = useState(true);
 
-
   const adminEmail = "admin@totokit.com";
+  const adminUID = "mAvLawNGpGdKwPoHuMQyXlKpPNv1";
 
   const checkAdminClaim = async (forceRefresh: boolean = false) => {
     if (!user) {
@@ -114,6 +108,7 @@ export default function AdminUpdateTotoResultsPage() {
       if (info && info.currentDrawDateTime && info.currentJackpot) {
         setCurrentDrawInfoText(`${info.currentDrawDateTime}\n${info.currentJackpot}`);
       } else {
+        // Default fallback if nothing in Firestore
         setCurrentDrawInfoText("周四, 2025年5月29日, 傍晚6点30分\n$4,500,000 (估计)");
       }
     } catch (error) {
@@ -129,55 +124,54 @@ export default function AdminUpdateTotoResultsPage() {
     }
   };
 
-
   useEffect(() => {
     if (!authLoading) {
       setIsCheckingAdmin(false);
-      if (user && user.email === adminEmail) {
+      if (user && user.email === adminEmail && user.uid === adminUID) {
         setIsAdminByEmail(true);
-        checkAdminClaim();
-        fetchCurrentDrawInfo();
+        checkAdminClaim(); // Check custom claims
+        fetchCurrentDrawInfo(); // Fetch current draw info for admin
       } else {
         setIsAdminByEmail(false);
         setAdminClaimStatus("not_admin_email");
       }
     }
-  }, [user, authLoading]); // Removed checkAdminClaim from dependencies
+  }, [user, authLoading]);
 
 
   const handleParseTextAndSyncToFirestore = async () => {
     setValidationMessage(null);
     setValidationStatus(null);
-    setIsProcessing(true);
+    setIsSyncingHistorical(true);
 
     if (!plainTextData.trim()) {
       toast({ title: "无文本数据", description: "请输入要解析的文本结果。", variant: "default" });
       setValidationStatus("info");
       setValidationMessage("请输入要解析的纯文本结果。");
-      setIsProcessing(false);
+      setIsSyncingHistorical(false);
       return;
     }
 
     if (adminClaimStatus !== "verified") {
-       toast({
+      toast({
         title: "权限不足",
-        description: "需要已验证的管理员权限才能同步数据。",
+        description: "需要已验证的管理员权限才能同步历史数据。",
         variant: "destructive",
       });
       setValidationStatus("error");
-      setValidationMessage("权限不足：需要已验证的管理员权限才能同步数据。");
-      setIsProcessing(false);
+      setValidationMessage("权限不足：需要已验证的管理员权限才能同步历史数据。");
+      setIsSyncingHistorical(false);
       return;
     }
-    if (!user || !user.uid) {
+    if (!user || user.uid !== adminUID) {
       toast({
-        title: "用户未登录",
-        description: "管理员UID未找到，无法执行同步操作。",
+        title: "用户未登录或非管理员",
+        description: "管理员UID不匹配或未找到，无法执行同步操作。",
         variant: "destructive",
       });
       setValidationStatus("error");
-      setValidationMessage("用户未登录：管理员UID未找到，无法执行同步操作。");
-      setIsProcessing(false);
+      setValidationMessage("用户未登录或非管理员：管理员UID不匹配或未找到，无法执行同步操作。");
+      setIsSyncingHistorical(false);
       return;
     }
 
@@ -231,29 +225,28 @@ export default function AdminUpdateTotoResultsPage() {
       toast({ title: "文本解析失败", description: errorMsg, variant: "destructive", duration: 10000 });
       setValidationStatus("error");
       setValidationMessage(errorMsg);
-      setIsProcessing(false);
+      setIsSyncingHistorical(false);
       return;
     }
     if (parsedResults.length === 0) {
       toast({ title: "无有效结果", description: "未能从文本中解析出任何有效结果。", variant: "default" });
       setValidationStatus("info");
       setValidationMessage("未能从文本中解析出任何有效结果。");
-      setIsProcessing(false);
+      setIsSyncingHistorical(false);
       return;
     }
 
-    const validationResult = HistoricalResultsArraySchema.safeParse(parsedResults);
+    const validationResult = ClientSideHistoricalResultsArraySchema.safeParse(parsedResults);
     if (!validationResult.success) {
       const errorIssues = validationResult.error.issues.map(issue => `路径 '${issue.path.join('.') || 'root'}': ${issue.message}`).join("\\n");
       const errorMsg = `解析的数据无效：\\n${errorIssues}`;
       toast({ title: "数据验证失败", description: errorMsg, variant: "destructive", duration: 10000 });
       setValidationStatus("error");
       setValidationMessage(errorMsg);
-      setIsProcessing(false);
+      setIsSyncingHistorical(false);
       return;
     }
 
-    // Sort data by drawNumber descending before syncing
     const validatedData = validationResult.data;
     const sortedData = [...validatedData].sort((a, b) => b.drawNumber - a.drawNumber);
     const jsonDataToSync = JSON.stringify(sortedData, null, 2);
@@ -267,7 +260,7 @@ export default function AdminUpdateTotoResultsPage() {
         });
         setValidationStatus("success");
         setValidationMessage(syncResult.message || `成功同步 ${syncResult.count || 0} 条历史记录到 Firestore。`);
-        setPlainTextData(""); 
+        setPlainTextData("");
       } else {
         toast({
           title: "历史结果同步失败",
@@ -287,12 +280,12 @@ export default function AdminUpdateTotoResultsPage() {
       setValidationStatus("error");
       setValidationMessage(`历史结果同步出错: ${error.message || "未知错误"}`);
     } finally {
-      setIsProcessing(false);
+      setIsSyncingHistorical(false);
     }
   };
 
   const handleUpdateCurrentDrawInfo = async () => {
-    if (adminClaimStatus !== "verified" || !user) {
+    if (adminClaimStatus !== "verified" || !user || user.uid !== adminUID) {
       toast({ title: "权限不足", description: "需要管理员权限才能更新。", variant: "destructive" });
       return;
     }
@@ -301,11 +294,31 @@ export default function AdminUpdateTotoResultsPage() {
       return;
     }
 
+    // Client-side pre-processing
+    const lines = currentDrawInfoText
+      .trim()
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line !== "" && line !== "本期开奖信息" && line !== "当前头奖预估");
+
+    if (lines.length < 2) {
+      toast({
+        title: "输入格式错误",
+        description: "请确保至少提供了两行有效信息：第一行为开奖日期/时间，第二行为头奖金额。系统会自动忽略“本期开奖信息”和“当前头奖预估”这类标签行。",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const extractedDrawTime = lines[0];
+    const extractedJackpot = lines[1];
+
     setIsUpdatingDrawInfo(true);
     try {
       const result = await updateCurrentDrawDisplayInfo(
-        currentDrawInfoText,
-        user.uid
+        extractedDrawTime,
+        extractedJackpot,
+        user.uid // adminUID
       );
       if (result.success) {
         toast({ title: "本期开奖信息更新成功", description: result.message });
@@ -318,6 +331,7 @@ export default function AdminUpdateTotoResultsPage() {
       setIsUpdatingDrawInfo(false);
     }
   };
+
 
   if (isCheckingAdmin || authLoading) {
     return (
@@ -388,7 +402,7 @@ export default function AdminUpdateTotoResultsPage() {
                 <AlertDescription>
                   您的账户没有管理员声明。如果您认为这是一个错误，或者您的权限最近已更新，请尝试完全退出并重新登录，然后再次刷新声明。Firestore 操作可能无法执行。
                   <Button onClick={() => checkAdminClaim(true)} variant="link" className="p-0 h-auto ml-1 text-destructive hover:underline">
-                     (再次尝试刷新声明)
+                    (再次尝试刷新声明)
                   </Button>
                 </AlertDescription>
               </Alert>
@@ -400,11 +414,11 @@ export default function AdminUpdateTotoResultsPage() {
                   获取您的管理员声明时发生错误。请稍后再试。Firestore 操作可能无法执行。
                 </AlertDescription>
               </Alert>
-            ) : null }
-             {(adminClaimStatus === "not_found" || adminClaimStatus === "error") && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  注意：管理员声明验证与需要特定声明（如 Firestore 规则中的 `request.auth.token.isAdmin == true`）的操作相关。
-                </p>
+            ) : null}
+            {(adminClaimStatus === "not_found" || adminClaimStatus === "error") && (
+              <p className="text-xs text-muted-foreground mt-2">
+                注意：管理员声明验证与需要特定声明（如 Firestore 规则中的 `request.auth.token.isAdmin == true` 或检查特定UID）的操作相关。
+              </p>
             )}
           </CardContent>
         </Card>
@@ -413,11 +427,11 @@ export default function AdminUpdateTotoResultsPage() {
       <Card className="w-full mb-6">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Edit3 className="h-5 w-5 text-primary"/>
+            <Edit3 className="h-5 w-5 text-primary" />
             更新本期开奖信息 (首页显示)
           </CardTitle>
           <CardDescription>
-            在此处粘贴或编辑将在首页显示的“本期开奖”日期/时间和“预估头奖”金额。请确保第一行为日期/时间，第二行为头奖金额。
+            在此处粘贴本期开奖的日期/时间和预估头奖金额。请确保第一行为日期/时间，第二行为头奖金额。系统会自动忽略如“本期开奖信息”或“当前头奖预估”之类的标签行。
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -433,8 +447,8 @@ export default function AdminUpdateTotoResultsPage() {
                 id="currentDrawInfoText"
                 value={currentDrawInfoText}
                 onChange={(e) => setCurrentDrawInfoText(e.target.value)}
-                placeholder="例如:\n周四, 2025年5月29日, 傍晚6点30分\n$4,500,000 (估计)"
-                rows={3}
+                placeholder={"例如:\n周四, 2025年5月29日, 傍晚6点30分\n$4,500,000 (估计)\n\n或包含标签的完整格式：\n本期开奖信息\n周四, 2025年5月29日, 傍晚6点30分\n当前头奖预估\n$4,500,000 (估计)"}
+                rows={5}
                 className="mt-1 font-mono text-sm"
                 disabled={isUpdatingDrawInfo}
               />
@@ -442,8 +456,8 @@ export default function AdminUpdateTotoResultsPage() {
           )}
         </CardContent>
         <CardFooter>
-          <Button 
-            onClick={handleUpdateCurrentDrawInfo} 
+          <Button
+            onClick={handleUpdateCurrentDrawInfo}
             className="w-full"
             disabled={isUpdatingDrawInfo || adminClaimStatus !== 'verified' || isLoadingDrawInfo}
           >
@@ -457,13 +471,12 @@ export default function AdminUpdateTotoResultsPage() {
         </CardFooter>
       </Card>
 
-
       <Card className="w-full">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-primary"/>
-             更新历史开奖结果 (Firestore)
-            </CardTitle>
+            <FileText className="h-5 w-5 text-primary" />
+            更新历史开奖结果 (Firestore)
+          </CardTitle>
           <CardDescription>
             在下方粘贴**纯文本格式**的开奖结果。系统将解析、验证数据，然后直接将其同步到 Firestore。
             确保文本中的每一条记录都包含5行：日期和期号（制表符分隔），"Winning Numbers"，中奖号码（空格分隔），"Additional Number"，特别号码。多条记录用空行分隔。
@@ -472,7 +485,7 @@ export default function AdminUpdateTotoResultsPage() {
         <CardContent className="space-y-6">
           <div>
             <Label htmlFor="plainTextData" className="text-lg font-semibold flex items-center gap-2">
-              <FileText className="h-5 w-5"/> 粘贴纯文本结果
+              <FileText className="h-5 w-5" /> 粘贴纯文本结果
             </Label>
             <Textarea
               id="plainTextData"
@@ -481,18 +494,18 @@ export default function AdminUpdateTotoResultsPage() {
               placeholder={`例如:\nThu, 22 May 2025\tDraw No. 4080\nWinning Numbers\n3 10 32 34 44 48\nAdditional Number\n29\n\n(多条记录请用空行分隔)`}
               rows={10}
               className="mt-2 font-mono text-sm"
-              disabled={isProcessing}
+              disabled={isSyncingHistorical}
             />
           </div>
 
           <Separator />
 
-          <Button 
-            onClick={handleParseTextAndSyncToFirestore} 
+          <Button
+            onClick={handleParseTextAndSyncToFirestore}
             className="w-full"
-            disabled={isProcessing || adminClaimStatus !== 'verified'}
+            disabled={isSyncingHistorical || adminClaimStatus !== 'verified'}
           >
-            {isProcessing ? (
+            {isSyncingHistorical ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <CloudUpload className="mr-2 h-4 w-4" />
@@ -505,9 +518,8 @@ export default function AdminUpdateTotoResultsPage() {
             </p>
           )}
 
-
           {validationMessage && (
-            <Alert variant={validationStatus === "success" ? "default" : validationStatus === "error" ? "destructive": "default"} className="mt-4">
+            <Alert variant={validationStatus === "success" ? "default" : validationStatus === "error" ? "destructive" : "default"} className="mt-4">
               {validationStatus === "success" && <CheckCircle className="h-5 w-5" />}
               {validationStatus === "error" && <XCircle className="h-5 w-5" />}
               {validationStatus === "info" && <Info className="h-5 w-5" />}
@@ -530,4 +542,3 @@ export default function AdminUpdateTotoResultsPage() {
     </div>
   );
 }
-

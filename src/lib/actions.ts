@@ -4,7 +4,7 @@
 import { generateNumberCombinations as genkitGenerateNumberCombinations } from "@/ai/flows/generate-number-combinations";
 import type { GenerateNumberCombinationsInput, GenerateNumberCombinationsOutput } from "@/ai/flows/generate-number-combinations";
 import type { WeightedCriterion, HistoricalResult, TotoCombination } from "./types";
-import { db, auth as firebaseClientAuthInstance } from "./firebase"; // Renamed authInstance to firebaseClientAuthInstance for clarity
+import { db, auth as firebaseClientAuthInstance } from "./firebase";
 import {
   collection, addDoc, serverTimestamp, query, where,
   getDocs, limit, doc, writeBatch, runTransaction,
@@ -36,7 +36,7 @@ export async function generateTotoPredictions(
     });
 
     if (Object.keys(weightedCriteria).length === 0) {
-        weightedCriteria['generalBalance'] = 0.5;
+      weightedCriteria['generalBalance'] = 0.5;
     }
 
     const input: GenerateNumberCombinationsInput = {
@@ -50,7 +50,7 @@ export async function generateTotoPredictions(
     const result = await genkitGenerateNumberCombinations(input);
 
     if (!result || !result.combinations) {
-        return { error: "AI did not return valid combinations." };
+      return { error: "AI did not return valid combinations." };
     }
 
     const validCombinations = result.combinations.filter(combo =>
@@ -61,7 +61,7 @@ export async function generateTotoPredictions(
     );
 
     if (validCombinations.length === 0 && result.combinations.length > 0) {
-        return { error: "AI returned malformed combinations. Please try adjusting parameters." };
+      return { error: "AI returned malformed combinations. Please try adjusting parameters." };
     }
 
     return { combinations: validCombinations };
@@ -86,7 +86,7 @@ export async function saveToolPrediction(
   console.log("[SAVE_TOOL_PREDICTION] Attempting to save prediction:", JSON.stringify(data, null, 2));
   if (!db) {
     console.error("[SAVE_TOOL_PREDICTION] Firestore 'db' instance is not initialized.");
-    return { success: false, message: "Firestore 'db' instance is not initialized."};
+    return { success: false, message: "Firestore 'db' instance is not initialized." };
   }
   try {
     const toolPredictionsCol = collection(db, "toolPredictions");
@@ -122,12 +122,12 @@ export async function saveToolPrediction(
 
 export async function syncHistoricalResultsToFirestore(
   jsonDataString: string,
-  adminUserId: string | null // Added adminUserId parameter
+  adminUserId: string | null
 ): Promise<{ success: boolean; message: string; count?: number }> {
   console.log("[SYNC_FIRESTORE] Attempting to sync historical results to Firestore.");
   if (!db) {
     console.error("[SYNC_FIRESTORE] Firestore 'db' instance is not initialized.");
-    return { success: false, message: "Firestore 'db' instance is not initialized."};
+    return { success: false, message: "Firestore 'db' instance is not initialized." };
   }
 
   if (!adminUserId) {
@@ -151,7 +151,7 @@ export async function syncHistoricalResultsToFirestore(
         continue;
       }
       const resultDocRef = doc(db, "totoResults", String(result.drawNumber));
-      const dataToSet = { ...result, userId: adminUserId }; // Ensure userId is added for the rule
+      const dataToSet = { ...result, userId: adminUserId }; // Add adminUserId as userId
       batch.set(resultDocRef, dataToSet, { merge: true });
       count++;
     }
@@ -176,10 +176,9 @@ export async function syncHistoricalResultsToFirestore(
   }
 }
 
-
 export interface SmartPickResultInput {
   userId: string | null;
-  idToken: string | null; // Added idToken
+  idToken: string | null;
   drawId: string;
   combinations: TotoCombination[];
 }
@@ -201,11 +200,10 @@ export async function saveSmartPickResult(
 
 
   try {
-    // Transform combinations from number[][] to Array<{ numbers: number[] }>
     const transformedCombinations = data.combinations.map(combo => ({ numbers: combo }));
 
     const dataToSave = {
-      userId: data.userId,
+      userId: data.userId, // This is request.resource.data.userId
       drawId: data.drawId,
       combinations: transformedCombinations,
       createdAt: serverTimestamp(),
@@ -222,8 +220,8 @@ export async function saveSmartPickResult(
     let errorMessage = "保存智能选号结果失败: ";
     if (error instanceof Error) {
       errorMessage += error.message;
-       const firebaseError = error as any;
-       if (firebaseError.code === 'permission-denied' || firebaseError.code === 7 || firebaseError.code === 'PERMISSION_DENIED') {
+      const firebaseError = error as any;
+      if (firebaseError.code === 'permission-denied' || firebaseError.code === 7 || firebaseError.code === 'PERMISSION_DENIED') {
         errorMessage += ` (Firestore权限不足。尝试保存的userId: ${data.userId}. 服务器端SDK识别的用户UID: ${clientAuthUid}. 请确认Firestore安全规则已正确部署，并且客户端已重新登录以刷新权限。)`;
       }
     } else {
@@ -234,26 +232,20 @@ export async function saveSmartPickResult(
 }
 
 export async function updateCurrentDrawDisplayInfo(
-  plainTextInfo: string,
+  currentDrawDateTime: string,
+  currentJackpot: string,
   adminUserId: string | null
 ): Promise<{ success: boolean; message?: string }> {
   if (!db) {
     return { success: false, message: "Firestore 'db' instance is not initialized." };
   }
   if (!adminUserId) {
-     console.error("[UPDATE_DRAW_INFO] Admin user ID not provided. Update aborted.");
+    console.error("[UPDATE_DRAW_INFO] Admin user ID not provided. Update aborted.");
     return { success: false, message: "管理员未登录，无法更新。" };
   }
 
-  const lines = plainTextInfo.trim().split('\n');
-  if (lines.length < 2) {
-    return { success: false, message: "输入格式错误。请确保第一行为日期/时间，第二行为头奖金额。" };
-  }
-  const currentDrawDateTime = lines[0].trim();
-  const currentJackpot = lines[1].trim();
-
   if (!currentDrawDateTime || !currentJackpot) {
-     return { success: false, message: "日期/时间或头奖金额不能为空。" };
+    return { success: false, message: "开奖日期/时间或头奖金额不能为空。" };
   }
 
   try {
@@ -261,7 +253,7 @@ export async function updateCurrentDrawDisplayInfo(
     await setDoc(docRef, {
       currentDrawDateTime,
       currentJackpot,
-      userId: adminUserId, // Changed from updatedBy to userId to match rule
+      userId: adminUserId, // Ensure this matches the field name in your security rules
       updatedAt: serverTimestamp(),
     }, { merge: true });
     console.log(`[UPDATE_DRAW_INFO] Current draw info updated by admin ${adminUserId}.`);
@@ -295,12 +287,11 @@ export async function getCurrentDrawDisplayInfo(): Promise<{ currentDrawDateTime
   }
 }
 
-
 export interface UserFavoriteTool {
   userId: string;
   toolId: string;
-  toolName?: string; // Optional: for easier display if needed
-  favoritedAt: any; // Firestore serverTimestamp
+  toolName?: string;
+  favoritedAt: any;
 }
 
 export async function getUserFavoriteTools(userId: string): Promise<string[]> {
@@ -325,7 +316,7 @@ export async function getUserFavoriteTools(userId: string): Promise<string[]> {
 export async function toggleFavoriteTool(
   userId: string,
   toolId: string,
-  toolName?: string // Optional
+  toolName?: string
 ): Promise<{ success: boolean; favorited: boolean; message?: string }> {
   if (!userId) {
     return { success: false, favorited: false, message: "用户未登录。" };
@@ -347,18 +338,14 @@ export async function toggleFavoriteTool(
       }
 
       if (currentFavorites.includes(toolId)) {
-        // Already favorited, so remove it
         transaction.set(userFavDocRef, {
           favoriteToolIds: arrayRemove(toolId),
-          updatedAt: serverTimestamp() // Keep track of last update
+          updatedAt: serverTimestamp()
         }, { merge: true });
         isCurrentlyFavorited = false;
       } else {
-        // Not favorited, so add it
         transaction.set(userFavDocRef, {
           favoriteToolIds: arrayUnion(toolId),
-          // Optionally store toolName or other metadata if the doc is new or you want to update it
-          // ...(toolName && !userFavDoc.exists() && { toolsInfo: { [toolId]: toolName } }),
           updatedAt: serverTimestamp()
         }, { merge: true });
         isCurrentlyFavorited = true;
