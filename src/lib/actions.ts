@@ -4,7 +4,7 @@
 import { generateNumberCombinations as genkitGenerateNumberCombinations } from "@/ai/flows/generate-number-combinations";
 import type { GenerateNumberCombinationsInput, GenerateNumberCombinationsOutput } from "@/ai/flows/generate-number-combinations";
 import type { WeightedCriterion, HistoricalResult, TotoCombination } from "./types";
-import { db, auth } from "./firebase"; // Import auth as well
+import { db, auth as firebaseClientAuthInstance } from "./firebase"; // Renamed import for clarity
 import { collection, addDoc, serverTimestamp, query, where, getDocs, limit, doc, writeBatch, runTransaction, arrayUnion, arrayRemove, getDoc } from "firebase/firestore";
 import { type User } from "firebase/auth";
 
@@ -108,7 +108,7 @@ export async function saveToolPrediction(
       ...data,
       createdAt: serverTimestamp(),
     });
-    console.log(`[SAVE_TOOL_PREDICTION] Tool prediction saved successfully with ID: ${docRef.id} for tool: ${data.toolId}, draw: ${data.drawNumber}`);
+    console.log(`[SAVE_TOOL_PREDICTION] Tool prediction saved successfully with ID: ${docRef.id} for tool: ${data.toolId}, draw: ${data.targetDrawNumber}`); // Corrected log to use data.targetDrawNumber
     return { success: true, message: "Tool prediction saved successfully.", predictionId: docRef.id };
   } catch (error) {
     console.error("[SAVE_TOOL_PREDICTION] Error saving tool prediction to Firestore:", error);
@@ -152,7 +152,8 @@ export async function syncHistoricalResultsToFirestore(
     let specificMessage = "同步到 Firestore 失败: ";
     if (error instanceof Error) {
       specificMessage += error.message;
-      if ((error as any).code === 'permission-denied' || (error as any).code === 'PERMISSION_DENIED' || (error as any).code === 7) {
+      const firebaseError = error as any;
+      if (firebaseError.code === 'permission-denied' || firebaseError.code === 'PERMISSION_DENIED' || firebaseError.code === 7) {
         specificMessage += " (Firestore权限被拒绝。请确认管理员声明已在客户端和服务端生效（可能需要重新登录以刷新ID令牌），且Firestore规则配置正确并已部署。) ";
       }
     } else {
@@ -231,9 +232,9 @@ export async function toggleFavoriteTool(
   }
 }
 
-interface SmartPickResultInput {
+export interface SmartPickResultInput {
   userId: string | null;
-  idToken: string | null; // Added ID Token
+  idToken: string | null; 
   drawId: string;
   combinations: TotoCombination[];
 }
@@ -246,26 +247,34 @@ export async function saveSmartPickResult(
     return { success: false, message: "Firestore 'db' instance is not initialized." };
   }
 
-  console.log(`[SAVE_SMART_PICK] Attempting to save. Input userId: ${data.userId}`);
-  console.log(`[SAVE_SMART_PICK] Received ID Token (first 10 chars): ${data.idToken ? data.idToken.substring(0, 10) + '...' : 'null'}`);
+  const currentUserInAction = firebaseClientAuthInstance.currentUser;
+  const actionAuthUid = currentUserInAction ? currentUserInAction.uid : null;
+
+  console.log(`[SAVE_SMART_PICK] Attempting to save smart pick.`);
+  console.log(`[SAVE_SMART_PICK] Data received from client - userId: ${data.userId}, drawId: ${data.drawId}, idToken (present): ${!!data.idToken}`);
+  console.log(`[SAVE_SMART_PICK] Auth state in server action - firebaseClientAuthInstance.currentUser.uid: ${actionAuthUid}`);
+
+  if (data.userId && actionAuthUid && data.userId !== actionAuthUid) {
+    console.error(`[SAVE_SMART_PICK] CRITICAL MISMATCH: userId from client (${data.userId}) does NOT match UID from auth instance in server action (${actionAuthUid}). This will likely cause Firestore rule failure if rules depend on request.auth.uid matching resource.data.userId.`);
+  }
+  if (data.userId && !actionAuthUid) {
+      console.warn(`[SAVE_SMART_PICK] Auth Warning: Client sent userId '${data.userId}', but server action's auth instance has no current user. 'request.auth' in Firestore rules will likely be null.`);
+  }
+  if (!data.userId && actionAuthUid) {
+      // This is less common but possible if client somehow loses auth state before sending but server action retains an older one.
+      console.warn(`[SAVE_SMART_PICK] Auth Warning: Client did not send userId (anonymous pick), but server action's auth instance HAS a current user ('${actionAuthUid}'). This could be an edge case or indicate inconsistent state.`);
+  }
   
-  // Note: The auth instance here is the global client SDK auth instance.
-  // It might not reflect the user's auth state from the client if not explicitly managed server-side.
-  const currentUser: User | null = auth.currentUser; 
-  console.log(`[SAVE_SMART_PICK] Firebase SDK auth.currentUser inside action: ${currentUser ? currentUser.uid : 'NULL'}`);
-
-
   try {
     const transformedCombinations = data.combinations.map(combo => ({ numbers: combo }));
-
     const dataToSave = {
-      userId: data.userId, 
+      userId: data.userId, // This becomes request.resource.data.userId
       drawId: data.drawId,
       combinations: transformedCombinations,
       createdAt: serverTimestamp(),
     };
     
-    console.log(`[SAVE_SMART_PICK] Data to save to Firestore:`, JSON.stringify(dataToSave, null, 2));
+    console.log(`[SAVE_SMART_PICK] Data being written to Firestore:`, JSON.stringify(dataToSave, null, 2));
 
     const docRef = await addDoc(collection(db, "smartPickResults"), dataToSave);
     console.log(`[SAVE_SMART_PICK] Smart pick result saved successfully with ID: ${docRef.id} for draw ${data.drawId}, user: ${data.userId || 'anonymous'}`);
@@ -275,9 +284,9 @@ export async function saveSmartPickResult(
     let errorMessage = "保存智能选号结果失败: ";
     if (error instanceof Error) {
       errorMessage += error.message;
-       const firebaseError = error as any; // Cast to access potential 'code' property
+       const firebaseError = error as any; 
        if (firebaseError.code === 'permission-denied' || firebaseError.code === 7 || firebaseError.code === 'PERMISSION_DENIED') {
-        errorMessage += ` (Firestore权限不足。尝试保存的userId: ${data.userId}. 如果已登录，请尝试重新登录以刷新权限。如果未登录，请检查匿名写入规则。确保Firestore安全规则已正确部署，并且 request.auth 在规则评估时与预期一致。)`;
+        errorMessage += ` (Firestore权限不足。尝试保存的userId: ${data.userId}. 服务器端SDK识别的用户UID: ${actionAuthUid}. 请确认Firestore安全规则已正确部署，并且客户端已重新登录以刷新权限。)`;
       }
     } else {
       errorMessage += "未知错误";
