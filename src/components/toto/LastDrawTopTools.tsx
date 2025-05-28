@@ -140,9 +140,9 @@ export function LastDrawTopTools({ tools, latestDrawNumber }: LastDrawTopToolsPr
             >
               <div className="p-4 border rounded-lg bg-card shadow-sm h-full flex flex-col justify-between">
                 <div>
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2 gap-2">
-                    <h3 className="text-md font-semibold text-primary">{tool.name}</h3>
-                    <Badge variant={tool.hitRateForLastDraw > 0 ? "default" : "secondary"} className="bg-green-600 hover:bg-green-700 text-white whitespace-nowrap">
+                  <div className="flex flex-row justify-between items-center mb-2 gap-2">
+                    <h3 className="text-md font-semibold text-primary truncate">{tool.name}</h3>
+                    <Badge variant={tool.hitRateForLastDraw > 0 ? "default" : "secondary"} className="bg-green-600 hover:bg-green-700 text-white whitespace-nowrap flex-shrink-0">
                       {tool.hitRateForLastDraw > 0 ? <CheckCircle className="mr-1.5 h-4 w-4" /> : <XCircle className="mr-1.5 h-4 w-4" />}
                       上期命中率: {tool.hitRateForLastDraw.toFixed(1)}%
                     </Badge>
