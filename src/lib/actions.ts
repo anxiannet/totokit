@@ -4,8 +4,10 @@
 import { generateNumberCombinations as genkitGenerateNumberCombinations } from "@/ai/flows/generate-number-combinations";
 import type { GenerateNumberCombinationsInput, GenerateNumberCombinationsOutput } from "@/ai/flows/generate-number-combinations";
 import type { WeightedCriterion, HistoricalResult, TotoCombination } from "./types";
-import { db } from "./firebase";
+import { db, auth } from "./firebase"; // Import auth as well
 import { collection, addDoc, serverTimestamp, query, where, getDocs, limit, doc, writeBatch, runTransaction, arrayUnion, arrayRemove, getDoc } from "firebase/firestore";
+import { type User } from "firebase/auth";
+
 
 export async function generateTotoPredictions(
   historicalDataString: string,
@@ -106,7 +108,7 @@ export async function saveToolPrediction(
       ...data,
       createdAt: serverTimestamp(),
     });
-    console.log(`[SAVE_TOOL_PREDICTION] Tool prediction saved successfully with ID: ${docRef.id} for tool: ${data.toolId}, draw: ${data.targetDrawNumber}`);
+    console.log(`[SAVE_TOOL_PREDICTION] Tool prediction saved successfully with ID: ${docRef.id} for tool: ${data.toolId}, draw: ${data.drawNumber}`);
     return { success: true, message: "Tool prediction saved successfully.", predictionId: docRef.id };
   } catch (error) {
     console.error("[SAVE_TOOL_PREDICTION] Error saving tool prediction to Firestore:", error);
@@ -231,6 +233,7 @@ export async function toggleFavoriteTool(
 
 interface SmartPickResultInput {
   userId: string | null;
+  idToken: string | null; // Added ID Token
   drawId: string;
   combinations: TotoCombination[];
 }
@@ -242,6 +245,16 @@ export async function saveSmartPickResult(
     console.error("[SAVE_SMART_PICK] Firestore 'db' instance is not initialized.");
     return { success: false, message: "Firestore 'db' instance is not initialized." };
   }
+
+  console.log(`[SAVE_SMART_PICK] Attempting to save. Input userId: ${data.userId}`);
+  console.log(`[SAVE_SMART_PICK] Received ID Token (first 10 chars): ${data.idToken ? data.idToken.substring(0, 10) + '...' : 'null'}`);
+  
+  // Note: The auth instance here is the global client SDK auth instance.
+  // It might not reflect the user's auth state from the client if not explicitly managed server-side.
+  const currentUser: User | null = auth.currentUser; 
+  console.log(`[SAVE_SMART_PICK] Firebase SDK auth.currentUser inside action: ${currentUser ? currentUser.uid : 'NULL'}`);
+
+
   try {
     const transformedCombinations = data.combinations.map(combo => ({ numbers: combo }));
 
@@ -252,7 +265,7 @@ export async function saveSmartPickResult(
       createdAt: serverTimestamp(),
     };
     
-    console.log(`[SAVE_SMART_PICK] Attempting to save smart pick result. Provided userId: ${data.userId}. Full data to save:`, JSON.stringify(dataToSave, null, 2));
+    console.log(`[SAVE_SMART_PICK] Data to save to Firestore:`, JSON.stringify(dataToSave, null, 2));
 
     const docRef = await addDoc(collection(db, "smartPickResults"), dataToSave);
     console.log(`[SAVE_SMART_PICK] Smart pick result saved successfully with ID: ${docRef.id} for draw ${data.drawId}, user: ${data.userId || 'anonymous'}`);
@@ -262,8 +275,9 @@ export async function saveSmartPickResult(
     let errorMessage = "保存智能选号结果失败: ";
     if (error instanceof Error) {
       errorMessage += error.message;
-       if ((error as any).code === 'permission-denied' || (error as any).code === 7 || (error as any).code === 'PERMISSION_DENIED') {
-        errorMessage += ` (Firestore权限不足。尝试保存的userId: ${data.userId}. 如果已登录，请尝试重新登录以刷新权限。如果未登录，请检查匿名写入规则。确保Firestore安全规则已正确部署。)`;
+       const firebaseError = error as any; // Cast to access potential 'code' property
+       if (firebaseError.code === 'permission-denied' || firebaseError.code === 7 || firebaseError.code === 'PERMISSION_DENIED') {
+        errorMessage += ` (Firestore权限不足。尝试保存的userId: ${data.userId}. 如果已登录，请尝试重新登录以刷新权限。如果未登录，请检查匿名写入规则。确保Firestore安全规则已正确部署，并且 request.auth 在规则评估时与预期一致。)`;
       }
     } else {
       errorMessage += "未知错误";
@@ -271,4 +285,3 @@ export async function saveSmartPickResult(
     return { success: false, message: errorMessage };
   }
 }
-

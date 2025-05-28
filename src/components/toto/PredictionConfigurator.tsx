@@ -8,7 +8,7 @@ import { Card, CardFooter } from "@/components/ui/card";
 import { Wand2, Loader2, FileText, AlertCircle } from "lucide-react";
 import type { WeightedCriterion, TotoCombination } from "@/lib/types";
 import { MOCK_HISTORICAL_DATA } from "@/lib/types";
-import { generateTotoPredictions, saveSmartPickResult } from "@/lib/actions"; // Import saveSmartPickResult
+import { generateTotoPredictions, saveSmartPickResult } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from '@/hooks/useAuth';
@@ -35,8 +35,7 @@ export function PredictionConfigurator({
 
   useEffect(() => {
     if (isAdmin) {
-      setHasUsedSmartPickThisDraw(false); // Admin can always use
-      // If admin might have used it before becoming admin in this session
+      setHasUsedSmartPickThisDraw(false);
       if (onUsageStatusChange && localStorage.getItem(`smartPickUsed_${CURRENT_DRAW_ID}`) === 'true') {
         onUsageStatusChange(true);
       }
@@ -74,14 +73,14 @@ export function PredictionConfigurator({
 
     const latestTenResults = MOCK_HISTORICAL_DATA.slice(0, 10);
     const historicalDataString = JSON.stringify(latestTenResults);
-    const weightedCriteria: WeightedCriterion[] = [{ id: "default", name: "GeneralBalance", weight: 0.5 }]; // Default criteria
+    const weightedCriteria: WeightedCriterion[] = [{ id: "default", name: "GeneralBalance", weight: 0.5 }];
 
     const result = await generateTotoPredictions(
       historicalDataString,
       weightedCriteria,
-      "", // luckyNumbersInput - empty as UI removed
-      "", // excludeNumbersInput - empty as UI removed
-      10  // numberOfCombinations - default to 10
+      "",
+      "",
+      10
     );
 
     setIsLoading(false);
@@ -109,9 +108,21 @@ export function PredictionConfigurator({
       }
       onPredictionsGenerated(result.combinations as TotoCombination[]);
 
-      // Save to Firestore
+      let idToken: string | null = null;
+      if (user) {
+        try {
+          idToken = await user.getIdToken();
+        } catch (tokenError) {
+          console.error("Error fetching ID token:", tokenError);
+          toast({ title: "获取用户凭证失败", description: "无法保存选号结果，请稍后重试或重新登录。", variant: "destructive"});
+          // Optionally, prevent saving if token fetch fails critically
+          // return;
+        }
+      }
+
       const smartPickData = {
         userId: user ? user.uid : null,
+        idToken: idToken,
         drawId: CURRENT_DRAW_ID,
         combinations: result.combinations as TotoCombination[],
       };
@@ -127,7 +138,6 @@ export function PredictionConfigurator({
         .catch(err => {
            toast({ title: "保存出错", description: `保存选号结果时发生错误：${err.message || '未知错误'}`, variant: "destructive"});
         });
-
 
       if (!isAdmin) {
         const usageKey = `smartPickUsed_${CURRENT_DRAW_ID}`;
