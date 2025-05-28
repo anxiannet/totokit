@@ -115,7 +115,8 @@ export const syncTotoResultsCallable = functions.https.onCall(
         "syncTotoResultsCallable: Successfully validated " +
         `${resultsToSync.length} results for sync.`
       );
-    } catch (error: any) { // Explicitly typed as any for linter
+    } catch (error: any) { // ESLint might warn about 'any' here.
+                            // Consider 'unknown' and type guards for stricter typing.
       console.error(
         "syncTotoResultsCallable: Error parsing or validating JSON data.",
         error
@@ -156,7 +157,9 @@ export const syncTotoResultsCallable = functions.https.onCall(
     try {
       await batch.commit();
       console.log(
-        `syncTotoResultsCallable: Successfully synced/updated ${syncedCount} historical results to Firestore by admin user ${context.auth.uid}.`
+        `syncTotoResultsCallable: Successfully synced/updated ` +
+        `${syncedCount} historical results to Firestore by admin user ` +
+        `${context.auth.uid}.`
       );
       return {
         success: true,
@@ -164,7 +167,8 @@ export const syncTotoResultsCallable = functions.https.onCall(
           `成功通过云函数同步/更新 ${syncedCount} 条开奖结果到 Firestore。`,
         count: syncedCount,
       };
-    } catch (error: any) { // Explicitly typed as any for linter
+    } catch (error: any) { // ESLint might warn about 'any' here.
+                            // Consider 'unknown' and type guards for stricter typing.
       console.error(
         "syncTotoResultsCallable: Error committing batch to Firestore.",
         error
