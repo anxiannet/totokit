@@ -10,11 +10,12 @@ import { MOCK_LATEST_RESULT, type HistoricalResult } from "@/lib/types";
 import { formatDateToLocale, getBallColor } from "@/lib/totoUtils";
 import { Separator } from "@/components/ui/separator";
 import { zhCN } from "date-fns/locale";
-import { getCurrentDrawDisplayInfo } from '@/lib/actions'; // Import the new action
+import { getCurrentDrawDisplayInfo } from '@/lib/actions'; // Import the action
 
 export function CurrentAndLatestDrawInfo() {
   const latestResult: HistoricalResult | null = MOCK_LATEST_RESULT;
 
+  // Set initial state to the user's desired default display
   const [currentDrawDateTime, setCurrentDrawDateTime] = useState("周四, 2025年5月29日, 傍晚6点30分");
   const [currentJackpot, setCurrentJackpot] = useState("$4,500,000 (估计)");
   const [isLoadingDrawInfo, setIsLoadingDrawInfo] = useState(true);
@@ -28,12 +29,12 @@ export function CurrentAndLatestDrawInfo() {
           setCurrentDrawDateTime(info.currentDrawDateTime);
           setCurrentJackpot(info.currentJackpot);
         } else {
-          // Fallback to defaults if Firestore data is incomplete or not found
-          console.warn("Current draw info not found or incomplete in Firestore, using defaults.");
+          console.warn("Current draw info not found or incomplete in Firestore, using hardcoded defaults.");
+          // Defaults are already set by useState initial values
         }
       } catch (error) {
         console.error("Failed to fetch current draw info from Firestore:", error);
-        // Keep defaults on error
+        // Keep defaults on error, which are already set by useState
       } finally {
         setIsLoadingDrawInfo(false);
       }
@@ -49,29 +50,17 @@ export function CurrentAndLatestDrawInfo() {
           <CalendarDays className="h-5 w-5 text-primary" />
           本期开奖信息
         </CardTitle>
-        {isLoadingDrawInfo ? (
-          <div className="flex items-center space-x-2 h-6">
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">加载中...</span>
-          </div>
-        ) : (
-           <CardDescription>
-             {currentDrawDateTime}
-           </CardDescription>
-        )}
       </CardHeader>
       <CardContent className="pb-4">
        {isLoadingDrawInfo ? (
-          <div className="flex items-center justify-center p-4 bg-secondary/30 rounded-lg h-[76px]"> 
-             {/* Match height of content when loaded */}
+          <div className="flex items-center justify-center p-4 bg-secondary/30 rounded-lg min-h-[90px]">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
           </div>
         ) : (
-          <div className="flex items-center justify-between p-4 bg-secondary/30 rounded-lg">
-            <div>
-              <p className="text-sm text-muted-foreground">当前头奖预估</p>
-              <p className="text-2xl font-bold text-primary">{currentJackpot}</p>
-            </div>
+          <div className="p-4 bg-secondary/30 rounded-lg space-y-1 min-h-[90px]">
+            <p className="text-sm text-muted-foreground">{currentDrawDateTime}</p>
+            <p className="text-sm text-muted-foreground mt-2">当前头奖预估</p>
+            <p className="text-2xl font-bold text-primary">{currentJackpot}</p>
           </div>
         )}
       </CardContent>
