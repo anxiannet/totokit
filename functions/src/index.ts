@@ -43,22 +43,23 @@ interface SyncRequestData {
  *   as the document ID.
  */
 export const syncTotoResultsCallable = functions.https.onCall(
-  async (data: any, context: functions.https.CallableContext): Promise<{ success: boolean; message: string; count: number; }> => {
+  async (data: any, context: any): Promise<{ success: boolean; message: string; count: number; }> => { // Changed context type to any
     const typedData = data as SyncRequestData;
 
     // 1. Check Authentication and Admin Claim
-    // Ensure the user is authenticated.
-    if (!context.auth) {
+    // Ensure the user is authenticated and context.auth is available.
+    if (!context || !context.auth) {
       console.error(
-        "syncTotoResultsCallable: Unauthenticated call attempt."
+        "syncTotoResultsCallable: Unauthenticated call attempt or context.auth is missing."
       );
       throw new functions.https.HttpsError(
         "unauthenticated",
-        "The function must be called while authenticated."
+        "The function must be called while authenticated and context must be valid."
       );
     }
 
     // Ensure the user has the "isAdmin" custom claim set to true.
+    // We've already checked context.auth exists.
     if (context.auth.token.isAdmin !== true) {
       const userEmail = context.auth.token.email || "N/A";
       console.warn(
@@ -116,8 +117,7 @@ export const syncTotoResultsCallable = functions.https.onCall(
         "syncTotoResultsCallable: Successfully validated " +
         `${resultsToSync.length} results for sync.`
       );
-    } catch (error: any) { // ESLint might warn about 'any' here.
-                            // Consider 'unknown' and type guards for stricter typing.
+    } catch (error: any) {
       console.error(
         "syncTotoResultsCallable: Error parsing or validating JSON data.",
         error
@@ -157,6 +157,7 @@ export const syncTotoResultsCallable = functions.https.onCall(
 
     try {
       await batch.commit();
+      // context and context.auth are checked at the beginning.
       console.log(
         "syncTotoResultsCallable: Successfully synced/updated " +
         `${syncedCount} historical results to Firestore by admin user ` +
@@ -168,8 +169,7 @@ export const syncTotoResultsCallable = functions.https.onCall(
           `成功通过云函数同步/更新 ${syncedCount} 条开奖结果到 Firestore。`,
         count: syncedCount,
       };
-    } catch (error: any) { // ESLint might warn about 'any' here.
-                            // Consider 'unknown' and type guards for stricter typing.
+    } catch (error: any) {
       console.error(
         "syncTotoResultsCallable: Error committing batch to Firestore.",
         error
