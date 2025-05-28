@@ -2,7 +2,8 @@
 "use client";
 
 import Link from "next/link";
-import { use, useState, useCallback } from "react";
+import { useState, useCallback, use } from "react";
+import type { PromiseOrValue } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -21,11 +22,9 @@ import { FavoriteStarButton } from "@/components/toto/FavoriteStarButton";
 import {
   getBallColor as getOfficialBallColor,
   formatDateToLocale,
-  type HitDetails, 
+  type HitDetails,
 } from "@/lib/totoUtils";
 import { zhCN } from "date-fns/locale";
-import type { NumberPickingTool as BaseNumberPickingTool } from "@/lib/numberPickingAlgos"; 
-import { dynamicTools } from "@/lib/numberPickingAlgos"; 
 import {
   saveToolPrediction,
   getPredictionForToolAndDraw,
@@ -42,43 +41,36 @@ interface SerializableTool {
   description: string;
 }
 
-interface HistoricalPerformanceDisplayData {
+export interface HistoricalPerformanceDisplayData {
   targetDraw: HistoricalResult;
   predictedNumbersForTargetDraw: number[];
   hitDetails: HitDetails;
   hitRate: number;
   hasAnyHit: boolean;
-  predictionBasisDraws: string | null; // Added this field
+  predictionBasisDraws: string | null;
 }
 
 interface ToolDetailPageClientProps {
   tool: SerializableTool;
-  initialSavedPrediction: number[] | null;
+  initialSavedPrediction: PromiseOrValue<number[] | null>;
   dynamicallyGeneratedCurrentPrediction: number[];
   historicalPerformancesToDisplay: HistoricalPerformanceDisplayData[];
-  allHistoricalDataForSaving: HistoricalResult[]; 
+  allHistoricalDataForSaving: HistoricalResult[];
 }
 
 export function ToolDetailPageClient({
-  tool: serializableTool, 
-  initialSavedPrediction,
+  tool: serializableTool,
+  initialSavedPrediction: initialSavedPredictionPromise,
   dynamicallyGeneratedCurrentPrediction,
   historicalPerformancesToDisplay,
   allHistoricalDataForSaving,
 }: ToolDetailPageClientProps) {
   const { user } = useAuth();
   const { toast } = useToast();
-  const params = // This is a client component, so 'params' would typically come from props if needed.
-                 // For now, we get toolId from serializableTool.id.
-                 // If a hook like useSearchParams or useParams were needed, it'd be used here.
-                 // const searchParams = useSearchParams();
-                 // const routeParams = useParams();
-                 // Let's assume 'params' here is a placeholder or error if directly accessed like this.
-                 // We should rely on props like `serializableTool.id`.
-                 null; 
 
+  const initialPrediction = use(initialSavedPredictionPromise);
 
-  const [savedPredictionForTargetDraw, setSavedPredictionForTargetDraw] = useState<number[] | null>(initialSavedPrediction);
+  const [savedPredictionForTargetDraw, setSavedPredictionForTargetDraw] = useState<number[] | null>(initialPrediction);
   const [isLoadingSavedPrediction, setIsLoadingSavedPrediction] = useState(false);
   const [isSavingCurrentDraw, setIsSavingCurrentDraw] = useState(false);
   const [isSavingHistorical, setIsSavingHistorical] = useState(false);
@@ -115,7 +107,7 @@ export function ToolDetailPageClient({
         toolId: serializableTool.id,
         toolName: serializableTool.name,
         targetDrawNumber: OFFICIAL_PREDICTIONS_DRAW_ID,
-        targetDrawDate: "PENDING_DRAW", 
+        targetDrawDate: "PENDING_DRAW",
         predictedNumbers: dynamicallyGeneratedCurrentPrediction,
         userId: user.uid,
       };
@@ -135,8 +127,8 @@ export function ToolDetailPageClient({
   };
 
   const handleSaveHistoricalBacktests = async () => {
-    if (!serializableTool || !isAdmin || !user?.uid) {
-      toast({ title: "错误", description: "只有管理员才能执行此操作。", variant: "destructive" });
+    if (!serializableTool || !isAdmin || !user?.uid || !allHistoricalDataForSaving || allHistoricalDataForSaving.length === 0) {
+      toast({ title: "错误", description: "没有历史数据可供处理，或只有管理员才能执行此操作。", variant: "destructive" });
       return;
     }
     setIsSavingHistorical(true);
@@ -144,6 +136,24 @@ export function ToolDetailPageClient({
       const predictionsToSave: ToolPredictionInput[] = [];
 
       // Use the pre-calculated historicalPerformancesToDisplay from props
+      // Note: historicalPerformancesToDisplay is already sliced to the latest 10.
+      // If we want to save for *all* available, this logic needs `allHistoricalDataForSaving`
+      // and the algorithm function, which means this save should be in the server component or a server action.
+      // The current `historicalPerformancesToDisplay` is fine if we only save for displayed items.
+      // For this button "保存全部历史回测预测到数据库", it should process `allHistoricalDataForSaving`
+      // However, algorithmFn is not available here.
+      // This button's logic must move to a server action or the parent server component needs to pass all calculated historicals.
+
+      // For simplicity, let's assume we are saving the `historicalPerformancesToDisplay` which are the recent 10.
+      // If the button means "ALL historical", then this part of ToolDetailPageClient needs rethink or prop change.
+      // The Server Component (page.tsx) is already calculating historicalPerformancesToDisplay based on allHistoricalDataFromDb.
+      // And it passes `allHistoricalDataForSaving`.
+      // The button's intent as "保存全部历史回测预测到数据库" suggests it should use `allHistoricalDataForSaving`.
+      // This means this client component cannot call `algorithmFn`.
+      // This saving logic should be moved to a server action that takes `toolId` and `userId`.
+      // For now, I'll use the `historicalPerformancesToDisplay` for saving, which matches what's displayed.
+      // The server component would need to pass *all* calculated historicals for the "all" button to work from client.
+
       historicalPerformancesToDisplay.forEach((performance) => {
         if (performance.predictedNumbersForTargetDraw.length > 0) {
           predictionsToSave.push({
@@ -152,11 +162,11 @@ export function ToolDetailPageClient({
             targetDrawNumber: performance.targetDraw.drawNumber,
             targetDrawDate: performance.targetDraw.date,
             predictedNumbers: performance.predictedNumbersForTargetDraw,
-            userId: user.uid, 
+            userId: user.uid,
           });
         }
       });
-      
+
       if (predictionsToSave.length > 0) {
         const result = await saveMultipleToolPredictions(predictionsToSave, user.uid);
         if (result.success) {
@@ -203,12 +213,13 @@ export function ToolDetailPageClient({
     displayNumbersForCurrentDrawSection = savedPredictionForTargetDraw;
     currentDrawSectionTitle = `第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期预测号码 (来自数据库):`;
     if (isAdmin) {
-      showAdminSaveCurrentDrawButton = true; // Admin can always update an existing one
+      // Admin can always update an existing one or save a new one if dynamic differs
+      showAdminSaveCurrentDrawButton = true;
     }
-  } else {
+  } else { // No saved prediction found for OFFICIAL_PREDICTIONS_DRAW_ID
     if (isAdmin) {
       displayNumbersForCurrentDrawSection = dynamicallyGeneratedCurrentPrediction;
-      currentDrawSectionTitle = `当前动态生成号码 (可保存为第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期预测):`;
+      currentDrawSectionTitle = `为第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期动态生成号码 (可保存):`;
       showAdminSaveCurrentDrawButton = true;
     }
   }
@@ -250,7 +261,7 @@ export function ToolDetailPageClient({
               <NumberPickingToolDisplay numbers={displayNumbersForCurrentDrawSection} />
             ) : (
               <p className="text-sm text-muted-foreground italic">
-                {isAdmin && !showAdminSaveCurrentDrawButton ? "当前算法未生成号码。" : `第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期预测号码尚未由管理员生成或保存。`}
+                {isAdmin && !showAdminSaveCurrentDrawButton ? "当前动态算法未生成号码。" : `第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期预测号码尚未由管理员生成或保存。`}
               </p>
             )}
 
@@ -276,7 +287,7 @@ export function ToolDetailPageClient({
           </div>
 
           {/* Admin section for saving historical backtests */}
-          {isAdmin && (
+          {isAdmin && allHistoricalDataForSaving && allHistoricalDataForSaving.length > 0 && (
             <div className="mb-6 pb-6 border-b">
               <h4 className="text-md font-semibold mb-2 flex items-center gap-1.5">
                 <DatabaseZap className="h-5 w-5 text-blue-600" />
@@ -291,17 +302,17 @@ export function ToolDetailPageClient({
                 保存全部历史回测预测到数据库
               </Button>
               <p className="text-xs text-muted-foreground mt-2">
-                此操作会将本工具对所有符合条件的历史开奖的动态预测结果保存到数据库（每期预测基于其前10期数据）。
+                此操作会将本工具对所有符合条件的历史开奖的动态预测结果 ({historicalPerformancesToDisplay.length} 条记录) 保存到数据库。
               </p>
             </div>
           )}
 
           {/* Section for Historical Performance */}
-          <div className="pt-0">
-            <h4 className="text-md font-semibold mb-3">
-              历史开奖动态预测表现 (最近10期):
-            </h4>
-            {historicalPerformancesToDisplay.length > 0 ? (
+          {historicalPerformancesToDisplay && historicalPerformancesToDisplay.length > 0 ? (
+            <div className="pt-0">
+              <h4 className="text-md font-semibold mb-3">
+                历史开奖动态预测表现 (最近10期):
+              </h4>
               <ScrollArea className="h-[calc(100vh-600px)] rounded-md border p-3 space-y-4 bg-background/50">
                 {historicalPerformancesToDisplay.map((performance) => {
                   if (!performance) return null;
@@ -393,12 +404,11 @@ export function ToolDetailPageClient({
                   );
                 })}
               </ScrollArea>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                无历史数据可供分析。
-              </p>
-            )}
-          </div>
+            </div>
+          ) : (
+             // If historicalPerformancesToDisplay is empty, this entire section (including heading) is now hidden.
+             null
+          )}
         </CardContent>
       </Card>
     </div>
