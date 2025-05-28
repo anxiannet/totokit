@@ -34,6 +34,15 @@ export function PredictionConfigurator({
   const isAdmin = user && user.email === "admin@totokit.com";
 
   useEffect(() => {
+    if (isAdmin) {
+      setHasUsedSmartPickThisDraw(false); // Admins are never considered to have "used" their pick
+      if (onUsageStatusChange) {
+        console.log("[PredictionConfigurator] Admin detected. Notifying parent: onUsageStatusChange(true) to always show results area potential for admin.");
+        onUsageStatusChange(true); // Admins might always want to see the area if they've used it
+      }
+      return;
+    }
+
     // For non-admins, check usage for this specific user or a guest session
     const usageKey = `smartPickUsed_${CURRENT_DRAW_ID}_${user?.uid || 'guest'}`;
     const alreadyUsed = localStorage.getItem(usageKey) === 'true';
@@ -47,31 +56,20 @@ export function PredictionConfigurator({
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]); // Re-run if user logs in/out
+  }, [user, isAdmin]); // Re-run if user logs in/out or isAdmin status changes
 
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
 
-    if (!isAdmin) {
+    if (hasUsedSmartPickThisDraw && !isAdmin) {
       toast({
-        title: "权限不足",
-        description: "只有管理员才能使用智能选号功能。",
+        title: "已使用",
+        description: "您已使用本期免费智能选号。",
         variant: "default",
       });
       return;
     }
-
-    // Admin specific logic (no usage limit check for admin)
-    // Or if we wanted a one-time use for non-admins (currently disabled for non-admins)
-    // if (hasUsedSmartPickThisDraw && !isAdmin) {
-    //   toast({
-    //     title: "已使用",
-    //     description: "您已使用本期免费智能选号。",
-    //     variant: "default",
-    //   });
-    //   return;
-    // }
 
 
     setIsLoading(true);
@@ -131,7 +129,7 @@ export function PredictionConfigurator({
 
       const smartPickData = {
         userId: user ? user.uid : null,
-        idToken: idToken,
+        idToken: idToken, // Pass the ID token
         drawId: CURRENT_DRAW_ID,
         combinations: result.combinations as TotoCombination[],
       };
@@ -148,12 +146,11 @@ export function PredictionConfigurator({
            toast({ title: "保存出错", description: `保存选号结果时发生错误：${err.message || '未知错误'}`, variant: "destructive"});
         });
 
-      if (!isAdmin) { // Only set usage for non-admins, though they can't click the button anyway with current logic
+      if (!isAdmin) { 
         const usageKey = `smartPickUsed_${CURRENT_DRAW_ID}_${user?.uid || 'guest'}`;
         console.log(`[PredictionConfigurator] handleSubmit: Setting localStorage key ${usageKey} to true for non-admin.`);
         localStorage.setItem(usageKey, 'true');
         setHasUsedSmartPickThisDraw(true);
-        // onUsageStatusChange already called at the start of handleSubmit
       }
     }
   };
@@ -166,7 +163,7 @@ export function PredictionConfigurator({
             <Button
               type="submit"
               className="flex-1"
-              disabled={isLoading || !isAdmin} // Only admin can generate
+              disabled={isLoading || (hasUsedSmartPickThisDraw && !isAdmin)}
             >
               {isLoading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -184,7 +181,7 @@ export function PredictionConfigurator({
           </div>
         </CardFooter>
       </form>
-      {hasUsedSmartPickThisDraw && !isAdmin && ( // Show message if non-admin has used their (now unavailable) free pick
+      {hasUsedSmartPickThisDraw && !isAdmin && ( 
         <div className="p-4 pt-0 text-sm">
           <Alert>
             <AlertCircle className="h-4 w-4" />
@@ -195,13 +192,13 @@ export function PredictionConfigurator({
           </Alert>
         </div>
       )}
-       {!isAdmin && !isLoading && ( // General message for non-admins if they haven't used any pick (button is disabled)
+       {!isAdmin && !isLoading && !hasUsedSmartPickThisDraw && ( 
          <div className="p-4 pt-0 text-sm">
            <Alert variant="default">
              <AlertCircle className="h-4 w-4" />
              <AlertTitle>提示</AlertTitle>
              <AlertDescription>
-               智能选号功能仅限管理员使用。
+               每期可免费使用一次智能选号。
              </AlertDescription>
            </Alert>
          </div>
