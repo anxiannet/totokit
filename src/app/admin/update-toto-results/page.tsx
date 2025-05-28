@@ -35,8 +35,8 @@ const monthMap: { [key: string]: string } = {
 };
 
 function parseDateFromText(dateStr: string): string {
-  const parts = dateStr.split(" "); 
-  if (parts.length < 4) return ""; 
+  const parts = dateStr.split(" ");
+  if (parts.length < 4) return "";
 
   const dayPart = parts[1].replace(/,$/, ""); // Remove comma if present
   const day = dayPart.padStart(2, "0");
@@ -51,6 +51,7 @@ function parseDateFromText(dateStr: string): string {
 export default function AdminUpdateTotoResultsPage() {
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
+  // jsonData will now primarily be driven by plainTextData merging
   const [jsonData, setJsonData] = useState(JSON.stringify(MOCK_HISTORICAL_DATA, null, 2));
   const [plainTextData, setPlainTextData] = useState("");
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
@@ -115,7 +116,7 @@ export default function AdminUpdateTotoResultsPage() {
   }, [user, authLoading]);
 
 
-  const handleValidateAndPrepare = () => {
+  const handleValidateJsonData = () => {
     setValidationMessage(null);
     setValidationStatus(null);
     setValidatedJsonOutput(null);
@@ -129,7 +130,7 @@ export default function AdminUpdateTotoResultsPage() {
         setValidationStatus("success");
         setValidationMessage("JSON数据有效！现在您可以通过服务器操作将其同步到 Firestore。");
         setValidatedJsonOutput(JSON.stringify(sortedData, null, 2));
-        setJsonData(JSON.stringify(sortedData, null, 2));
+        // jsonData is already up-to-date from merging or direct edit if we re-introduce it
       } else {
         setValidationStatus("error");
         const errorIssues = validationResult.error.issues.map(issue => `路径 '${issue.path.join('.') || 'root'}': ${issue.message}`).join("\\n");
@@ -191,7 +192,7 @@ export default function AdminUpdateTotoResultsPage() {
         }
 
         const historicalResult: HistoricalResult = { drawNumber, date, numbers, additionalNumber };
-        
+
         const validation = HistoricalResultSchema.safeParse(historicalResult);
         if (!validation.success) {
             errors.push(`记录 ${index + 1} (期号 ${drawNumber}): 验证失败 - ${validation.error.issues.map(i => i.message).join(', ')}`);
@@ -218,25 +219,27 @@ export default function AdminUpdateTotoResultsPage() {
       toast({ title: "无有效结果", description: "未能从文本中解析出任何有效结果。", variant: "default" });
       return;
     }
-    
+
     let currentJsonDataArray: HistoricalResult[] = [];
     try {
       currentJsonDataArray = JSON.parse(jsonData);
       if (!Array.isArray(currentJsonDataArray)) currentJsonDataArray = [];
     } catch (e) {
-      console.warn("Current jsonData is invalid, starting merge with empty array.");
+      console.warn("Current jsonData is invalid or empty, starting merge with empty array.");
+      currentJsonDataArray = MOCK_HISTORICAL_DATA; // Fallback to mock if current is bad/empty
     }
-    
+
     const mergedDataMap = new Map<number, HistoricalResult>();
     currentJsonDataArray.forEach(res => mergedDataMap.set(res.drawNumber, res));
     newResults.forEach(res => mergedDataMap.set(res.drawNumber, res));
 
     const mergedArray = Array.from(mergedDataMap.values()).sort((a, b) => b.drawNumber - a.drawNumber);
 
-    setJsonData(JSON.stringify(mergedArray, null, 2));
-    setPlainTextData(""); 
-    handleValidateAndPrepare(); 
-    toast({ title: "解析并合并成功", description: `成功解析并合并 ${newResults.length} 条记录到当前数据中。请验证下方更新的JSON数据。` });
+    const newJsonDataString = JSON.stringify(mergedArray, null, 2);
+    setJsonData(newJsonDataString); // Update internal JSON representation
+    setPlainTextData("");
+    handleValidateJsonData(); // Validate the newly merged data
+    toast({ title: "解析并合并成功", description: `成功解析并合并 ${newResults.length} 条记录。请验证下方更新的JSON数据。` });
   };
 
 
@@ -326,7 +329,7 @@ export default function AdminUpdateTotoResultsPage() {
           </Button>
         )}
       </div>
-      
+
       {user && user.email === adminEmail && (
         <Card className="w-full mb-6">
           <CardHeader>
@@ -379,52 +382,36 @@ export default function AdminUpdateTotoResultsPage() {
         <CardHeader>
           <CardTitle>管理员：手动更新TOTO开奖结果</CardTitle>
           <CardDescription>
-            您可以在下方粘贴**完整JSON数组**或**纯文本格式**的新开奖结果。系统将验证数据、合并（如果使用文本输入）并提供通过服务器操作同步到 Firestore 的选项。
+            您可以在下方粘贴**纯文本格式**的新开奖结果。系统将解析数据、合并，然后您可以验证合并后的数据并将其同步到 Firestore。
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <Label htmlFor="plainTextData" className="text-lg font-semibold flex items-center gap-2">
-                <FileText className="h-5 w-5"/> 添加纯文本格式结果
-              </Label>
-              <Textarea
-                id="plainTextData"
-                value={plainTextData}
-                onChange={(e) => setPlainTextData(e.target.value)}
-                placeholder={`例如:\nThu, 22 May 2025\tDraw No. 4080\nWinning Numbers\n3 10 32 34 44 48\nAdditional Number\n29\n\n(多条记录请用空行分隔)`}
-                rows={10}
-                className="mt-2 font-mono text-sm"
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
-                每条记录5行，按顺序为：日期和期号 (制表符分隔)，"Winning Numbers"，中奖号码 (空格分隔)，"Additional Number"，特别号码。多条记录用空行分隔。
-              </p>
-              <Button onClick={parseAndMergePlainTextResults} className="w-full mt-3" variant="outline">
-                <PlusCircle className="mr-2 h-4 w-4" /> 从文本解析并添加到当前数据
-              </Button>
-            </div>
-            
-            <div>
-              <Label htmlFor="jsonData" className="text-lg font-semibold">当前开奖结果JSON数据 (可编辑)</Label>
-              <Textarea
-                id="jsonData"
-                value={jsonData}
-                onChange={(e) => setJsonData(e.target.value)}
-                placeholder="在此处粘贴完整的JSON数组，或使用上方文本输入合并..."
-                rows={10}
-                className="mt-2 font-mono text-sm"
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
-                确保数据是一个包含所有历史结果的JSON数组，且每个对象都符合 `HistoricalResult` 结构。建议按 `drawNumber` 降序排列。
-              </p>
-               <Button onClick={handleValidateAndPrepare} className="w-full mt-3">
-                验证JSON数据
-              </Button>
-            </div>
+
+          <div>
+            <Label htmlFor="plainTextData" className="text-lg font-semibold flex items-center gap-2">
+              <FileText className="h-5 w-5"/> 添加纯文本格式结果
+            </Label>
+            <Textarea
+              id="plainTextData"
+              value={plainTextData}
+              onChange={(e) => setPlainTextData(e.target.value)}
+              placeholder={`例如:\nThu, 22 May 2025\tDraw No. 4080\nWinning Numbers\n3 10 32 34 44 48\nAdditional Number\n29\n\n(多条记录请用空行分隔)`}
+              rows={10}
+              className="mt-2 font-mono text-sm"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              每条记录5行，按顺序为：日期和期号 (制表符分隔)，"Winning Numbers"，中奖号码 (空格分隔)，"Additional Number"，特别号码。多条记录用空行分隔。
+            </p>
+            <Button onClick={parseAndMergePlainTextResults} className="w-full mt-3" variant="outline">
+              <PlusCircle className="mr-2 h-4 w-4" /> 从文本解析并添加到当前数据
+            </Button>
           </div>
-          
+
           <Separator />
+
+          <Button onClick={handleValidateJsonData} className="w-full">
+            验证当前数据 (合并后)
+          </Button>
 
           {validationMessage && (
             <Alert variant={validationStatus === "success" ? "default" : validationStatus === "error" ? "destructive": "default"} className="mt-4">
@@ -442,8 +429,8 @@ export default function AdminUpdateTotoResultsPage() {
 
           {validatedJsonOutput && validationStatus === "success" && (
             <div className="mt-6 space-y-4 p-4 border rounded-md bg-muted/50">
-              <Button 
-                onClick={handleSyncDirectlyToFirestore} 
+              <Button
+                onClick={handleSyncDirectlyToFirestore}
                 disabled={isSyncing || adminClaimStatus !== 'verified'}
                 className="w-full"
               >
@@ -459,10 +446,9 @@ export default function AdminUpdateTotoResultsPage() {
                   需要已验证的管理员权限才能通过服务器操作同步到 Firestore。
                 </p>
               )}
-              {/* Removed manual update instructions section */}
             </div>
           )}
-          
+
         </CardContent>
         <CardFooter>
           <p className="text-xs text-muted-foreground text-center w-full">
@@ -473,5 +459,3 @@ export default function AdminUpdateTotoResultsPage() {
     </div>
   );
 }
-
-    
