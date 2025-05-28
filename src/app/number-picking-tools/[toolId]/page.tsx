@@ -10,10 +10,11 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  CardFooter,
 } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, TrendingUp, TrendingDown, Info, Target, Loader2, Save, AlertCircle } from "lucide-react";
+import { ArrowLeft, TrendingUp, TrendingDown, Info, Target, Loader2, Save, AlertCircle, DatabaseZap } from "lucide-react";
 import type { HistoricalResult } from "@/lib/types";
 import { MOCK_HISTORICAL_DATA, OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types";
 import { NumberPickingToolDisplay } from "@/components/toto/NumberPickingToolDisplay";
@@ -34,71 +35,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-
-// Client Component for the Admin Save Button
-function AdminSavePredictionButton({
-  toolId,
-  toolName,
-  predictedNumbers,
-  adminUserId,
-  onSaveSuccess,
-  currentDrawNumber,
-}: {
-  toolId: string;
-  toolName: string;
-  predictedNumbers: number[];
-  adminUserId: string | null;
-  onSaveSuccess: () => void;
-  currentDrawNumber: string | number;
-}) {
-  const [isSaving, setIsSaving] = useState(false);
-  const { toast } = useToast();
-
-  const handleSave = async () => {
-    if (!adminUserId) {
-      toast({ title: "错误", description: "管理员未登录。", variant: "destructive" });
-      return;
-    }
-    if (!predictedNumbers || predictedNumbers.length === 0) {
-      toast({ title: "提示", description: "沒有可保存的预测号码 (动态生成为空)。", variant: "default" });
-      return;
-    }
-    setIsSaving(true);
-    try {
-      const predictionData: ToolPredictionInput = {
-        toolId: toolId,
-        toolName: toolName,
-        targetDrawNumber: currentDrawNumber,
-        targetDrawDate: "PENDING_DRAW",
-        predictedNumbers: predictedNumbers,
-        userId: adminUserId, // Include admin's UID
-      };
-      const result = await saveToolPrediction(predictionData);
-
-      if (result.success) {
-        toast({ title: "成功", description: result.message || `预测已为第 ${currentDrawNumber} 期保存/更新。` });
-        onSaveSuccess();
-      } else {
-        toast({ title: "保存失败", description: result.message || "无法保存预测。", variant: "destructive" });
-      }
-    } catch (error: any) {
-      toast({ title: "保存出错", description: error.message || "保存预测时发生错误。", variant: "destructive" });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  return (
-    <Button onClick={handleSave} disabled={isSaving || !adminUserId} className="w-full mt-3">
-      {isSaving ? (
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-      ) : (
-        <Save className="mr-2 h-4 w-4" />
-      )}
-      为第 {currentDrawNumber} 期保存/更新预测
-    </Button>
-  );
-}
+import { Separator } from "@/components/ui/separator";
 
 
 export default function SingleNumberToolPage({
@@ -115,6 +52,8 @@ export default function SingleNumberToolPage({
 
   const [savedPredictionForTargetDraw, setSavedPredictionForTargetDraw] = useState<number[] | null>(null);
   const [isLoadingSavedPrediction, setIsLoadingSavedPrediction] = useState(true);
+  const [isSavingCurrentDraw, setIsSavingCurrentDraw] = useState(false);
+  const [isSavingHistorical, setIsSavingHistorical] = useState(false);
   const [dynamicallyGeneratedCurrentPrediction, setDynamicallyGeneratedCurrentPrediction] = useState<number[]>([]);
 
   const isAdmin = user && user.email === "admin@totokit.com";
@@ -143,8 +82,50 @@ export default function SingleNumberToolPage({
     }
   }, [tool, fetchAndSetSavedPrediction]);
 
-  useEffect(() => {
-    if (tool && MOCK_HISTORICAL_DATA.length > 0) {
+  // Removed automatic saving of historical predictions on load.
+  // This will now be triggered by an admin button.
+
+  const handleSaveCurrentDrawPrediction = async () => {
+    if (!tool || !isAdmin || !user?.uid) {
+      toast({ title: "错误", description: "只有管理员才能保存预测。", variant: "destructive" });
+      return;
+    }
+    if (!dynamicallyGeneratedCurrentPrediction || dynamicallyGeneratedCurrentPrediction.length === 0) {
+      toast({ title: "提示", description: "没有可保存的动态生成号码。", variant: "default" });
+      return;
+    }
+    setIsSavingCurrentDraw(true);
+    try {
+      const predictionData: ToolPredictionInput = {
+        toolId: tool.id,
+        toolName: tool.name,
+        targetDrawNumber: OFFICIAL_PREDICTIONS_DRAW_ID,
+        targetDrawDate: "PENDING_DRAW", // Or derive this if needed
+        predictedNumbers: dynamicallyGeneratedCurrentPrediction,
+        userId: user.uid,
+      };
+      const result = await saveToolPrediction(predictionData);
+
+      if (result.success) {
+        toast({ title: "成功", description: result.message || `预测已为第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期保存/更新。` });
+        fetchAndSetSavedPrediction(); // Re-fetch to display the newly saved prediction
+      } else {
+        toast({ title: "保存失败", description: result.message || "无法保存预测。", variant: "destructive" });
+      }
+    } catch (error: any) {
+      toast({ title: "保存出错", description: error.message || "保存预测时发生错误。", variant: "destructive" });
+    } finally {
+      setIsSavingCurrentDraw(false);
+    }
+  };
+
+  const handleSaveHistoricalBacktests = async () => {
+    if (!tool || !isAdmin || !user?.uid) {
+      toast({ title: "错误", description: "只有管理员才能执行此操作。", variant: "destructive" });
+      return;
+    }
+    setIsSavingHistorical(true);
+    try {
       const allHistoricalData: HistoricalResult[] = MOCK_HISTORICAL_DATA;
       const recentTenHistoricalDrawsForAnalysis: HistoricalResult[] = allHistoricalData.slice(0, 10);
       const predictionsToSave: ToolPredictionInput[] = [];
@@ -169,27 +150,27 @@ export default function SingleNumberToolPage({
             targetDrawNumber: targetDraw.drawNumber,
             targetDrawDate: targetDraw.date,
             predictedNumbers: predictedNumbersForTargetDraw,
-            // userId will be added by saveMultipleToolPredictions if adminUserId is provided
+            userId: user.uid,
           });
         }
       });
 
       if (predictionsToSave.length > 0) {
-        // Pass admin's UID if available, so historical saves are attributed
-        saveMultipleToolPredictions(predictionsToSave, user?.uid)
-          .then(result => {
-            if (result.success) {
-              // console.log(`Successfully batch saved/updated ${result.savedCount} historical predictions for tool ${tool.id}`);
-            } else {
-              // console.error(`Failed to batch save historical predictions for tool ${tool.id}: ${result.message}`);
-            }
-          })
-          .catch(error => {
-            // console.error(`Error in batch saving historical predictions for tool ${tool.id}:`, error);
-          });
+        const result = await saveMultipleToolPredictions(predictionsToSave, user.uid);
+        if (result.success) {
+          toast({ title: "成功", description: result.message || `已成功保存/更新 ${result.savedCount || 0} 条历史回测预测。` });
+        } else {
+          toast({ title: "保存失败", description: result.message || "无法批量保存历史回测预测。", variant: "destructive" });
+        }
+      } else {
+        toast({ title: "无数据", description: "没有可保存的历史回测预测数据。", variant: "default" });
       }
+    } catch (error: any) {
+      toast({ title: "保存出错", description: error.message || "批量保存历史回测预测时发生错误。", variant: "destructive" });
+    } finally {
+      setIsSavingHistorical(false);
     }
-  }, [tool, user?.uid]); // Add user.uid to dependency array
+  };
 
 
   if (!tool) {
@@ -238,7 +219,13 @@ export default function SingleNumberToolPage({
       hitRate,
       hasAnyHit,
     };
-  }).filter(Boolean);
+  }).filter(Boolean) as Array<{
+    targetDraw: HistoricalResult;
+    predictedNumbersForTargetDraw: number[];
+    hitDetails: ReturnType<typeof calculateHitDetails>;
+    hitRate: number;
+    hasAnyHit: boolean;
+  }>; // Added explicit type assertion
 
 
   const OfficialDrawDisplay = ({ draw }: { draw: HistoricalResult }) => (
@@ -268,19 +255,23 @@ export default function SingleNumberToolPage({
 
   let displayNumbersForCurrentDrawSection: number[] = [];
   let currentDrawSectionTitle = `第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期预测号码:`;
-  let showAdminSaveButton = false;
+  let showAdminSaveCurrentDrawButton = false;
 
   if (isLoadingSavedPrediction) {
     // Loader shown below
   } else if (savedPredictionForTargetDraw && savedPredictionForTargetDraw.length > 0) {
     displayNumbersForCurrentDrawSection = savedPredictionForTargetDraw;
+    currentDrawSectionTitle = `第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期预测号码 (来自数据库):`;
+    if (isAdmin) { // Admin can update existing saved prediction
+      showAdminSaveCurrentDrawButton = true;
+    }
   } else {
     // If no saved prediction, admins see dynamically generated ones and can save them.
     // Non-admins see a "not available" message.
     if (isAdmin) {
       displayNumbersForCurrentDrawSection = dynamicallyGeneratedCurrentPrediction;
       currentDrawSectionTitle = `当前动态生成号码 (可保存为第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期预测):`;
-      showAdminSaveButton = true;
+      showAdminSaveCurrentDrawButton = true;
     }
   }
 
@@ -321,20 +312,19 @@ export default function SingleNumberToolPage({
                 <NumberPickingToolDisplay numbers={displayNumbersForCurrentDrawSection} />
             ) : (
               <p className="text-sm text-muted-foreground italic">
-                {isAdmin && !showAdminSaveButton ? "当前算法未生成号码。" : `第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期预测号码尚未由管理员生成。`}
+                {isAdmin && !showAdminSaveCurrentDrawButton ? "当前算法未生成号码。" : `第 ${OFFICIAL_PREDICTIONS_DRAW_ID} 期预测号码尚未由管理员生成。`}
               </p>
             )}
 
-            {/* Show save button if admin and either no saved prediction exists OR if there is a saved one (for updating) */}
-            {isAdmin && (showAdminSaveButton || (savedPredictionForTargetDraw && savedPredictionForTargetDraw.length > 0)) && dynamicallyGeneratedCurrentPrediction.length > 0 && (
-              <AdminSavePredictionButton
-                toolId={tool.id}
-                toolName={tool.name}
-                predictedNumbers={dynamicallyGeneratedCurrentPrediction}
-                adminUserId={user?.uid || null}
-                onSaveSuccess={fetchAndSetSavedPrediction}
-                currentDrawNumber={OFFICIAL_PREDICTIONS_DRAW_ID}
-              />
+            {isAdmin && showAdminSaveCurrentDrawButton && dynamicallyGeneratedCurrentPrediction.length > 0 && (
+              <Button onClick={handleSaveCurrentDrawPrediction} disabled={isSavingCurrentDraw || !user?.uid} className="w-full mt-3">
+                {isSavingCurrentDraw ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="mr-2 h-4 w-4" />
+                )}
+                {savedPredictionForTargetDraw && savedPredictionForTargetDraw.length > 0 ? `更新` : `保存`}第 {OFFICIAL_PREDICTIONS_DRAW_ID} 期预测
+              </Button>
             )}
             {!isAdmin && !isLoadingSavedPrediction && (!savedPredictionForTargetDraw || savedPredictionForTargetDraw.length === 0) && (
                  <Alert variant="default" className="mt-3">
@@ -346,6 +336,27 @@ export default function SingleNumberToolPage({
                 </Alert>
             )}
           </div>
+
+          {isAdmin && (
+            <div className="mb-6 pb-6 border-b">
+              <h4 className="text-md font-semibold mb-2 flex items-center gap-1.5">
+                <DatabaseZap className="h-5 w-5 text-blue-600" />
+                管理员操作: 历史回测数据
+              </h4>
+              <Button onClick={handleSaveHistoricalBacktests} disabled={isSavingHistorical || !user?.uid} className="w-full">
+                {isSavingHistorical ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="mr-2 h-4 w-4" />
+                )}
+                保存近10期历史回测预测到数据库
+              </Button>
+              <p className="text-xs text-muted-foreground mt-2">
+                此操作会将本工具对最近10期历史开奖的动态预测结果保存到数据库。
+              </p>
+            </div>
+          )}
+
 
           <div className="pt-0">
             <h4 className="text-md font-semibold mb-3">
@@ -448,4 +459,10 @@ export default function SingleNumberToolPage({
       </Card>
     </div>
   );
+}
+
+export function generateStaticParams() {
+  return dynamicTools.map((tool) => ({
+    toolId: tool.id,
+  }));
 }
