@@ -10,11 +10,16 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import type { HistoricalResult } from "@/lib/types";
 import { HistoricalResultSchema as AdminPageHistoricalResultSchema } from "@/lib/types"; // Renamed for clarity
 import { z } from "zod";
-import { ArrowLeft, CheckCircle, XCircle, Info, Loader2, ShieldAlert, RefreshCw, CloudUpload, FileText, Edit3 } from "lucide-react";
+import { ArrowLeft, CheckCircle, XCircle, Info, Loader2, ShieldAlert, RefreshCw, CloudUpload, FileText, Edit3, PackageOpen } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { syncHistoricalResultsToFirestore, updateCurrentDrawDisplayInfo, getCurrentDrawDisplayInfo } from "@/lib/actions";
+import { 
+  syncHistoricalResultsToFirestore, 
+  updateCurrentDrawDisplayInfo, 
+  getCurrentDrawDisplayInfo,
+  adminRecalculateAndSaveAllToolPredictions // New action
+} from "@/lib/actions";
 import { Separator } from "@/components/ui/separator";
 
 
@@ -51,15 +56,16 @@ export default function AdminUpdateTotoResultsPage() {
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [validationStatus, setValidationStatus] = useState<"success" | "error" | "info" | null>(null);
   const [isSyncingHistorical, setIsSyncingHistorical] = useState(false);
-  const [isCheckingAdmin, setIsCheckingAdmin] = useState(true);
+  
   const [isAdminByEmail, setIsAdminByEmail] = useState(false);
-
   const [currentDrawInfoText, setCurrentDrawInfoText] = useState("");
   const [isUpdatingDrawInfo, setIsUpdatingDrawInfo] = useState(false);
   const [isLoadingDrawInfo, setIsLoadingDrawInfo] = useState(true);
 
+  const [isRecalculatingAllTools, setIsRecalculatingAllTools] = useState(false);
+
   const adminEmail = "admin@totokit.com";
-  const adminUID = "mAvLawNGpGdKwPoHuMQyXlKpPNv1"; // Keep for user UID check
+  const adminUID = "mAvLawNGpGdKwPoHuMQyXlKpPNv1";
 
   const fetchCurrentDrawInfo = async () => {
     setIsLoadingDrawInfo(true);
@@ -85,7 +91,6 @@ export default function AdminUpdateTotoResultsPage() {
 
   useEffect(() => {
     if (!authLoading) {
-      setIsCheckingAdmin(false);
       if (user && user.email === adminEmail && user.uid === adminUID) {
         setIsAdminByEmail(true);
         fetchCurrentDrawInfo();
@@ -99,28 +104,21 @@ export default function AdminUpdateTotoResultsPage() {
   const handleParseTextAndSyncToFirestore = async () => {
     setValidationMessage(null);
     setValidationStatus(null);
-    setIsSyncingHistorical(true);
-
+    
     if (!plainTextData.trim()) {
       toast({ title: "无文本数据", description: "请输入要解析的文本结果。", variant: "default" });
       setValidationStatus("info");
       setValidationMessage("请输入要解析的纯文本结果。");
-      setIsSyncingHistorical(false);
       return;
     }
     
     if (!user || user.uid !== adminUID) {
-      toast({
-        title: "权限不足",
-        description: "只有指定管理员才能执行此操作。",
-        variant: "destructive",
-      });
+      toast({ title: "权限不足", description: "只有指定管理员才能执行此操作。", variant: "destructive" });
       setValidationStatus("error");
       setValidationMessage("权限不足：只有指定管理员才能执行此操作。");
-      setIsSyncingHistorical(false);
       return;
     }
-
+    setIsSyncingHistorical(true);
 
     const entries = plainTextData.trim().split(/\n\s*\n/);
     const parsedResults: HistoricalResult[] = [];
@@ -143,7 +141,7 @@ export default function AdminUpdateTotoResultsPage() {
 
         const date = parseDateFromText(dateText);
         if (!date) {
-          parsingErrors.push(`记录 ${index + 1}: 日期 "${dateText}" 解析失败。日期格式应为：星期, 日 月份 年份 (例如 Thu, 22 May 2025)。`);
+          parsingErrors.push(`记录 ${index + 1}: 日期 "${dateText}" 解析失败。`);
           return;
         }
         const drawNumber = parseInt(drawNoText, 10);
@@ -153,7 +151,7 @@ export default function AdminUpdateTotoResultsPage() {
         }
         const numbers = lines[2].split(/\s+/).map(n => parseInt(n, 10)).filter(n => !isNaN(n));
         if (numbers.length !== 6) {
-          parsingErrors.push(`记录 ${index + 1}: 中奖号码必须是6个数字。找到: ${numbers.join(', ')}`);
+          parsingErrors.push(`记录 ${index + 1}: 中奖号码必须是6个数字。`);
           return;
         }
         const additionalNumber = parseInt(lines[4], 10);
@@ -199,7 +197,6 @@ export default function AdminUpdateTotoResultsPage() {
     const jsonDataToSync = JSON.stringify(sortedData, null, 2);
 
     try {
-      // Pass user.uid to the server action
       const syncResult = await syncHistoricalResultsToFirestore(jsonDataToSync, user.uid);
       if (syncResult.success) {
         toast({
@@ -207,8 +204,8 @@ export default function AdminUpdateTotoResultsPage() {
           description: syncResult.message || `成功同步 ${syncResult.count || 0} 条历史记录。`,
         });
         setValidationStatus("success");
-        setValidationMessage(syncResult.message || `成功同步 ${syncResult.count || 0} 条历史记录到 Firestore。`);
-        setPlainTextData("");
+        setValidationMessage(syncResult.message || `成功同步 ${syncResult.count || 0} 条历史记录到 Firestore。\n现在您可以考虑点击下方的“全局工具预测更新”按钮。`);
+        // setPlainTextData(""); // Optionally clear plain text data
       } else {
         toast({
           title: "历史结果同步失败",
@@ -225,7 +222,7 @@ export default function AdminUpdateTotoResultsPage() {
         specificMessage += error.message;
         const firebaseError = error as any;
         if (firebaseError.code === 'permission-denied' || firebaseError.code === 7) {
-          specificMessage += " (Firestore权限不足。请确认管理员声明已在客户端和服务端生效，且Firestore规则配置正确。可能需要重新登录以刷新权限。)";
+          specificMessage += " (Firestore权限不足。请确认管理员声明已在客户端和服务端生效，且Firestore规则配置正确。)";
         }
       } else {
         specificMessage += "未知错误";
@@ -261,7 +258,7 @@ export default function AdminUpdateTotoResultsPage() {
     if (lines.length < 2) {
       toast({
         title: "输入格式错误",
-        description: "请确保至少提供了两行有效信息：第一行为开奖日期/时间，第二行为头奖金额。系统会自动忽略“本期开奖信息”和“当前头奖预估”这类标签行。",
+        description: "请确保至少提供了两行有效信息：第一行为开奖日期/时间，第二行为头奖金额。",
         variant: "destructive",
       });
       return;
@@ -272,8 +269,7 @@ export default function AdminUpdateTotoResultsPage() {
 
     setIsUpdatingDrawInfo(true);
     try {
-      // Pass user.uid to the server action
-      const result = await updateCurrentDrawDisplayInfo({ currentDrawDateTime: extractedDrawTime, currentJackpot: extractedJackpot }, user.uid);
+      const result = await updateCurrentDrawDisplayInfo(extractedDrawTime, extractedJackpot, user.uid);
       if (result.success) {
         toast({ title: "本期开奖信息更新成功", description: result.message });
       } else {
@@ -286,8 +282,51 @@ export default function AdminUpdateTotoResultsPage() {
     }
   };
 
+  const handleRecalculateAllTools = async () => {
+    if (!user || user.uid !== adminUID) {
+      toast({ title: "权限不足", description: "只有管理员才能执行此操作。", variant: "destructive" });
+      return;
+    }
+    setIsRecalculatingAllTools(true);
+    setValidationMessage("正在为所有工具重新计算和保存预测数据，这可能需要一些时间...");
+    setValidationStatus("info");
 
-  if (isCheckingAdmin || authLoading) {
+    try {
+      const result = await adminRecalculateAndSaveAllToolPredictions(user.uid);
+      if (result.success) {
+        toast({
+          title: "全局工具预测更新成功",
+          description: result.message || "所有工具的预测数据已更新并保存到数据库。",
+          duration: 7000,
+        });
+        setValidationStatus("success");
+        setValidationMessage(`${result.message}\n详情:\n${(result.details || []).join('\n')}`);
+      } else {
+        toast({
+          title: "全局工具预测更新失败",
+          description: result.message || "更新过程中发生错误。",
+          variant: "destructive",
+          duration: 10000,
+        });
+        setValidationStatus("error");
+        setValidationMessage(`更新失败: ${result.message}\n详情:\n${(result.details || []).join('\n')}`);
+      }
+    } catch (error: any) {
+      toast({
+        title: "全局更新出错",
+        description: error.message || "执行全局工具预测更新时发生未知错误。",
+        variant: "destructive",
+        duration: 10000,
+      });
+      setValidationStatus("error");
+      setValidationMessage(`全局更新出错: ${error.message || "未知错误"}`);
+    } finally {
+      setIsRecalculatingAllTools(false);
+    }
+  };
+
+
+  if (authLoading) {
     return (
       <div className="container mx-auto flex min-h-[calc(100vh-8rem)] items-center justify-center">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -314,8 +353,9 @@ export default function AdminUpdateTotoResultsPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 md:px-6 md:py-12">
-      <div className="mb-6 flex justify-between items-center">
+    <div className="container mx-auto px-4 py-8 md:px-6 md:py-12 space-y-8">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold">管理员后台</h1>
         <Button asChild variant="outline" size="sm">
           <Link href="/">
             <ArrowLeft className="mr-2 h-4 w-4" />
@@ -324,7 +364,7 @@ export default function AdminUpdateTotoResultsPage() {
         </Button>
       </div>
 
-      <Card className="w-full mb-6">
+      <Card className="w-full">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Edit3 className="h-5 w-5 text-primary" />
@@ -368,11 +408,6 @@ export default function AdminUpdateTotoResultsPage() {
             )}
             更新本期开奖信息到 Firestore
           </Button>
-           {!isAdminByEmail && (
-            <p className="text-xs text-red-600 text-center mt-2">
-              需要管理员权限才能更新。
-            </p>
-          )}
         </CardFooter>
       </Card>
 
@@ -387,7 +422,7 @@ export default function AdminUpdateTotoResultsPage() {
             确保文本中的每一条记录都包含5行：日期和期号（制表符分隔），"Winning Numbers"，中奖号码（空格分隔），"Additional Number"，特别号码。多条记录用空行分隔。
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-4">
           <div>
             <Label htmlFor="plainTextData" className="text-lg font-semibold flex items-center gap-2">
               <FileText className="h-5 w-5" /> 粘贴纯文本结果
@@ -403,8 +438,6 @@ export default function AdminUpdateTotoResultsPage() {
             />
           </div>
 
-          <Separator />
-
           <Button
             onClick={handleParseTextAndSyncToFirestore}
             className="w-full"
@@ -417,34 +450,51 @@ export default function AdminUpdateTotoResultsPage() {
             )}
             解析文本并同步历史结果到 Firestore
           </Button>
-          {!isAdminByEmail && (
-            <p className="text-xs text-red-600 text-center -mt-4">
-              需要管理员权限才能同步。
-            </p>
-          )}
-
-          {validationMessage && (
-            <Alert variant={validationStatus === "success" ? "default" : validationStatus === "error" ? "destructive" : "default"} className="mt-4">
-              {validationStatus === "success" && <CheckCircle className="h-5 w-5" />}
-              {validationStatus === "error" && <XCircle className="h-5 w-5" />}
-              {validationStatus === "info" && <Info className="h-5 w-5" />}
-              <AlertTitle>
-                {validationStatus === "success" ? "操作成功" : validationStatus === "error" ? "操作失败" : "提示"}
-              </AlertTitle>
-              <AlertDescription className="whitespace-pre-wrap">
-                {validationMessage}
-              </AlertDescription>
-            </Alert>
-          )}
-
         </CardContent>
-        <CardFooter>
-          <p className="text-xs text-muted-foreground text-center w-full">
-            此页面用于通过纯文本输入，辅助手动更新开奖结果数据并同步到 Firestore。
-          </p>
-        </CardFooter>
       </Card>
+
+      <Card className="w-full">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <PackageOpen className="h-5 w-5 text-primary" />
+            全局工具预测管理
+          </CardTitle>
+          <CardDescription>
+            在同步最新的历史开奖结果后，点击下方按钮可为所有选号工具重新计算并保存其对所有历史期号的回测预测，以及对当前指定期号 ({OFFICIAL_PREDICTIONS_DRAW_ID}) 的新预测。此操作会覆盖数据库中现有的工具预测数据，可能需要一些时间。
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button
+            onClick={handleRecalculateAllTools}
+            className="w-full"
+            disabled={isRecalculatingAllTools || !isAdminByEmail}
+            variant="destructive"
+          >
+            {isRecalculatingAllTools ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-2 h-4 w-4" />
+            )}
+            全局工具预测更新 (当期及历史回测)
+          </Button>
+        </CardContent>
+      </Card>
+
+      {validationMessage && (
+        <Alert variant={validationStatus === "success" ? "default" : validationStatus === "error" ? "destructive" : "default"} className="mt-4">
+          {validationStatus === "success" && <CheckCircle className="h-5 w-5" />}
+          {validationStatus === "error" && <XCircle className="h-5 w-5" />}
+          {validationStatus === "info" && <Info className="h-5 w-5" />}
+          <AlertTitle>
+            {validationStatus === "success" ? "操作成功" : validationStatus === "error" ? "操作失败" : "操作信息"}
+          </AlertTitle>
+          <AlertDescription className="whitespace-pre-wrap">
+            {validationMessage}
+          </AlertDescription>
+        </Alert>
+      )}
     </div>
   );
 }
 
+    
