@@ -36,21 +36,33 @@ export function PredictionConfigurator({
   useEffect(() => {
     if (isAdmin) {
       setHasUsedSmartPickThisDraw(false);
-      if (onUsageStatusChange && localStorage.getItem(`smartPickUsed_${CURRENT_DRAW_ID}`) === 'true') {
-        onUsageStatusChange(true);
+      // For admin, we don't strictly need to call onUsageStatusChange based on localStorage,
+      // as they can use it multiple times. However, if the results area should show previously
+      // generated (but not necessarily "saved by usage limit") results, this might need adjustment.
+      // For now, admin always sees it as "not used" for limit purposes.
+      if (onUsageStatusChange && localStorage.getItem(`smartPickUsed_${CURRENT_DRAW_ID}_${user?.uid || 'guest'}`) === 'true') {
+         // Even for admin, if there's a record of usage for this specific user/guest, let the parent know.
+         // This helps if the parent wants to load *any* previous results.
+         console.log("[PredictionConfigurator] Admin detected, but also prior usage in localStorage. Notifying parent.");
+         onUsageStatusChange(true);
       }
       return;
     }
 
-    const usageKey = `smartPickUsed_${CURRENT_DRAW_ID}`;
+    // For non-admins, check usage for this specific user or a guest session
+    const usageKey = `smartPickUsed_${CURRENT_DRAW_ID}_${user?.uid || 'guest'}`;
     const alreadyUsed = localStorage.getItem(usageKey) === 'true';
+    console.log(`[PredictionConfigurator] useEffect: User (UID: ${user?.uid || 'guest'}) usageKey: ${usageKey}, alreadyUsed: ${alreadyUsed}`);
+
     if (alreadyUsed) {
       setHasUsedSmartPickThisDraw(true);
       if (onUsageStatusChange) {
+        console.log("[PredictionConfigurator] Notifying parent: onUsageStatusChange(true) due to localStorage.");
         onUsageStatusChange(true);
       }
     }
-  }, [isAdmin, onUsageStatusChange, user]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, user]); // Re-run if admin status changes or user logs in/out
 
 
   const handleSubmit = async (event: FormEvent) => {
@@ -68,6 +80,8 @@ export function PredictionConfigurator({
     setIsLoading(true);
     onLoadingChange(true);
     if (onUsageStatusChange) {
+      // Always ensure the results area can be shown when generation starts
+      console.log("[PredictionConfigurator] handleSubmit: Notifying parent: onUsageStatusChange(true) due to starting generation.");
       onUsageStatusChange(true);
     }
 
@@ -115,8 +129,6 @@ export function PredictionConfigurator({
         } catch (tokenError) {
           console.error("Error fetching ID token:", tokenError);
           toast({ title: "获取用户凭证失败", description: "无法保存选号结果，请稍后重试或重新登录。", variant: "destructive"});
-          // Optionally, prevent saving if token fetch fails critically
-          // return;
         }
       }
 
@@ -140,12 +152,11 @@ export function PredictionConfigurator({
         });
 
       if (!isAdmin) {
-        const usageKey = `smartPickUsed_${CURRENT_DRAW_ID}`;
+        const usageKey = `smartPickUsed_${CURRENT_DRAW_ID}_${user?.uid || 'guest'}`;
+        console.log(`[PredictionConfigurator] handleSubmit: Setting localStorage key ${usageKey} to true for non-admin.`);
         localStorage.setItem(usageKey, 'true');
         setHasUsedSmartPickThisDraw(true);
-        if (onUsageStatusChange) { 
-          onUsageStatusChange(true);
-        }
+        // onUsageStatusChange already called at the start of handleSubmit
       }
     }
   };

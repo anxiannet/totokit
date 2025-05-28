@@ -37,32 +37,31 @@ export default function TotoForecasterPage() {
   };
 
   const handleUsageStatusChange = (hasUsed: boolean) => {
+    console.log(`[TotoForecasterPage] handleUsageStatusChange called with hasUsed: ${hasUsed}`);
     if (hasUsed) {
       setDisplayResultsArea(true);
+      console.log(`[TotoForecasterPage] displayResultsArea set to true by handleUsageStatusChange.`);
     }
   };
 
   // Effect to fetch saved smart picks if user has used the feature for the current draw
   useEffect(() => {
     const fetchSavedPicks = async () => {
+      console.log(`[TotoForecasterPage] fetchSavedPicks: Attempting to fetch. User: ${user?.uid}, displayResultsArea: ${displayResultsArea}, !isGenerating: ${!isGeneratingPredictions}, preds.length: ${predictions.length}`);
       if (user && displayResultsArea && !isGeneratingPredictions && predictions.length === 0) {
-        // Only fetch if:
-        // 1. User is logged in
-        // 2. The results area is supposed to be displayed (meaning they've used it before or are about to use it)
-        // 3. We are not currently generating new AI predictions
-        // 4. We don't already have predictions loaded (e.g., from a fresh AI generation)
         
-        console.log(`[TotoForecasterPage] Attempting to fetch saved smart picks for user ${user.uid}, draw ${CURRENT_DRAW_ID}`);
+        console.log(`[TotoForecasterPage] fetchSavedPicks: Conditions met. Fetching saved smart picks for user ${user.uid}, draw ${CURRENT_DRAW_ID}`);
         setIsGeneratingPredictions(true); // Show loader while fetching saved picks
         try {
           const savedPicks = await getUserSmartPickResults(user.uid, CURRENT_DRAW_ID);
+          console.log(`[TotoForecasterPage] fetchSavedPicks: getUserSmartPickResults returned:`, savedPicks);
           if (savedPicks && savedPicks.length > 0) {
             setPredictions(savedPicks);
+            console.log(`[TotoForecasterPage] fetchSavedPicks: setPredictions called with savedPicks.`);
             toast({ title: "已加载您本期保存的选号" });
           } else {
+             console.log(`[TotoForecasterPage] fetchSavedPicks: No saved picks found or empty array returned.`);
              // toast({ title: "未找到您本期保存的选号", description:"您可能尚未为本期生成或保存号码。" });
-             // If no saved picks, PredictionResultsDisplay will show its empty state.
-             // No need to clear predictions if AI just generated them; this effect won't run due to predictions.length === 0 check.
           }
         } catch (error) {
           console.error("Error fetching saved smart picks:", error);
@@ -70,6 +69,8 @@ export default function TotoForecasterPage() {
         } finally {
           setIsGeneratingPredictions(false);
         }
+      } else {
+        console.log(`[TotoForecasterPage] fetchSavedPicks: Conditions NOT met for fetching.`);
       }
     };
 
