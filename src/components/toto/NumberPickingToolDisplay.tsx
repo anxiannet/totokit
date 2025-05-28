@@ -49,12 +49,11 @@ export function NumberPickingToolDisplay({
   };
 
   return (
-    <div className="mt-1 mb-1">
-      {/* Removed w-full from the div below to allow parent to center it */}
-      <div className="flex flex-wrap gap-1.5 items-center justify-start">
+    <div className="mt-1 mb-1"> {/* Removed w-full */}
+      <div className="flex flex-wrap gap-1.5 items-center justify-center"> {/* Changed justify-start to justify-center, removed w-full */}
         {numbers.map((num, index) => (
           <Badge
-            key={`${num}-${index}-${Math.random()}`}
+            key={`${num}-${index}-${Math.random()}`} // Consider a more stable key if re-ordering can happen
             className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold shadow-sm ${getBallStyle(num)}`}
           >
             {num}
@@ -64,5 +63,3 @@ export function NumberPickingToolDisplay({
     </div>
   );
 }
-
-    

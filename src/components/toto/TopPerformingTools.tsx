@@ -6,23 +6,25 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ListChecks, ExternalLink, Info, Loader2, Target, Percent } from "lucide-react";
-import type { NumberPickingTool as DynamicNumberPickingTool } from "@/lib/numberPickingAlgos";
+import { ExternalLink, Info, Loader2, Target } from "lucide-react"; // Removed Percent
+import type { DynamicNumberPickingTool } from "@/lib/numberPickingAlgos"; // Renamed for clarity
 import { NumberPickingToolDisplay } from "./NumberPickingToolDisplay";
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import { getPredictionsForDraw } from '@/lib/actions';
-import { OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types"; // Import from new location
+import { OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types";
 
 export interface TopToolDisplayInfo extends DynamicNumberPickingTool {
   averageHitRate: number;
+  // currentPrediction: number[]; // This will now be fetched via useQuery
 }
 
 interface TopPerformingToolsProps {
   tools: TopToolDisplayInfo[];
 }
 
+// Helper function to chunk an array
 function chunkArray<T>(array: T[], size: number): T[][] {
   const result: T[][] = [];
   if (!array || array.length === 0) return result;
@@ -36,12 +38,12 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [isInteracting, setIsInteracting] = useState(false);
+  const [isInteracting, setIsInteracting] = useState(false); // To prevent observer firing during programmatic scroll
 
   const { data: predictionsForTargetDrawMap = {}, isLoading: isLoadingPredictions } = useQuery<Record<string, number[]>, Error>({
     queryKey: ["predictionsForDrawHomepage", OFFICIAL_PREDICTIONS_DRAW_ID],
     queryFn: () => getPredictionsForDraw(OFFICIAL_PREDICTIONS_DRAW_ID),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
 
@@ -57,22 +59,27 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
         block: 'nearest',
         inline: 'start',
       });
-      setTimeout(() => setIsInteracting(false), 600); // Animation duration
+      // Reset isInteracting after scroll animation duration (approx)
+      setTimeout(() => setIsInteracting(false), 600);
     }
   }, []);
 
+  // Effect to scroll when activeIndex changes (e.g., by dot click)
   useEffect(() => {
     scrollToTool(activeIndex);
   }, [activeIndex, scrollToTool]);
 
+
+  // Effect to update activeIndex based on scroll position (IntersectionObserver)
   useEffect(() => {
-    if (isInteracting || !scrollContainerRef.current) return;
+    if (isInteracting || !scrollContainerRef.current || tools.length === 0) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (isInteracting) return;
+        if (isInteracting) return; // Don't update if scroll was programmatic
+
         entries.forEach((entry) => {
-          if (entry.isIntersecting && entry.intersectionRatio >= 0.75) { // Increased threshold
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.75) {
             const index = itemRefs.current.findIndex(ref => ref === entry.target);
             if (index !== -1 && activeIndex !== index) {
                setActiveIndex(index);
@@ -82,7 +89,7 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
       },
       {
         root: scrollContainerRef.current,
-        threshold: 0.75, // Monitor when 75% of the item is visible
+        threshold: 0.75, // Trigger when 75% of the item is visible
       }
     );
 
@@ -95,7 +102,7 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
         if (ref) observer.unobserve(ref);
       });
     };
-  }, [tools, activeIndex, isInteracting]);
+  }, [tools, activeIndex, isInteracting]); // Add tools dependency
 
 
   if (!tools || tools.length === 0) {
@@ -143,7 +150,10 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
                     "text-xs sm:text-sm px-3 py-1.5 h-auto flex-shrink-0 data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm",
                     activeIndex === index ? "font-semibold" : ""
                 )}
-                onClick={() => setActiveIndex(index)}
+                onClick={() => {
+                    setIsInteracting(true); // Indicate programmatic change
+                    setActiveIndex(index);
+                }}
               >
                 {tool.name}
               </TabsTrigger>
@@ -160,7 +170,7 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
                 <div
                   key={tool.id}
                   ref={el => itemRefs.current[index] = el}
-                  className="min-w-full snap-start flex-shrink-0 px-4" // Added px-4 here for spacing around cards
+                  className="min-w-full snap-start flex-shrink-0 px-4 py-2" 
                 >
                   <div className="border p-4 rounded-lg bg-card shadow-sm min-h-[150px] flex flex-col justify-between">
                     <div>
@@ -181,7 +191,7 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
                         </div>
                       ) : currentPredictionForDraw.length > 0 ? (
                           <div className="mb-3">
-                           {chunkArray(currentPredictionForDraw, 7).map((chunk, chunkIndex) => (
+                           {chunkArray(currentPredictionForDraw, 9).map((chunk, chunkIndex) => ( // Changed chunk size to 9
                              <div key={chunkIndex} className={cn("flex justify-center", chunkIndex > 0 ? "mt-1.5" : "")}>
                                <NumberPickingToolDisplay numbers={chunk} />
                              </div>
