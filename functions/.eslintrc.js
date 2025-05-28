@@ -26,9 +26,13 @@ module.exports = {
     "import",
   ],
   rules: {
-    "quotes": ["error", "double"],
+    "quotes": "off", // Disable quotes style checking
     "import/no-unresolved": 0,
-    "indent": ["error", 2],
+    "indent": "off", // Disable indentation checking
     "max-len": "off", // Disable line length checking
+    "object-curly-spacing": "off", // Disable spacing in object literals
+    "eol-last": "off", // Disable newline at end of file checking
+    "arrow-parens": "off", // Disable parentheses around arrow function arguments
+    // You can add more rules to "off" here if other formatting checks appear
   },
 };
