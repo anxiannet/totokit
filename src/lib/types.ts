@@ -1,30 +1,25 @@
 
+import { z } from 'zod';
+
 export type TotoCombination = number[];
 
-export interface HistoricalResult {
-  drawNumber: number;
-  date: string; // YYYY-MM-DD
-  numbers: TotoCombination;
-  additionalNumber: number;
-}
+export const TOTO_NUMBER_RANGE = { min: 1, max: 49 };
+export const TOTO_COMBINATION_LENGTH = 6;
 
-export interface WeightedCriterion {
-  id: string;
-  name: string;
-  weight: number;
-}
+export const HistoricalResultSchema = z.object({
+  drawNumber: z.number(),
+  date: z.string().regex(
+    /^\d{4}-\d{2}-\d{2}$/,
+    "Date must be in YYYY-MM-DD format"
+  ),
+  numbers: z.array(
+    z.number().min(TOTO_NUMBER_RANGE.min).max(TOTO_NUMBER_RANGE.max)
+  ).length(TOTO_COMBINATION_LENGTH, `Must have ${TOTO_COMBINATION_LENGTH} winning numbers`),
+  additionalNumber: z.number().min(TOTO_NUMBER_RANGE.min).max(TOTO_NUMBER_RANGE.max),
+});
 
-export interface UserTicket {
-  id: string;
-  numbers: TotoCombination;
-}
-
-export interface AnalysisData {
-  hotNumbers: { number: number, frequency: number }[];
-  coldNumbers: { number: number, frequency: number }[];
-  oddEvenRatio: { odd: number, even: number, percentage: number }[];
-  // Add more analysis data structures as needed
-}
+// Derive the TypeScript interface from the Zod schema
+export interface HistoricalResult extends z.infer<typeof HistoricalResultSchema> {}
 
 // Mock historical data for development
 export const MOCK_HISTORICAL_DATA: HistoricalResult[] = [
@@ -164,5 +159,20 @@ export const MOCK_HISTORICAL_DATA: HistoricalResult[] = [
 
 export const MOCK_LATEST_RESULT: HistoricalResult = MOCK_HISTORICAL_DATA[0];
 
-export const TOTO_NUMBER_RANGE = { min: 1, max: 49 };
-export const TOTO_COMBINATION_LENGTH = 6;
+export interface WeightedCriterion {
+  id: string;
+  name: string;
+  weight: number;
+}
+
+export interface UserTicket {
+  id: string;
+  numbers: TotoCombination;
+}
+
+export interface AnalysisData {
+  hotNumbers: { number: number, frequency: number }[];
+  coldNumbers: { number: number, frequency: number }[];
+  oddEvenRatio: { odd: number, even: number, percentage: number }[];
+  // Add more analysis data structures as needed
+}
