@@ -5,11 +5,14 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Info } from "lucide-react";
 import type { HistoricalResult } from "@/lib/types";
-import { OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types";
 import { dynamicTools } from "@/lib/numberPickingAlgos";
-import { getPredictionForToolAndDraw, getAllHistoricalResultsFromFirestore, saveMultipleToolPredictions, calculateHistoricalPerformances } from "@/lib/actions";
+import { 
+  getPredictionForToolAndDraw, 
+  getAllHistoricalResultsFromFirestore,
+  saveMultipleToolPredictions,
+  calculateHistoricalPerformances
+} from "@/lib/actions";
 import { ToolDetailPageClient, type HistoricalPerformanceDisplayData } from "@/components/toto/ToolDetailPageClient";
-import { calculateHitDetails, TOTO_NUMBER_RANGE } from "@/lib/totoUtils";
 
 
 export async function generateStaticParams() {
@@ -52,20 +55,14 @@ export default async function SingleNumberToolPage({
   // Fetch the prediction saved by admin for the OFFICIAL_PREDICTIONS_DRAW_ID
   const initialSavedPrediction = await getPredictionForToolAndDraw(tool.id, OFFICIAL_PREDICTIONS_DRAW_ID);
   
-  // Dynamically generate prediction based on latest 10 from DB - for admin to see and potentially save
-  let dynamicallyGeneratedCurrentPrediction: number[] = [];
-  if (allHistoricalDataFromDb.length > 0) {
-    const absoluteLatestTenDrawsForDynamic: HistoricalResult[] = allHistoricalDataFromDb.slice(0, 10);
-    if (absoluteLatestTenDrawsForDynamic.length > 0) {
-        dynamicallyGeneratedCurrentPrediction = tool.algorithmFn(absoluteLatestTenDrawsForDynamic);
-    }
-  }
-
+  // We will no longer pre-calculate dynamicallyGeneratedCurrentPrediction here.
+  // This will be handled on demand by the client component via a server action if needed.
 
   const serializableTool = {
     id: tool.id,
     name: tool.name,
     description: tool.description,
+    // algorithmFn is not passed to client
   };
   
 
@@ -73,11 +70,8 @@ export default async function SingleNumberToolPage({
     <ToolDetailPageClient
       tool={serializableTool}
       initialSavedPrediction={initialSavedPrediction}
-      dynamicallyGeneratedCurrentPrediction={dynamicallyGeneratedCurrentPrediction}
-      allHistoricalDataForPerformanceAnalysis={allHistoricalDataFromDb} // Pass all data for on-demand calculation
+      // dynamicallyGeneratedCurrentPrediction will be null/fetched on demand now
+      allHistoricalDataForPerformanceAnalysis={allHistoricalDataFromDb} 
     />
   );
 }
-
-
-    
