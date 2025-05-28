@@ -8,7 +8,7 @@ import type { TotoCombination, HistoricalResult } from "@/lib/types"; // Ensure 
 import { CurrentAndLatestDrawInfo } from "@/components/toto/CurrentAndLatestDrawInfo";
 import { TopPerformingTools, type TopToolDisplayInfo } from "@/components/toto/TopPerformingTools";
 import { LastDrawTopTools, type LastDrawToolPerformanceInfo } from "@/components/toto/LastDrawTopTools"; // New import
-import { MOCK_HISTORICAL_DATA, MOCK_LATEST_RESULT } from "@/lib/types";
+import { MOCK_HISTORICAL_DATA, MOCK_LATEST_RESULT, OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types";
 import { dynamicTools } from "@/lib/numberPickingAlgos";
 import { calculateHitDetails } from "@/lib/totoUtils";
 import { useAuth } from '@/hooks/useAuth';
@@ -25,7 +25,7 @@ export default function TotoForecasterPage() {
   const [topPerformingTools, setTopPerformingTools] = useState<TopToolDisplayInfo[]>([]);
   const [lastDrawTopPerformingTools, setLastDrawTopPerformingTools] = useState<LastDrawToolPerformanceInfo[]>([]); // New state
 
-  const CURRENT_DRAW_ID = "4082";
+  const CURRENT_DRAW_ID = OFFICIAL_PREDICTIONS_DRAW_ID; // Use the constant for consistency
 
   const handlePredictionsGenerated = (newPredictions: TotoCombination[]) => {
     setPredictions(newPredictions);
@@ -74,7 +74,7 @@ export default function TotoForecasterPage() {
     };
     fetchSavedPicks();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, displayResultsArea]);
+  }, [user, displayResultsArea, CURRENT_DRAW_ID, toast]); // Added CURRENT_DRAW_ID and toast to dependency array
 
 
   useEffect(() => {
@@ -97,15 +97,16 @@ export default function TotoForecasterPage() {
           let predictedNumbersForTargetDraw: number[] = tool.algorithmFn(precedingTenDrawsForTarget);
           if (predictedNumbersForTargetDraw.length > 0 && targetDraw.numbers.length > 0) {
             const hitDetails = calculateHitDetails(predictedNumbersForTargetDraw, targetDraw);
-            const hitRate = (hitDetails.mainHitCount / Math.min(predictedNumbersForTargetDraw.length, 6)) * 100;
+            // Use Math.min(predictedNumbersForTargetDraw.length, 6) as denominator for hit rate
+            const denominator = Math.min(predictedNumbersForTargetDraw.length, 6);
+            const hitRate = denominator > 0 ? (hitDetails.mainHitCount / denominator) * 100 : 0;
             totalHitRate += hitRate;
             drawsAnalyzed++;
           }
         });
       }
       const averageHitRate = drawsAnalyzed > 0 ? totalHitRate / drawsAnalyzed : 0;
-      const currentPrediction = tool.algorithmFn(absoluteLatestTenDrawsForCurrentPred);
-      return { ...tool, averageHitRate: parseFloat(averageHitRate.toFixed(1)), currentPrediction };
+      return { ...tool, averageHitRate: parseFloat(averageHitRate.toFixed(1)) };
     });
     toolPerformances.sort((a, b) => b.averageHitRate - a.averageHitRate);
     setTopPerformingTools(toolPerformances.slice(0, 3));
@@ -114,7 +115,7 @@ export default function TotoForecasterPage() {
     // New logic: Calculate top tools for the single latest draw
     const latestDraw = MOCK_LATEST_RESULT;
     if (latestDraw && allHistoricalData.length > 10) { // Need at least 10 previous draws for prediction base
-        // Data for predicting the MOCK_LATEST_RESULT: draws from index 1 to 10
+        // Data for predicting the MOCK_LATEST_RESULT: draws from index 1 to 10 (assuming data is sorted desc by draw number)
         const precedingTenDrawsForLatest = allHistoricalData.slice(1, 11);
 
         if (precedingTenDrawsForLatest.length === 10) {
@@ -157,8 +158,8 @@ export default function TotoForecasterPage() {
         <CurrentAndLatestDrawInfo />
 
         <div className="w-full space-y-6 mt-6">
+          <LastDrawTopTools tools={lastDrawTopPerformingTools} latestDrawNumber={MOCK_LATEST_RESULT?.drawNumber} />
           <TopPerformingTools tools={topPerformingTools} />
-          <LastDrawTopTools tools={lastDrawTopPerformingTools} latestDrawNumber={MOCK_LATEST_RESULT?.drawNumber} /> {/* New component */}
           <PredictionConfigurator
             onPredictionsGenerated={handlePredictionsGenerated}
             onLoadingChange={handleLoadingChange}
