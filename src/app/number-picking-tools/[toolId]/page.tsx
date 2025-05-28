@@ -1,3 +1,4 @@
+
 // src/app/number-picking-tools/[toolId]/page.tsx
 
 import Link from "next/link";
@@ -6,8 +7,8 @@ import { ArrowLeft, Info } from "lucide-react";
 import type { HistoricalResult } from "@/lib/types";
 import { OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types";
 import { dynamicTools } from "@/lib/numberPickingAlgos";
-import { getPredictionForToolAndDraw, getAllHistoricalResultsFromFirestore, saveMultipleToolPredictions } from "@/lib/actions";
-import { ToolDetailPageClient, type HistoricalPerformanceDisplayData } from "@/components/toto/ToolDetailPageClient"; // Ensure type is exported and imported
+import { getPredictionForToolAndDraw, getAllHistoricalResultsFromFirestore, saveMultipleToolPredictions, calculateHistoricalPerformances } from "@/lib/actions";
+import { ToolDetailPageClient, type HistoricalPerformanceDisplayData } from "@/components/toto/ToolDetailPageClient";
 import { calculateHitDetails, TOTO_NUMBER_RANGE } from "@/lib/totoUtils";
 
 
@@ -45,68 +46,21 @@ export default async function SingleNumberToolPage({
     );
   }
 
-  // Fetch all historical data from Firestore
+  // Fetch all historical data from Firestore for display and analysis
   const allHistoricalDataFromDb = await getAllHistoricalResultsFromFirestore();
   
-  // This is the prediction saved by admin for the OFFICIAL_PREDICTIONS_DRAW_ID
+  // Fetch the prediction saved by admin for the OFFICIAL_PREDICTIONS_DRAW_ID
   const initialSavedPrediction = await getPredictionForToolAndDraw(tool.id, OFFICIAL_PREDICTIONS_DRAW_ID);
   
-  // This is the dynamically generated prediction based on latest 10 from DB - for admin to see and potentially save
-  const absoluteLatestTenDrawsForDynamic: HistoricalResult[] = allHistoricalDataFromDb.slice(0, 10);
-  const dynamicallyGeneratedCurrentPrediction = tool.algorithmFn(absoluteLatestTenDrawsForDynamic);
-
-  // Display performance for the 10 most recent draws from Firestore
-  const recentTenHistoricalDrawsForAnalysis: HistoricalResult[] = allHistoricalDataFromDb.slice(0, 10);
-  
-  const historicalPerformancesToDisplay: HistoricalPerformanceDisplayData[] = recentTenHistoricalDrawsForAnalysis.map((targetDraw) => {
-    const originalIndex = allHistoricalDataFromDb.findIndex(d => d.drawNumber === targetDraw.drawNumber);
-    if (originalIndex === -1) return null;
-
-    const precedingDrawsStartIndex = originalIndex + 1;
-    const precedingDrawsEndIndex = precedingDrawsStartIndex + 10;
-    
-    let predictionBasisDraws: string | null = null;
-    let predictedNumbersForTargetDraw: number[] = [];
-
-    if (precedingDrawsEndIndex <= allHistoricalDataFromDb.length) { 
-      const precedingTenDraws = allHistoricalDataFromDb.slice(precedingDrawsStartIndex, precedingDrawsEndIndex);
-      
-      if (precedingTenDraws.length > 0) {
-        const firstPreceding = precedingTenDraws[0]; 
-        const lastPreceding = precedingTenDraws[precedingTenDraws.length - 1]; 
-        if (firstPreceding && lastPreceding) {
-             predictionBasisDraws = `基于期号: ${firstPreceding.drawNumber}${precedingTenDraws.length > 1 ? ` - ${lastPreceding.drawNumber}` : ''} (共${precedingTenDraws.length}期)`;
-        } else {
-            predictionBasisDraws = "无足够前期数据";
-        }
-      } else {
-        predictionBasisDraws = "无足够前期数据";
-      }
-      
-      if (tool.algorithmFn && precedingTenDraws.length > 0) { 
-          predictedNumbersForTargetDraw = tool.algorithmFn(precedingTenDraws);
-      }
-    } else {
-       const availablePrecedingCount = Math.max(0, allHistoricalDataFromDb.length - (originalIndex + 1));
-      predictionBasisDraws = `无足够前期数据 (历史数据不足10期, 仅有${availablePrecedingCount}期)`;
+  // Dynamically generate prediction based on latest 10 from DB - for admin to see and potentially save
+  let dynamicallyGeneratedCurrentPrediction: number[] = [];
+  if (allHistoricalDataFromDb.length > 0) {
+    const absoluteLatestTenDrawsForDynamic: HistoricalResult[] = allHistoricalDataFromDb.slice(0, 10);
+    if (absoluteLatestTenDrawsForDynamic.length > 0) {
+        dynamicallyGeneratedCurrentPrediction = tool.algorithmFn(absoluteLatestTenDrawsForDynamic);
     }
+  }
 
-
-    const hitDetails = calculateHitDetails(predictedNumbersForTargetDraw, targetDraw);
-    const hitRate = targetDraw.numbers.length > 0 && predictedNumbersForTargetDraw.length > 0
-        ? (hitDetails.mainHitCount / Math.min(predictedNumbersForTargetDraw.length, TOTO_NUMBER_RANGE.max )) * 100
-        : 0;
-    const hasAnyHit = hitDetails.mainHitCount > 0 || hitDetails.matchedAdditionalNumberDetails.matched;
-
-    return {
-      targetDraw,
-      predictedNumbersForTargetDraw,
-      hitDetails,
-      hitRate,
-      hasAnyHit,
-      predictionBasisDraws,
-    };
-  }).filter(Boolean) as HistoricalPerformanceDisplayData[];
 
   const serializableTool = {
     id: tool.id,
@@ -118,10 +72,12 @@ export default async function SingleNumberToolPage({
   return (
     <ToolDetailPageClient
       tool={serializableTool}
-      initialSavedPrediction={initialSavedPrediction} // Pass the resolved value
+      initialSavedPrediction={initialSavedPrediction}
       dynamicallyGeneratedCurrentPrediction={dynamicallyGeneratedCurrentPrediction}
-      historicalPerformancesToDisplay={historicalPerformancesToDisplay}
-      allHistoricalDataForSaving={allHistoricalDataFromDb}
+      allHistoricalDataForPerformanceAnalysis={allHistoricalDataFromDb} // Pass all data for on-demand calculation
     />
   );
 }
+
+
+    

@@ -11,6 +11,9 @@ import {
   getDocs, limit, doc, writeBatch, runTransaction,
   arrayUnion, arrayRemove, getDoc, setDoc, orderBy, Timestamp
 } from "firebase/firestore";
+import { dynamicTools } from "./numberPickingAlgos"; // For calculateHistoricalPerformances
+import { calculateHitDetails } from "./totoUtils"; // For calculateHistoricalPerformances
+import type { HistoricalPerformanceDisplayData } from "@/components/toto/ToolDetailPageClient"; // For calculateHistoricalPerformances
 
 
 export async function generateTotoPredictions(
@@ -77,9 +80,9 @@ export interface ToolPredictionInput {
   toolId: string;
   toolName: string;
   targetDrawNumber: number | string;
-  targetDrawDate?: string;
+  targetDrawDate?: string; // Made optional
   predictedNumbers: number[];
-  userId?: string; // Added optional userId
+  userId?: string;
 }
 
 export async function saveToolPrediction(
@@ -92,27 +95,32 @@ export async function saveToolPrediction(
   }
   try {
     const toolPredictionsCol = collection(db, "toolPredictions");
-    // Use toolId + targetDrawNumber as doc ID for upsert behavior with set and merge
-    const docId = `${data.toolId}_${data.targetDrawNumber}`;
+    const docId = `${data.toolId}_${data.targetDrawNumber}`; // Consistent doc ID
     const predictionDocRef = doc(toolPredictionsCol, docId);
 
     const dataToSave: any = {
       toolId: data.toolId,
       toolName: data.toolName,
       targetDrawNumber: data.targetDrawNumber,
-      targetDrawDate: data.targetDrawDate || "PENDING_DRAW",
       predictedNumbers: data.predictedNumbers,
-      createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
-
+    if (data.targetDrawDate) {
+      dataToSave.targetDrawDate = data.targetDrawDate;
+    }
     if (data.userId) {
       dataToSave.userId = data.userId;
     }
 
+    // Check if document exists to set createdAt only for new documents
+    const docSnap = await getDoc(predictionDocRef);
+    if (!docSnap.exists()) {
+      dataToSave.createdAt = serverTimestamp();
+    }
+
     await setDoc(predictionDocRef, dataToSave, { merge: true });
 
-    console.log(`[SAVE_TOOL_PREDICTION_SUCCESS] Tool prediction saved/updated successfully with ID: ${predictionDocRef.id} for tool: ${data.toolId}, draw: ${data.targetDrawNumber}, userId: ${data.userId || 'N/A'}`);
+    console.log(`[SAVE_TOOL_PREDICTION_SUCCESS] Tool prediction saved/updated successfully with ID: ${predictionDocRef.id} for tool: ${data.toolId}, draw: ${data.targetDrawNumber}`);
     return { success: true, message: "Tool prediction saved/updated successfully.", predictionId: predictionDocRef.id };
 
   } catch (error) {
@@ -124,9 +132,9 @@ export async function saveToolPrediction(
 
 export async function saveMultipleToolPredictions(
   predictions: ToolPredictionInput[],
-  userId?: string // Added optional userId
+  userId?: string
 ): Promise<{ success: boolean; message: string; savedCount?: number, errorCount?: number }> {
-  console.log(`[SAVE_MULTIPLE_TOOL_PREDICTIONS] Attempting to save ${predictions.length} predictions. Attributing to userId: ${userId || 'N/A'}`);
+  console.log(`[SAVE_MULTIPLE_TOOL_PREDICTIONS] Attempting to save ${predictions.length} predictions. Attributed to userId: ${userId || 'N/A'}`);
   if (!db) {
     console.error("[SAVE_MULTIPLE_TOOL_PREDICTIONS_ERROR] Firestore 'db' instance is not initialized.");
     return { success: false, message: "Firestore 'db' instance is not initialized." };
@@ -138,6 +146,13 @@ export async function saveMultipleToolPredictions(
   const batch = writeBatch(db);
   let savedCount = 0;
 
+  // Fetch existing documents to determine if we need to set createdAt
+  const docIdsToFetch = predictions.map(p => `${p.toolId}_${p.targetDrawNumber}`);
+  const existingDocsRefs = docIdsToFetch.map(id => doc(db, "toolPredictions", id));
+  const existingDocsSnapshots = existingDocsRefs.length > 0 ? await Promise.all(existingDocsRefs.map(ref => getDoc(ref))) : [];
+  const existingDocsMap = new Map(existingDocsSnapshots.map(snap => [snap.id, snap.exists()]));
+
+
   predictions.forEach((data) => {
     const toolPredictionsCol = collection(db, "toolPredictions");
     const docId = `${data.toolId}_${data.targetDrawNumber}`;
@@ -147,14 +162,18 @@ export async function saveMultipleToolPredictions(
       toolId: data.toolId,
       toolName: data.toolName,
       targetDrawNumber: data.targetDrawNumber,
-      targetDrawDate: data.targetDrawDate || "UNKNOWN_DATE",
       predictedNumbers: data.predictedNumbers,
-      createdAt: serverTimestamp(), 
-      updatedAt: serverTimestamp(), 
+      updatedAt: serverTimestamp(),
     };
-
-    if (userId) {
+    if (data.targetDrawDate) {
+      dataToSave.targetDrawDate = data.targetDrawDate;
+    }
+    if (userId) { // Add userId if provided
       dataToSave.userId = userId;
+    }
+
+    if (!existingDocsMap.get(docId)) {
+      dataToSave.createdAt = serverTimestamp();
     }
 
     batch.set(predictionDocRef, dataToSave, { merge: true });
@@ -199,7 +218,7 @@ export async function saveSmartPickResult(
     const transformedCombinations = data.combinations.map(combo => ({ numbers: combo }));
 
     const dataToSave = {
-      userId: data.userId,
+      userId: data.userId, // This is what request.resource.data.userId in rules refers to
       drawId: data.drawId,
       combinations: transformedCombinations,
       createdAt: serverTimestamp(),
@@ -232,7 +251,7 @@ export interface SyncRequestDataAdmin {
 
 export async function syncHistoricalResultsToFirestore(
   jsonDataString: string,
-  adminUserId: string | null
+  adminUserId: string | null // Changed from optional to required for clarity
 ): Promise<{ success: boolean; message: string; count?: number }> {
   console.log("[SYNC_FIRESTORE] Attempting to sync historical results to Firestore.");
   if (!db) {
@@ -309,7 +328,7 @@ export async function updateCurrentDrawDisplayInfo(
     await setDoc(docRef, {
       currentDrawDateTime,
       currentJackpot,
-      userId: adminUserId, // Store admin's UID as 'userId'
+      userId: adminUserId,
       updatedAt: serverTimestamp(),
     }, { merge: true });
     console.log(`[UPDATE_DRAW_INFO_SUCCESS] Current draw info updated by admin ${adminUserId}.`);
@@ -470,6 +489,7 @@ export async function getAllHistoricalResultsFromFirestore(): Promise<Historical
     const results: HistoricalResult[] = [];
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data();
+      // Basic validation
       if (
         typeof data.drawNumber === 'number' &&
         typeof data.date === 'string' &&
@@ -481,7 +501,7 @@ export async function getAllHistoricalResultsFromFirestore(): Promise<Historical
           date: data.date,
           numbers: data.numbers,
           additionalNumber: data.additionalNumber,
-        } as HistoricalResult);
+        } as HistoricalResult); // Type assertion
       } else {
         console.warn("[GET_ALL_HISTORICAL_WARN] Skipping document with invalid data structure:", docSnap.id, data);
       }
@@ -556,3 +576,66 @@ export async function getPredictionsForDraw(
     return {};
   }
 }
+
+
+export async function calculateHistoricalPerformances(
+  toolId: string,
+  allHistoricalData: HistoricalResult[]
+): Promise<HistoricalPerformanceDisplayData[]> {
+  const tool = dynamicTools.find((t) => t.id === toolId);
+  if (!tool) {
+    console.error(`[CALCULATE_HISTORICAL_PERFORMANCES_ERROR] Tool with id ${toolId} not found.`);
+    return [];
+  }
+  if (!allHistoricalData || allHistoricalData.length === 0) {
+    console.log("[CALCULATE_HISTORICAL_PERFORMANCES_INFO] No historical data provided for analysis.");
+    return [];
+  }
+
+  const performances: HistoricalPerformanceDisplayData[] = [];
+  const recentTenHistoricalDrawsForAnalysis = allHistoricalData.slice(0, 10);
+
+  for (const targetDraw of recentTenHistoricalDrawsForAnalysis) {
+    const originalIndex = allHistoricalData.findIndex(d => d.drawNumber === targetDraw.drawNumber);
+    if (originalIndex === -1) continue;
+
+    const precedingDrawsStartIndex = originalIndex + 1;
+    const precedingDrawsEndIndex = precedingDrawsStartIndex + 10;
+    const precedingTenDraws = allHistoricalData.slice(precedingDrawsStartIndex, precedingDrawsEndIndex);
+
+    let predictionBasisDraws: string | null = null;
+    if (precedingTenDraws.length > 0) {
+      const firstPreceding = precedingTenDraws[0];
+      const lastPreceding = precedingTenDraws[precedingTenDraws.length - 1];
+      if (firstPreceding && lastPreceding) {
+        predictionBasisDraws = `基于期号: ${firstPreceding.drawNumber}${precedingTenDraws.length > 1 ? ` - ${lastPreceding.drawNumber}` : ''} (共${precedingTenDraws.length}期)`;
+      }
+    } else {
+      predictionBasisDraws = "无足够前期数据";
+    }
+    
+    let predictedNumbersForTargetDraw: number[] = [];
+    if (precedingTenDraws.length > 0) { // Ensure algo is called only if there's data
+        predictedNumbersForTargetDraw = tool.algorithmFn(precedingTenDraws);
+    }
+
+
+    const hitDetails = calculateHitDetails(predictedNumbersForTargetDraw, targetDraw);
+    const hitRate = targetDraw.numbers.length > 0 && predictedNumbersForTargetDraw.length > 0
+      ? (hitDetails.mainHitCount / Math.min(predictedNumbersForTargetDraw.length, 6)) * 100 // Assuming TOTO has 6 main numbers for rate calc
+      : 0;
+    const hasAnyHit = hitDetails.mainHitCount > 0 || hitDetails.matchedAdditionalNumberDetails.matched;
+
+    performances.push({
+      targetDraw,
+      predictedNumbersForTargetDraw,
+      hitDetails,
+      hitRate,
+      hasAnyHit,
+      predictionBasisDraws,
+    });
+  }
+  return performances;
+}
+
+    
