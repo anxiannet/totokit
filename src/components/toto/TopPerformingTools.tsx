@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Info, Target, Loader2 } from "lucide-react";
+import { Info, Target, Loader2, Percent, Sparkles } from "lucide-react"; // Added Sparkles for button
 import type { DynamicNumberPickingTool } from "@/lib/numberPickingAlgos";
 import { NumberPickingToolDisplay } from "./NumberPickingToolDisplay";
 import React, { useRef, useEffect, useState, useCallback } from 'react';
@@ -13,11 +13,12 @@ import { useQuery } from '@tanstack/react-query';
 import { getPredictionsForDraw } from '@/lib/actions';
 import { OFFICIAL_PREDICTIONS_DRAW_ID } from "@/lib/types";
 import { getTotoSystemBetPrice } from '@/lib/totoUtils';
+import { Button } from "@/components/ui/button"; // Added Button
 
 
 export interface TopToolDisplayInfo extends DynamicNumberPickingTool {
   averageHitRate: number;
-  currentPredictionForDraw: number[];
+  currentPredictionForDraw: number[]; // This might be based on official_draw_id predictions
 }
 
 interface TopPerformingToolsProps {
@@ -52,25 +53,33 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
 
   const scrollToTool = useCallback((index: number) => {
     if (itemRefs.current[index] && scrollContainerRef.current) {
-      setIsInteracting(true);
+      setIsInteracting(true); // Indicate interaction to pause observer updates
       itemRefs.current[index]?.scrollIntoView({
         behavior: 'smooth',
         block: 'nearest',
         inline: 'start',
       });
+      // Allow time for scroll to complete before re-enabling observer-based updates
       setTimeout(() => setIsInteracting(false), 600);
     }
   }, []);
 
+  // Effect to scroll when activeIndex changes programmatically (e.g., by dot click)
+  useEffect(() => {
+    scrollToTool(activeIndex);
+  }, [activeIndex, scrollToTool]);
+
+
+  // Effect to update activeIndex based on scroll position (IntersectionObserver)
   useEffect(() => {
     if (isInteracting || !scrollContainerRef.current || tools.length === 0) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (isInteracting) return;
+        if (isInteracting) return; // Don't update if scroll was programmatic
 
         entries.forEach((entry) => {
-          if (entry.isIntersecting && entry.intersectionRatio >= 0.75) {
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.75) { // Adjust threshold as needed
             const index = itemRefs.current.findIndex(ref => ref === entry.target);
             if (index !== -1 && activeIndex !== index) {
                setActiveIndex(index);
@@ -80,7 +89,7 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
       },
       {
         root: scrollContainerRef.current,
-        threshold: 0.75,
+        threshold: 0.75, // Trigger when 75% of the item is visible
       }
     );
 
@@ -93,11 +102,7 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
         if (ref) observer.unobserve(ref);
       });
     };
-  }, [tools, activeIndex, isInteracting, scrollToTool]);
-
-  useEffect(() => {
-    scrollToTool(activeIndex);
-  }, [activeIndex, scrollToTool]);
+  }, [tools, activeIndex, isInteracting]); // Add scrollToTool to deps if it changes frequently, but it's memoized
 
 
   if (!tools || tools.length === 0) {
@@ -128,10 +133,10 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
       <CardContent className="pt-2 pb-4 px-0">
         <div
           ref={scrollContainerRef}
-          className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar h-[240px]"
+          className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar h-[280px]" // Adjusted height
         >
           {tools.map((tool, index) => {
-            const predictionNumbers = officialPredictionsMap[tool.id] || tool.currentPredictionForDraw || [];
+            const predictionNumbers = officialPredictionsMap[tool.id] || [];
             const predictionCount = predictionNumbers.length;
             const betPrice = getTotoSystemBetPrice(predictionCount);
 
@@ -141,46 +146,52 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
                 ref={el => itemRefs.current[index] = el}
                 className="min-w-full snap-start flex-shrink-0 px-4 py-2 h-full"
               >
-                <Link href={`/number-picking-tools/${tool.id}`} className="block h-full focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded-lg">
-                  <div className="p-4 border rounded-lg bg-card shadow-sm h-full flex flex-col justify-between hover:bg-muted/50 transition-colors cursor-pointer">
-                    <div>
-                      <div className="flex flex-row justify-between items-center mb-1 gap-2">
-                        <h3 className="text-md font-semibold text-primary truncate">
-                          {tool.name} {predictionCount > 0 ? `(${predictionCount}个)` : ""}
-                        </h3>
-                        <Badge variant={"secondary"} className="whitespace-nowrap flex-shrink-0">
-                          平均命中率：{tool.averageHitRate.toFixed(1)}%
-                        </Badge>
-                      </div>
+                <div className="p-4 border rounded-lg bg-card shadow-sm h-full flex flex-col justify-between hover:bg-muted/50 transition-colors">
+                  <div>
+                    <div className="flex flex-row justify-between items-center mb-2 gap-2">
+                      <h3 className="text-md font-semibold text-primary truncate flex-grow">
+                        {tool.name} {predictionCount > 0 ? `(${predictionCount}个)` : ""}
+                      </h3>
+                      <Badge variant={"secondary"} className="whitespace-nowrap flex-shrink-0">
+                        平均命中率：{tool.averageHitRate.toFixed(1)}%
+                      </Badge>
+                    </div>
 
-                      <div className="mb-1 min-h-[60px]">
-                        {isLoadingPredictions ? (
-                          <div className="flex items-center space-x-2 h-full justify-center">
-                            <Loader2 className="h-5 w-5 animate-spin" />
-                            <p className="text-xs text-muted-foreground italic">加载预测中...</p>
-                          </div>
-                        ) : predictionNumbers.length > 0 ? (
-                          <div className="space-y-1">
-                            {chunkArray(predictionNumbers, 9).map((chunk, chunkIndex) => (
-                              <div key={chunkIndex} className={cn("flex justify-center")}>
-                                <NumberPickingToolDisplay numbers={chunk} />
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-muted-foreground italic h-full flex items-center justify-center">
-                            该工具对第 {OFFICIAL_PREDICTIONS_DRAW_ID} 期的预测尚未生成。
-                          </p>
-                        )}
-                      </div>
-                       {betPrice !== null && predictionCount > 0 && (
-                        <p className="text-xs text-center text-muted-foreground mt-1.5">
-                          使用智能精选算法投注 {predictionCount} 个号码仅需 {betPrice} 新币
+                    <div className="mb-2 min-h-[50px]"> {/* Adjusted min-height */}
+                      {isLoadingPredictions ? (
+                        <div className="flex items-center space-x-2 h-full justify-center">
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                          <p className="text-xs text-muted-foreground italic">加载预测中...</p>
+                        </div>
+                      ) : predictionNumbers.length > 0 ? (
+                        <div className="space-y-1">
+                          {chunkArray(predictionNumbers, 9).map((chunk, chunkIndex) => (
+                            <div key={chunkIndex} className={cn("flex justify-center")}>
+                              <NumberPickingToolDisplay numbers={chunk} />
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground italic h-full flex items-center justify-center">
+                          该工具对第 {OFFICIAL_PREDICTIONS_DRAW_ID} 期的预测尚未生成。
                         </p>
                       )}
                     </div>
                   </div>
-                </Link>
+                  <div className="mt-auto pt-2">
+                    {betPrice !== null && predictionCount > 0 && (
+                      <p className="text-center text-sm font-semibold text-primary mt-1 mb-3">
+                        使用智能精选算法投注 {predictionCount} 个号码仅需 {betPrice} 新币
+                      </p>
+                    )}
+                    <Button asChild size="sm" className="w-full">
+                      <Link href="/self-select">
+                        <Sparkles className="mr-2 h-4 w-4" />
+                        立即尝试
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
               </div>
             );
           })}
@@ -191,8 +202,9 @@ export function TopPerformingTools({ tools }: TopPerformingToolsProps) {
               <button
                 key={`dot-${index}`}
                 onClick={() => {
-                  setIsInteracting(true);
+                  setIsInteracting(true); // Indicate user interaction
                   setActiveIndex(index);
+                  // scrollToTool(index); // scrollToTool will be called by activeIndex change effect
                 }}
                 aria-label={`切换到工具 ${index + 1}`}
                 className={cn(

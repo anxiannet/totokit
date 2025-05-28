@@ -4,13 +4,14 @@
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Award } from "lucide-react";
+import { Award, Sparkles } from "lucide-react"; // Added Sparkles
 import type { HitDetails, TotoCombination } from "@/lib/types";
 import { NumberPickingToolDisplay } from "./NumberPickingToolDisplay";
 import { MOCK_LATEST_RESULT } from '@/lib/types';
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { getTotoSystemBetPrice } from '@/lib/totoUtils';
+import { Button } from "@/components/ui/button"; // Added Button
 
 
 export interface LastDrawToolPerformanceInfo {
@@ -131,7 +132,7 @@ export function LastDrawTopTools({ tools, latestDrawNumber }: LastDrawTopToolsPr
       <CardContent className="pt-2 pb-4 px-0">
         <div
           ref={scrollContainerRef}
-          className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar h-[230px]"
+          className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar h-[280px]" // Adjusted height
         >
           {tools.map((tool, index) => {
             const predictionCount = tool.predictionForLastDraw.length;
@@ -142,11 +143,11 @@ export function LastDrawTopTools({ tools, latestDrawNumber }: LastDrawTopToolsPr
                 ref={el => itemRefs.current[index] = el}
                 className="min-w-full snap-start flex-shrink-0 px-4 py-2 h-full" 
               >
-                <Link href={`/number-picking-tools/${tool.id}`} className="block h-full focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded-lg">
-                  <div className="p-4 border rounded-lg bg-card shadow-sm h-full flex flex-col justify-between hover:bg-muted/50 transition-colors cursor-pointer">
+                <div className="p-4 border rounded-lg bg-card shadow-sm h-full flex flex-col justify-between hover:bg-muted/50 transition-colors">
+                  <Link href={`/number-picking-tools/${tool.id}`} className="block focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded-lg flex-grow">
                     <div>
                       <div className="flex flex-row justify-between items-center mb-1.5 gap-2">
-                        <h3 className="text-md font-semibold text-primary truncate">
+                        <h3 className="text-md font-semibold text-primary truncate flex-grow">
                            {tool.name} {predictionCount > 0 ? `(${predictionCount}个)` : ""}
                         </h3>
                         <Badge variant={tool.hitRateForLastDraw > 0 ? "default" : "secondary"} className="bg-green-600 hover:bg-green-700 text-white whitespace-nowrap flex-shrink-0">
@@ -171,14 +172,22 @@ export function LastDrawTopTools({ tools, latestDrawNumber }: LastDrawTopToolsPr
                           </p>
                         )}
                       </div>
-                      {betPrice !== null && predictionCount > 0 && (
-                        <p className="text-xs text-center text-muted-foreground mt-1.5">
-                          使用智能精选算法投注 {predictionCount} 个号码仅需 {betPrice} 新币
-                        </p>
-                      )}
                     </div>
+                  </Link>
+                  <div className="mt-auto pt-2">
+                    {betPrice !== null && predictionCount > 0 && (
+                      <p className="text-center text-sm font-semibold text-primary mt-1 mb-3">
+                        使用智能精选算法投注 {predictionCount} 个号码仅需 {betPrice} 新币
+                      </p>
+                    )}
+                    <Button asChild size="sm" className="w-full">
+                      <Link href="/self-select">
+                        <Sparkles className="mr-2 h-4 w-4" />
+                        立即尝试
+                      </Link>
+                    </Button>
                   </div>
-                </Link>
+                </div>
               </div>
             );
           })}
